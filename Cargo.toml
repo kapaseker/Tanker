@@ -1,0 +1,34 @@
+[package]
+name = "tanker"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# 基于 crates.io 的 bevy 0.20.0（不使用父目录源码）。
+# 系统缺 alsa/udev/wayland 的开发包，故禁用默认特性，手工组装：
+#   - 禁 audio（需要 alsa）与 bevy_gilrs（需要 udev）
+#   - 禁 wayland，仅保留 x11（当前会话为 X11，winit 走 dlopen 无需头文件）
+bevy = { version = "0.20.0", default-features = false, features = [
+  # default_app
+  "std",
+  "async_executor",
+  "bevy_asset",
+  "bevy_log",
+  "bevy_state",
+  "reflect_auto_register",
+  # 平台（无 gilrs / wayland / webgl / sysinfo）
+  "multi_threaded",
+  "bevy_winit",
+  "x11",
+  "default_font",
+  # 3D 渲染管线
+  "3d_api",
+  "3d_bevy_render",
+] }
+
+# Bevy 官方推荐的 dev 性能配置：自身轻度优化，依赖全量优化，保证运行流畅
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

@@ -1,0 +1,30 @@
+ # ===== Rust / Cargo =====
+# 构建产物（增量缓存、依赖编译输出、可执行文件）
+/target
+# MSVC Windows 构建生成的调试信息
+*.pdb
+# rustfmt 备份文件
+**/*.rs.bk
+
+# 注意：Tanker 是可执行程序，Cargo.lock 应纳入版本控制（勿忽略）
+
+# ===== 编辑器 / IDE =====
+.vscode/
+.idea/
+*.iml
+*.swp
+*~
+
+# ===== 操作系统 =====
+.DS_Store
+Thumbs.db
+
+# ===== 工程约定 =====
+# 本地 issue tracker 的工作目录（.scratch/ 下是临时工单/调研笔记；
+# 若希望把工单历史也纳入版本控制，删除下面这行即可）
+.scratch/
+
+# ===== 游戏运行时产物 =====
+# Bevy 导出的缓存/临时资源目录（assets/ 源资产正常纳入版本控制）
+/assets/imported/
+/screenshots/
