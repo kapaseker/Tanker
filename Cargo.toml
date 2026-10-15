@@ -4,11 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-# 基于 crates.io 的 bevy 0.20.0（不使用父目录源码）。
+# 基于 crates.io 的 bevy 0.19（不使用父目录源码）。
+# 锁 0.19 的原因：voxel 生态（bevy_vox_scene / bevy_voxel_world）目前最高只支持 0.19。
 # 系统缺 alsa/udev/wayland 的开发包，故禁用默认特性，手工组装：
 #   - 禁 audio（需要 alsa）与 bevy_gilrs（需要 udev）
 #   - 禁 wayland，仅保留 x11（当前会话为 X11，winit 走 dlopen 无需头文件）
-bevy = { version = "0.20.0", default-features = false, features = [
+bevy = { version = "0.19", default-features = false, features = [
   # default_app
   "std",
   "async_executor",
@@ -25,6 +26,9 @@ bevy = { version = "0.20.0", default-features = false, features = [
   "3d_api",
   "3d_bevy_render",
 ] }
+
+# MagicaVoxel .vox 场景加载（场景图 + 材质/玻璃/云体素），兼容表：bevy 0.19 <-> 0.22
+bevy_vox_scene = "0.22"
 
 # Bevy 官方推荐的 dev 性能配置：自身轻度优化，依赖全量优化，保证运行流畅
 [profile.dev]
