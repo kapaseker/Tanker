@@ -11,7 +11,10 @@ use bevy::{
     prelude::*,
     world_serialization::WorldAsset,
 };
+use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_vox_scene::{VoxLoaderSettings, VoxScenePlugin};
+
+mod firing;
 
 /// 当前加载的 MagicaVoxel 场景资源路径（相对 `assets/`）。
 const VOX_SCENE_PATH: &str = "tank.vox";
@@ -19,7 +22,7 @@ const VOX_SCENE_PATH: &str = "tank.vox";
 /// 全局灯光的亮度（cd/m²）。场景不使用 `DirectionalLight`，全部光照由全局环境光
 /// 与相机上的 `EnvironmentMapLight` 环境贴图提供，因此这里给得比默认值（80）高。
 /// 观感不合适时只需调这一个数。
-const GLOBAL_AMBIENT_BRIGHTNESS: f32 = 1000.0;
+const GLOBAL_AMBIENT_BRIGHTNESS: f32 = 5000.0;
 
 /// vox 场景资源句柄，供加载状态汇报系统轮询。
 #[derive(Resource)]
@@ -42,6 +45,8 @@ fn main() {
                     ..default()
                 }),
             },
+            PanOrbitCameraPlugin,
+            firing::FiringPlugin,
         ))
         .insert_resource(GlobalAmbientLight {
             brightness: GLOBAL_AMBIENT_BRIGHTNESS,
@@ -58,6 +63,7 @@ fn main() {
 fn setup_scene(mut commands: Commands, assets: Res<AssetServer>) {
     commands.spawn((
         Camera3d::default(),
+        PanOrbitCamera::default(),
         // SSAO 要求关闭 MSAA，两者必须成对配置
         Msaa::Off,
         // 让场景中的玻璃体素能折射其他物体
@@ -82,7 +88,7 @@ fn setup_scene(mut commands: Commands, assets: Res<AssetServer>) {
 
     // 加载整个 MagicaVoxel 场景为 Bevy 场景图
     let scene = assets.load(VOX_SCENE_PATH);
-    commands.spawn(WorldAssetRoot(scene.clone()));
+    commands.spawn((firing::Tank, WorldAssetRoot(scene.clone())));
     commands.insert_resource(VoxScene(scene));
 }
 
