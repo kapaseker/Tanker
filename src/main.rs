@@ -1,8 +1,9 @@
 //! Tanker —— 基于 Bevy 的 3D voxel 游戏工程。
 //!
-//! 当前阶段：接入 `bevy_vox_scene`，加载自制 MagicaVoxel 场景 `assets/tank.vox`。
+//! VOX 地板与坦克场景，方向键驾驶，空格开炮，轨道相机随坦克位置移动。
 //! `assets/pisa_diffuse.ktx2` 与 `pisa_specular.ktx2` 仍取自 bevy_vox_scene 官方仓库示例资源（环境贴图）。
 
+use avian3d::prelude::PhysicsPlugins;
 use bevy::{
     asset::LoadState,
     core_pipeline::tonemapping::Tonemapping,
@@ -14,7 +15,9 @@ use bevy::{
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_vox_scene::{VoxLoaderSettings, VoxScenePlugin};
 
+mod driving;
 mod firing;
+mod ground;
 
 /// 当前加载的 MagicaVoxel 场景资源路径（相对 `assets/`）。
 const VOX_SCENE_PATH: &str = "tank.vox";
@@ -47,6 +50,9 @@ fn main() {
             },
             PanOrbitCameraPlugin,
             firing::FiringPlugin,
+            PhysicsPlugins::default(),
+            ground::GroundPlugin,
+            driving::DrivingPlugin,
         ))
         .insert_resource(GlobalAmbientLight {
             brightness: GLOBAL_AMBIENT_BRIGHTNESS,
@@ -63,7 +69,13 @@ fn main() {
 fn setup_scene(mut commands: Commands, assets: Res<AssetServer>) {
     commands.spawn((
         Camera3d::default(),
-        PanOrbitCamera::default(),
+        PanOrbitCamera {
+            focus: Vec3::Y * driving::TANK_SIZE.y / 2.0,
+            // 自动跟随位置，不允许右键平移改变目标；旋转、缩放仍由鼠标控制。
+            pan_sensitivity: 0.0,
+            pan_smoothness: 0.0,
+            ..default()
+        },
         // SSAO 要求关闭 MSAA，两者必须成对配置
         Msaa::Off,
         // 让场景中的玻璃体素能折射其他物体
@@ -71,7 +83,8 @@ fn setup_scene(mut commands: Commands, assets: Res<AssetServer>) {
             steps: 1,
             quality: ScreenSpaceTransmissionQuality::High,
         },
-        Transform::from_xyz(8.0, 1.5, 8.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(8.0, 4.0, 8.0)
+            .looking_at(Vec3::Y * driving::TANK_SIZE.y / 2.0, Vec3::Y),
         Tonemapping::BlenderFilmic,
         Bloom {
             intensity: 0.3,
@@ -88,7 +101,12 @@ fn setup_scene(mut commands: Commands, assets: Res<AssetServer>) {
 
     // 加载整个 MagicaVoxel 场景为 Bevy 场景图
     let scene = assets.load(VOX_SCENE_PATH);
-    commands.spawn((firing::Tank, WorldAssetRoot(scene.clone())));
+    commands.spawn((
+        firing::Tank,
+        WorldAssetRoot(scene.clone()),
+        driving::tank_body(),
+        Transform::from_xyz(0.0, driving::TANK_SIZE.y / 2.0, 0.0),
+    ));
     commands.insert_resource(VoxScene(scene));
 }
 

@@ -293,6 +293,7 @@ mod tests {
                 }),
             },
             FiringPlugin,
+            crate::ground::GroundPlugin,
         ))
         .init_asset::<StandardMaterial>()
         .init_asset::<Mesh>()
@@ -320,7 +321,9 @@ mod tests {
             .spawn((Tank, WorldAssetRoot(tank_asset)))
             .id();
         // 真实资源异步加载；这里使用现实时间限制等待，避免失败时测试无限循环。
-        let deadline = Instant::now() + Duration::from_secs(10);
+        let ground_asset: Handle<WorldAsset> =
+            app.world().resource::<AssetServer>().load("ground.vox");
+        let deadline = Instant::now() + Duration::from_secs(20);
         loop {
             app.update();
             let world = app.world();
@@ -330,12 +333,37 @@ mod tests {
                     .resource::<WorldInstanceSpawner>()
                     .instance_is_ready(**instance)
             });
-            if ready && assets.is_loaded_with_dependencies(&world.resource::<Gun>().bullet_scene) {
+            if ready
+                && assets.is_loaded_with_dependencies(&world.resource::<Gun>().bullet_scene)
+                && assets.is_loaded_with_dependencies(&ground_asset)
+            {
                 break;
             }
-            assert!(Instant::now() < deadline, "坦克或子弹资源未能就绪");
+            assert!(Instant::now() < deadline, "坦克、子弹或地板资源未能就绪");
             std::thread::sleep(Duration::from_millis(1));
         }
+
+        // 真实加载地板，确认 16 个实例复用同一场景且模型包围盒符合米制比例。
+        let mut roots = app.world_mut().query::<&WorldAssetRoot>();
+        assert_eq!(
+            roots
+                .iter(app.world())
+                .filter(|root| root.0 == ground_asset)
+                .count(),
+            16
+        );
+        let mut meshes = app.world_mut().query::<&Mesh3d>();
+        assert!(meshes.iter(app.world()).any(|mesh| {
+            app.world()
+                .resource::<Assets<Mesh>>()
+                .get(&mesh.0)
+                .unwrap()
+                .compute_aabb()
+                .is_some_and(|aabb| {
+                    aabb.half_extents
+                        .abs_diff_eq(Vec3::new(3.95, 0.15, 3.95).into(), 1e-4)
+                })
+        }));
 
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()

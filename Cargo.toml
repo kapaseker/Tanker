@@ -30,8 +30,11 @@ bevy = { version = "0.19", default-features = false, features = [
 # MagicaVoxel .vox 场景加载（场景图 + 材质/玻璃/云体素），兼容表：bevy 0.19 <-> 0.22
 bevy_vox_scene = "0.22"
 
-# 轨道相机：左键旋转、右键平移、滚轮缩放，兼容 Bevy 0.19
+# 轨道相机：左键旋转、滚轮缩放，位置由驾驶模块自动跟随，兼容 Bevy 0.19
 bevy_panorbit_camera = "0.35.1"
+
+# 简化坦克刚体与平面碰撞；0.7 对应 Bevy 0.19，仅启用 3D 单精度碰撞后端。
+avian3d = { version = "0.7", default-features = false, features = ["3d", "f32", "parry-f32"] }
 
 # Bevy 官方推荐的 dev 性能配置：自身轻度优化，依赖全量优化，保证运行流畅
 [profile.dev]

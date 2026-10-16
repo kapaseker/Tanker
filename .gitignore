@@ -28,3 +28,6 @@ Thumbs.db
 # Bevy 导出的缓存/临时资源目录（assets/ 源资产正常纳入版本控制）
 /assets/imported/
 /screenshots/
+
+# Python 地板生成器的字节码缓存
+__pycache__/
