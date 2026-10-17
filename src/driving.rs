@@ -16,6 +16,8 @@ const TURN_SPEED: f32 = std::f32::consts::FRAC_PI_2;
 /// 相机距车身中心的水平后退距离与世界竖直高度，单位：米。
 const CAMERA_DISTANCE: f32 = 10.0;
 const CAMERA_HEIGHT: f32 = 6.0;
+/// 相对于看向车身中心的方向向上抬起的角度，单位：度。
+const CAMERA_PITCH_UP_DEGREES: f32 = 15.0;
 
 /// 标记固定在车尾上方的游戏相机，不接受鼠标控制。
 #[derive(Component)]
@@ -78,11 +80,13 @@ fn drive_tank(
     }
 }
 
-/// 模型局部 +X 是车尾；高度沿世界 +Y，视线始终指向车身中心。
+/// 模型局部 +X 是车尾；从看向车身中心的方向向上抬视线，机位保持不变。
 pub(super) fn camera_transform(tank: &Transform) -> Transform {
     let position =
         tank.translation + tank.rotation * Vec3::X * CAMERA_DISTANCE + Vec3::Y * CAMERA_HEIGHT;
-    Transform::from_translation(position).looking_at(tank.translation, Vec3::Y)
+    let mut camera = Transform::from_translation(position).looking_at(tank.translation, Vec3::Y);
+    camera.rotate_local_x(CAMERA_PITCH_UP_DEGREES.to_radians());
+    camera
 }
 
 /// 坦克与相机均为根节点，在本帧变换传播前同步机位，避免画面滞后一帧。
@@ -102,7 +106,7 @@ fn follow_tank(
 mod tests {
     use super::*;
 
-    /// 相机当帧跟随平移和转向；倒车只改变位置，不把机位切到车头。
+    /// 相机当帧跟随平移与转向，视线保持向上抬 15°；倒车不把机位切到车头。
     #[test]
     fn camera_follows_position_heading_and_reverse_without_frame_delay() {
         let mut app = App::new();
@@ -142,10 +146,14 @@ mod tests {
                 view.translation
                     .abs_diff_eq(position + expected_offset, 1e-5)
             );
+            let forward = view.forward().as_vec3();
+            let original_pitch = -expected_offset.y.atan2(expected_offset.xz().length());
+            assert!((forward.y.asin() - original_pitch - 15.0_f32.to_radians()).abs() < 1e-5);
             assert!(
-                view.forward()
-                    .as_vec3()
-                    .abs_diff_eq(-expected_offset.normalize(), 1e-5)
+                forward
+                    .xz()
+                    .normalize()
+                    .abs_diff_eq(-expected_offset.xz().normalize(), 1e-5)
             );
             let global = app.world().get::<GlobalTransform>(camera).unwrap();
             assert!(global.translation().abs_diff_eq(view.translation, 1e-5));

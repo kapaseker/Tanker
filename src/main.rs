@@ -15,6 +15,7 @@ use bevy::{
 use bevy_vox_scene::{VoxLoaderSettings, VoxScenePlugin};
 
 mod driving;
+mod enemy;
 mod firing;
 mod ground;
 
@@ -53,6 +54,7 @@ fn main() {
             firing::FiringPlugin,
             PhysicsPlugins::default(),
             ground::GroundPlugin,
+            enemy::EnemyPlugin,
             driving::DrivingPlugin,
         ))
         .insert_resource(GlobalAmbientLight {

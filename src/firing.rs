@@ -1,5 +1,7 @@
-//! 坦克空格连发：预加载子弹场景，按炮口世界方向生成子弹，并在射程耗尽时清理。
+//! 坦克空格连发：按炮口世界方向发射，沿飞行路径检测敌人，命中或射程耗尽时清理。
 
+use crate::enemy::EnemyTank;
+use avian3d::prelude::{Collider, ShapeCastConfig, SpatialQuery, SpatialQueryFilter};
 use bevy::{
     asset::LoadState,
     prelude::*,
@@ -11,6 +13,8 @@ use bevy::{
 const FIRE_INTERVAL: f32 = 0.5;
 /// 子弹的匀速飞行速度，单位：世界单位/秒。
 const BULLET_SPEED: f32 = 40.0;
+/// 当前弹体为 4×4×4 格立方体，扫掠尺寸与资源保持一致，单位：米。
+const BULLET_SIZE: f32 = 0.4;
 /// 从出生点累计计算的最大飞行距离，单位：世界单位。
 const BULLET_RANGE: f32 = 2000.0;
 /// 子弹出生中心在坦克根节点下的局部坐标；炮口前方为局部 −X。
@@ -103,7 +107,7 @@ impl FireCadence {
 fn muzzle_pose(tank: &GlobalTransform) -> (Vec3, Vec3) {
     (
         tank.transform_point(MUZZLE_POSITION),
-        tank.affine().transform_vector3(Vec3::NEG_X).normalize(), 
+        tank.affine().transform_vector3(Vec3::NEG_X).normalize(),
     )
 }
 
@@ -147,21 +151,47 @@ fn fire_bullets(
     ));
 }
 
-/// 按游戏时间推进子弹；累计距离达到射程时，连同场景子实体一起销毁。
+/// 沿完整位移扫掠弹体，仅命中最近敌人；命中或射程耗尽时清理场景根及后代。
 fn move_bullets(
     mut commands: Commands,
     time: Res<Time>,
+    spatial: SpatialQuery,
+    enemies: Query<Entity, With<EnemyTank>>,
     mut bullets: Query<(Entity, &mut Transform, &mut Bullet)>,
 ) {
-    // 本帧前进的世界距离，按时间计算以保持不同帧率下的速度一致。
+    // 本帧前进的世界距离，按游戏时间计算，单位：米。
     let step = BULLET_SPEED * time.delta_secs();
+    let shape = Collider::cuboid(BULLET_SIZE, BULLET_SIZE, BULLET_SIZE);
+    // Commands 在系统结束后才删除实体，同帧后续弹体必须主动跳过已击毁目标。
+    let mut destroyed = Vec::new();
+    let enemy_count = enemies.iter().count();
     for (entity, mut transform, mut bullet) in &mut bullets {
-        bullet.distance += step;
-        if bullet.distance >= BULLET_RANGE {
+        let remaining = (BULLET_RANGE - bullet.distance).max(0.0);
+        let travel = step.min(remaining);
+        let hit = spatial.cast_shape_predicate(
+            &shape,
+            transform.translation,
+            transform.rotation,
+            Dir3::new(bullet.direction).expect("子弹方向必须为非零单位向量"),
+            &ShapeCastConfig::from_max_distance(travel),
+            &SpatialQueryFilter::default(),
+            &|target| enemies.contains(target) && !destroyed.contains(&target),
+        );
+        if let Some(hit) = hit {
+            destroyed.push(hit.entity);
+            commands.entity(hit.entity).despawn();
+            commands.entity(entity).despawn();
+            let left = enemy_count - destroyed.len();
+            info!("击毁敌人坦克，剩余 {left} 辆");
+            if left == 0 {
+                info!("敌人已全部清除，可继续自由驾驶");
+            }
+        } else if step >= remaining {
             debug!("子弹达到射程，销毁：{entity}");
             commands.entity(entity).despawn();
         } else {
-            transform.translation += bullet.direction * step;
+            bullet.distance += travel;
+            transform.translation += bullet.direction * travel;
         }
     }
 }
@@ -275,13 +305,134 @@ mod tests {
         assert!(direction.abs_diff_eq(Vec3::Z, 1e-5));
     }
 
+    /// 用真实物理宽阶段预热目标，再以独立游戏时间运行子弹系统。
+    fn hit_test_app(targets: &[(Vec3, f32)]) -> (App, Vec<Entity>) {
+        use avian3d::prelude::*;
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, TransformPlugin, PhysicsPlugins::default()))
+            .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f64(
+                1.0 / 64.0,
+            )));
+        app.finish();
+        app.cleanup();
+        let enemies = targets
+            .iter()
+            .map(|&(position, yaw)| {
+                app.world_mut()
+                    .spawn((
+                        crate::enemy::EnemyTank,
+                        RigidBody::Static,
+                        Collider::cuboid(3.4, 1.4, 2.6),
+                        Transform::from_translation(position)
+                            .with_rotation(Quat::from_rotation_y(yaw)),
+                    ))
+                    .id()
+            })
+            .collect();
+        for _ in 0..3 {
+            app.update();
+        }
+        (app, enemies)
+    }
+
+    /// 将子弹直接交给生产系统，独立控制单帧时间以覆盖高速和射程末段。
+    fn advance_test_bullets(app: &mut App, seconds: f32) {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut time = Time::<()>::default();
+        time.advance_by(Duration::from_secs_f32(seconds));
+        app.insert_resource(time);
+        app.world_mut().run_system_once(move_bullets).unwrap();
+    }
+
+    /// 创建不依赖资源加载的弹体；姿态与实际发射保持一致。
+    fn test_bullet(app: &mut App, origin: Vec3, direction: Vec3, distance: f32) -> Entity {
+        app.world_mut()
+            .spawn((
+                Bullet {
+                    direction,
+                    distance,
+                },
+                Transform::from_translation(origin)
+                    .with_rotation(Quat::from_rotation_arc(Vec3::NEG_X, direction)),
+            ))
+            .id()
+    }
+
+    /// 一帧跨过两个目标时只击毁最近目标，同时清理双方场景后代。
+    #[test]
+    fn fast_bullet_hits_nearest_enemy_and_cleans_children() {
+        let (mut app, enemies) = hit_test_app(&[
+            (Vec3::new(-12.0, 0.7, 0.0), 0.0),
+            (Vec3::new(-6.0, 0.7, 0.0), 0.7),
+        ]);
+        let bullet = test_bullet(&mut app, Vec3::new(0.0, 1.2, 0.0), Vec3::NEG_X, 0.0);
+        let child = app.world_mut().spawn(ChildOf(enemies[1])).id();
+        let grandchild = app.world_mut().spawn(ChildOf(child)).id();
+        let bullet_child = app.world_mut().spawn(ChildOf(bullet)).id();
+        advance_test_bullets(&mut app, 0.5);
+        assert!(app.world().get_entity(enemies[0]).is_ok());
+        for entity in [enemies[1], child, grandchild, bullet, bullet_child] {
+            assert!(app.world().get_entity(entity).is_err());
+        }
+    }
+
+    /// 擦过旋转车体、超出剩余射程的目标都不会被击毁。
+    #[test]
+    fn misses_and_targets_beyond_range_survive() {
+        let (mut app, enemies) = hit_test_app(&[(Vec3::new(-6.0, 0.7, 0.0), 0.8)]);
+        let miss = test_bullet(&mut app, Vec3::new(0.0, 1.2, 3.0), Vec3::NEG_X, 0.0);
+        let expired = test_bullet(
+            &mut app,
+            Vec3::new(0.0, 1.2, 0.0),
+            Vec3::NEG_X,
+            BULLET_RANGE - 1.0,
+        );
+        advance_test_bullets(&mut app, 0.5);
+        assert!(app.world().get_entity(enemies[0]).is_ok());
+        assert!(app.world().get_entity(miss).is_ok());
+        assert!(app.world().get_entity(expired).is_err());
+        // 最后一段射程内仍需执行命中检测，而不是提前丢弃整段路径。
+        let hit = test_bullet(
+            &mut app,
+            Vec3::new(-3.5, 1.2, 0.0),
+            Vec3::NEG_X,
+            BULLET_RANGE - 1.0,
+        );
+        advance_test_bullets(&mut app, 0.5);
+        assert!(app.world().get_entity(enemies[0]).is_err());
+        assert!(app.world().get_entity(hit).is_err());
+    }
+
+    /// 同帧两发弹跳过已排队销毁的敌人，第二发可继续命中后方敌人。
+    #[test]
+    fn simultaneous_bullets_skip_already_destroyed_targets() {
+        let (mut app, enemies) = hit_test_app(&[
+            (Vec3::new(-6.0, 0.7, 0.0), 0.0),
+            (Vec3::new(-12.0, 0.7, 0.0), 0.0),
+        ]);
+        let bullets: Vec<_> = (0..3)
+            .map(|_| test_bullet(&mut app, Vec3::new(0.0, 1.2, 0.0), Vec3::NEG_X, 0.0))
+            .collect();
+        advance_test_bullets(&mut app, 0.5);
+        assert!(enemies.iter().all(|&e| app.world().get_entity(e).is_err()));
+        assert_eq!(
+            bullets
+                .iter()
+                .filter(|&&e| app.world().get_entity(e).is_ok())
+                .count(),
+            1
+        );
+    }
+
     /// 用固定半秒步长验证飞行速度，以及 50 秒后对子弹及其子实体的清理。
     #[test]
     fn bullets_move_independently_and_despawn_with_their_children_at_range() {
         let mut app = App::new();
         let mut time = Time::<()>::default();
         time.advance_by(Duration::from_secs_f32(0.5));
-        app.insert_resource(time).add_systems(Update, move_bullets);
+        app.insert_resource(time)
+            .init_resource::<avian3d::collider_tree::ColliderTrees>()
+            .add_systems(Update, move_bullets);
         let bullet = app
             .world_mut()
             .spawn((
@@ -339,6 +490,7 @@ mod tests {
             FiringPlugin,
             crate::ground::GroundPlugin,
         ))
+        .init_resource::<avian3d::collider_tree::ColliderTrees>()
         .init_asset::<StandardMaterial>()
         .init_asset::<Mesh>()
         .register_type::<Visibility>()
@@ -364,6 +516,15 @@ mod tests {
             .world_mut()
             .spawn((Tank, WorldAssetRoot(tank_asset)))
             .id();
+        let enemy_asset: Handle<WorldAsset> =
+            app.world().resource::<AssetServer>().load("enemy_tank.vox");
+        let enemy = app
+            .world_mut()
+            .spawn((
+                WorldAssetRoot(enemy_asset.clone()),
+                Transform::from_xyz(10.0, 0.7, 0.0),
+            ))
+            .id();
         // 真实资源异步加载；这里使用现实时间限制等待，避免失败时测试无限循环。
         let ground_asset: Handle<WorldAsset> =
             app.world().resource::<AssetServer>().load("ground.vox");
@@ -380,6 +541,12 @@ mod tests {
             });
             if ready
                 && assets.is_loaded_with_dependencies(&world.resource::<Gun>().bullet_scene)
+                && assets.is_loaded_with_dependencies(&enemy_asset)
+                && world.get::<WorldInstance>(enemy).is_some_and(|instance| {
+                    world
+                        .resource::<WorldInstanceSpawner>()
+                        .instance_is_ready(**instance)
+                })
                 && assets.is_loaded_with_dependencies(&ground_asset)
                 && ground_instances.iter(world).any(|(root, instance)| {
                     root.0 == ground_asset
@@ -393,6 +560,18 @@ mod tests {
             assert!(Instant::now() < deadline, "坦克、子弹或地板资源未能就绪");
             std::thread::sleep(Duration::from_millis(1));
         }
+
+        let (_, enemy_minimum, enemy_maximum) = scene_bounds(app.world(), enemy);
+        assert!((enemy_maximum - enemy_minimum).abs_diff_eq(crate::enemy::ENEMY_SIZE, 1e-5));
+        assert!(enemy_minimum.y.abs() < 1e-5, "敌人履带应贴合 Y=0 地面");
+        let enemy_instance = **app.world().get::<WorldInstance>(enemy).unwrap();
+        app.world_mut().despawn(enemy);
+        app.update();
+        assert!(
+            !app.world()
+                .resource::<WorldInstanceSpawner>()
+                .instance_is_ready(enemy_instance)
+        );
 
         let (_, tank_minimum, tank_maximum) = scene_bounds(app.world(), tank);
         assert!(

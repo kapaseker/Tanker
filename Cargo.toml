@@ -36,6 +36,9 @@ bevy_panorbit_camera = "0.35.1"
 # 简化坦克刚体与平面碰撞；0.7 对应 Bevy 0.19，仅启用 3D 单精度碰撞后端。
 avian3d = { version = "0.7", default-features = false, features = ["3d", "f32", "parry-f32"] }
 
+# 开局随机摆放敌人；复用依赖树中已锁定的随机库。
+fastrand = "2"
+
 # Bevy 官方推荐的 dev 性能配置：自身轻度优化，依赖全量优化，保证运行流畅
 [profile.dev]
 opt-level = 1
