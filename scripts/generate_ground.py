@@ -1,21 +1,58 @@
-"""用标准库生成 158×158 格土质地块：python3 scripts/generate_ground.py。"""
+"""用标准库生成 632×632 格非周期土质场地：python3 scripts/generate_ground.py。"""
 import math
 from pathlib import Path
 import random
 import struct
 
-SIZE = 158
+# 单模型受 VOX 的 u8 坐标限制，全图先生成再切成 4×4 块。
+TILE_SIZE = 158
+TILES = 4
+SIZE = TILE_SIZE * TILES
 OUTPUT = Path(__file__).resolve().parents[1] / 'assets' / 'ground.vox'
-# 固定种子产生周期波的相位，让高度和色块可以复现。
-PHASES = [random.Random(20261016 + i).uniform(0, math.tau) for i in range(4)]
 
 
-def height(x, y):
-    """返回列高 2～6 格；对边使用同一高度，重复铺设时不出现高度裂缝。"""
-    a, b = math.tau * x / (SIZE - 1), math.tau * y / (SIZE - 1)
-    wave = (math.sin(2 * a + PHASES[0]) * math.cos(2 * b + PHASES[1])
-            + 0.4 * math.sin(3 * a + 2 * b + PHASES[2])) / 1.4
-    return 4 + round(2 * wave)
+def patch_cells(rng, diameter):
+    """随机旋转的椭圆斑块，12 个随机半径打散边界；尺寸单位为体素格。"""
+    cx, cy = rng.uniform(0, SIZE), rng.uniform(0, SIZE)
+    radius = diameter / 2
+    aspect, angle = rng.uniform(.55, 1), rng.uniform(0, math.tau)
+    cosine, sine = math.cos(angle), math.sin(angle)
+    outline = [rng.uniform(.65, 1) for _ in range(12)]
+    for y in range(max(0, math.floor(cy-radius)), min(SIZE, math.ceil(cy+radius))):
+        for x in range(max(0, math.floor(cx-radius)), min(SIZE, math.ceil(cx+radius))):
+            dx, dy = x + .5 - cx, y + .5 - cy
+            u, v = (dx*cosine + dy*sine)/radius, (-dx*sine + dy*cosine)/(radius*aspect)
+            sector = (math.atan2(v, u) % math.tau) / math.tau * len(outline)
+            index, fraction = int(sector), sector % 1
+            edge = outline[index] * (1-fraction) + outline[(index+1) % len(outline)] * fraction
+            if u*u + v*v <= edge*edge:
+                yield y * SIZE + x
+
+
+def generate_maps():
+    """固定种子生成全域列高和独立土色；一半为平地，浅坑与凸起面积均衡。"""
+    rng = random.Random(20261017)
+    heights = bytearray([4]) * (SIZE*SIZE)
+    counts = {3: 0, 5: 0}
+    target = len(heights) // 2
+    # 小、中、大斑块的数量比例；每格约 5 cm，直径范围对应 0.2～2 m。
+    while sum(counts.values()) < target:
+        low, high = rng.choices([(4, 10), (10, 20), (20, 40)], weights=[65, 30, 5])[0]
+        level = 3 if counts[3] < counts[5] else 5
+        for cell in patch_cells(rng, rng.uniform(low, high)):
+            if heights[cell] == 4:
+                heights[cell] = level
+                counts[level] += 1
+                if sum(counts.values()) >= target:
+                    break
+    # 颜色使用独立种子、位置和更宽的斑块，不以起伏轮廓勾边。
+    colors = bytearray([3]) * len(heights)
+    rng = random.Random(20261018)
+    for _ in range(1600):
+        color = rng.choice([2, 3, 4, 5])
+        for cell in patch_cells(rng, rng.uniform(10, 60)):
+            colors[cell] = color
+    return heights, colors
 
 
 def chunk(name, data=b'', children=b''):
@@ -34,25 +71,34 @@ def dictionary(values):
 
 
 def build_vox():
-    """生成带最小场景图及哑光土色调色板的完整 VOX 文件。"""
-    voxels = bytearray()
-    for x in range(SIZE):
-        for y in range(SIZE):
-            # 连续色斑避免逐格随机噪点；对边颜色也周期匹配。
-            a, b = math.tau * x / (SIZE - 1), math.tau * y / (SIZE - 1)
-            shade = round(2 + math.sin(3 * a + PHASES[3]) * math.cos(3 * b))
-            for z in range(height(x, y)):
-                voxels.extend((x, y, z, 1 + shade if z >= 2 else 1))
-    children = chunk('SIZE', struct.pack('<III', SIZE, SIZE, 6))
-    children += chunk('XYZI', struct.pack('<I', len(voxels) // 4) + voxels)
-    # 场景图是 bevy_vox_scene 加载所必需的；根 -> 组 -> 模型变换 -> 模型。
+    """将全图分为 16 个独立模型，打包为一个带定位场景图的 VOX 文件。"""
+    heights, colors = generate_maps()
+    children = b''
+    for ty in range(TILES):
+        for tx in range(TILES):
+            voxels = bytearray()
+            for y in range(TILE_SIZE):
+                for x in range(TILE_SIZE):
+                    cell = (ty*TILE_SIZE+y)*SIZE + tx*TILE_SIZE+x
+                    for z in range(heights[cell]):
+                        voxels.extend((x, y, z, colors[cell] if z >= 2 else 1))
+            # 保留声明高度 6 与现有竖直偏移，列高 3/4/5 对应 −5/0/+5 cm。
+            children += chunk('SIZE', struct.pack('<III', TILE_SIZE, TILE_SIZE, 6))
+            children += chunk('XYZI', struct.pack('<I', len(voxels)//4) + voxels)
     children += chunk('nTRN', struct.pack('<i', 0) + dictionary({})
                       + struct.pack('<iiii', 1, -1, -1, 1) + dictionary({}))
-    children += chunk('nGRP', struct.pack('<i', 1) + dictionary({}) + struct.pack('<ii', 1, 2))
-    children += chunk('nTRN', struct.pack('<i', 2) + dictionary({'_name': 'ground'})
-                      + struct.pack('<iiii', 3, -1, -1, 1) + dictionary({}))
-    children += chunk('nSHP', struct.pack('<i', 3) + dictionary({})
-                      + struct.pack('<ii', 1, 0) + dictionary({}))
+    children += chunk('nGRP', struct.pack('<i', 1) + dictionary({})
+                      + struct.pack('<i', TILES*TILES)
+                      + struct.pack('<16i', *range(2, 34, 2)))
+    for model in range(TILES*TILES):
+        tx, ty = model % TILES, model // TILES
+        node = 2 + model*2
+        # 加载器把 VOX 平移 (x,y,z) 转为 Bevy (-x,z,y)；整体仍连续且居中。
+        translation = f'{tx*TILE_SIZE-237} {ty*TILE_SIZE-237} 0'
+        children += chunk('nTRN', struct.pack('<i', node) + dictionary({'_name': f'ground_{model}'})
+                          + struct.pack('<iiii', node+1, -1, -1, 1) + dictionary({'_t': translation}))
+        children += chunk('nSHP', struct.pack('<i', node+1) + dictionary({})
+                          + struct.pack('<ii', 1, model) + dictionary({}))
     colors = [(87, 65, 43), (102, 79, 52), (111, 85, 57), (119, 93, 63), (126, 99, 68)]
     palette = b''.join(bytes((*rgb, 255)) for rgb in colors)
     palette += bytes((0, 0, 0, 255)) * (256 - len(colors))

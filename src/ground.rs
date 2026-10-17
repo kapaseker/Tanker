@@ -1,17 +1,15 @@
-//! 共享 VOX 地块铺设与独立的平面物理场地。
+//! 加载包含 16 个独立模型的 VOX 场地，物理表面仍为平面。
 
 use avian3d::prelude::*;
 use bevy::{asset::LoadState, prelude::*, world_serialization::WorldAsset};
 
 /// 正方形场地总面积，单位：平方米。
-const AREA: f32 = 1000.0;
-/// 每轴重复地块数；单块 158 格，避免 VOX 的 u8 坐标上限。
-const TILES: u32 = 4;
-/// 地块未缩放的边长，单位：米（158 格 × 0.05 米）。
-const TILE_SIZE: f32 = 7.9;
+const AREA: f32 = 4000.0;
+/// 全图未缩放边长，单位：米（632 格 × 0.1 米），模型定位由 VOX 场景图提供。
+const SOURCE_SIDE: f32 = 63.2;
 /// 不可见边界的厚度和高度，单位：米。
-const WALL_THICKNESS: f32 = 1.0;
-const WALL_HEIGHT: f32 = 4.0;
+const WALL_THICKNESS: f32 = 2.0;
+const WALL_HEIGHT: f32 = 8.0;
 
 /// 保持地板资产存活，并用于一次性汇报依赖加载结果。
 #[derive(Resource)]
@@ -27,27 +25,17 @@ impl Plugin for GroundPlugin {
     }
 }
 
-/// 返回第 x、z 块的世界变换；整体居中且水平面积精确匹配场地。
-fn tile_transform(x: u32, z: u32) -> Transform {
-    let spacing = AREA.sqrt() / TILES as f32;
-    let center = (TILES - 1) as f32 / 2.0;
-    // 模型高 6 格，中心为 0；再下移一格，使列顶高度落在 −0.1～+0.1 米。
-    Transform::from_xyz(
-        (x as f32 - center) * spacing,
-        -0.05,
-        (z as f32 - center) * spacing,
-    )
-    .with_scale(Vec3::new(spacing / TILE_SIZE, 1.0, spacing / TILE_SIZE))
+/// 整体居中并缩放至 4000 平方米，Y 不缩放以保留单格 10 cm 的起伏。
+fn ground_transform() -> Transform {
+    let scale = AREA.sqrt() / SOURCE_SIDE;
+    // 声明高度 6 格，以包围盒中心为原点；列高 3/4/5 对应 −10/0/+10 cm。
+    Transform::from_xyz(0.0, -0.1, 0.0).with_scale(Vec3::new(scale, 1.0, scale))
 }
 
-/// 生成一个平面碰撞体、四面不可见边界和 16 个共用资产的视觉地块。
+/// 一个根节点加载整张非周期场景，视觉分块不影响平面碰撞与边界。
 fn setup_ground(mut commands: Commands, assets: Res<AssetServer>) {
     let scene = assets.load("ground.vox");
-    for x in 0..TILES {
-        for z in 0..TILES {
-            commands.spawn((WorldAssetRoot(scene.clone()), tile_transform(x, z)));
-        }
-    }
+    commands.spawn((WorldAssetRoot(scene.clone()), ground_transform()));
     commands.insert_resource(GroundAsset(scene));
     spawn_arena(&mut commands);
 }
@@ -57,8 +45,8 @@ pub(super) fn spawn_arena(commands: &mut Commands) {
     let side = AREA.sqrt();
     commands.spawn((
         RigidBody::Static,
-        Collider::cuboid(side, 1.0, side),
-        Transform::from_xyz(0.0, -0.5, 0.0),
+        Collider::cuboid(side, 2.0, side),
+        Transform::from_xyz(0.0, -1.0, 0.0),
         Friction::ZERO,
     ));
     for sign in [-1.0, 1.0] {
@@ -94,7 +82,7 @@ fn report_ground(ground: Res<GroundAsset>, assets: Res<AssetServer>, mut reporte
             *reported = true;
         }
         _ if assets.is_loaded_with_dependencies(&ground.0) => {
-            info!("vox 场景加载完成：assets/ground.vox（1000 平方米，4×4 地块）");
+            info!("vox 场景加载完成：assets/ground.vox（4000 平方米，16 个独立模型）");
             *reported = true;
         }
         _ => {}
@@ -105,15 +93,18 @@ fn report_ground(ground: Res<GroundAsset>, assets: Res<AssetServer>, mut reporte
 mod tests {
     use super::*;
 
-    /// 检查整体面积、相邻块接边与中心对称，防止缩放或半格偏移留下裂缝。
+    /// 检查水平面积、中心位置及竖直格高，防止场景缩放改变起伏幅度。
     #[test]
-    fn tiles_cover_a_centered_thousand_square_meters() {
-        let first = tile_transform(0, 0);
-        let last = tile_transform(3, 3);
-        let width = TILE_SIZE * first.scale.x;
-        assert!(((width * 4.0).powi(2) - AREA).abs() < 0.001);
-        assert!((tile_transform(1, 0).translation.x - first.translation.x - width).abs() < 1e-5);
-        assert!((first.translation.x + last.translation.x).abs() < 1e-5);
-        assert!((first.translation.x - width / 2.0 + AREA.sqrt() / 2.0).abs() < 1e-5);
+    fn scene_covers_a_centered_four_thousand_square_meters() {
+        let transform = ground_transform();
+        assert!(((SOURCE_SIDE * transform.scale.x).powi(2) - 4000.0).abs() < 0.001);
+        assert_eq!(transform.scale.y, 1.0);
+        assert_eq!(transform.scale.x, transform.scale.z);
+        assert_eq!(transform.translation, Vec3::new(0.0, -0.1, 0.0));
+        for (height, expected) in [(3, -0.1), (4, 0.0), (5, 0.1)] {
+            assert!(
+                ((height as f32 - 3.0) * 0.1 + transform.translation.y - expected).abs() < 1e-6
+            );
+        }
     }
 }

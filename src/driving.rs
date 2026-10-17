@@ -1,31 +1,40 @@
-//! 方向键街机驾驶与轨道相机位置跟随；物理单位为米、秒。
+//! 方向键街机驾驶与车尾上方相机跟随；物理单位为米、秒。
 
 use crate::firing::Tank;
 use avian3d::prelude::*;
-use bevy::prelude::*;
-use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraSystemSet};
+use bevy::{prelude::*, transform::TransformSystems};
 
 /// 当前 tank.vox 的包围盒尺寸（X 长、Y 高、Z 宽），单位：米。
 // shortcut: 按现有模型标定；更换 tank.vox 时同步更新包围盒与炮口。
-pub(super) const TANK_SIZE: Vec3 = Vec3::new(1.6, 0.75, 1.2);
+pub(super) const TANK_SIZE: Vec3 = Vec3::new(3.2, 1.5, 2.4);
 /// 前进与后退速度，单位：米/秒。
-const FORWARD_SPEED: f32 = 3.0;
-const REVERSE_SPEED: f32 = 2.0;
+const FORWARD_SPEED: f32 = 6.0;
+const REVERSE_SPEED: f32 = 4.0;
 /// 左右转向速度，单位：弧度/秒（90°/秒）。
 const TURN_SPEED: f32 = std::f32::consts::FRAC_PI_2;
+
+/// 相机距车身中心的水平后退距离与世界竖直高度，单位：米。
+const CAMERA_DISTANCE: f32 = 10.0;
+const CAMERA_HEIGHT: f32 = 6.0;
+
+/// 标记固定在车尾上方的游戏相机，不接受鼠标控制。
+#[derive(Component)]
+pub(super) struct FollowCamera;
 
 /// 注册固定物理步驾驶及渲染帧相机跟随。
 pub(super) struct DrivingPlugin;
 
 impl Plugin for DrivingPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
-            FixedPostUpdate,
-            drive_tank
-                .after(PhysicsSystems::Prepare)
-                .before(PhysicsSystems::StepSimulation),
-        )
-        .add_systems(PostUpdate, follow_tank.before(PanOrbitCameraSystemSet));
+        // 长度翻倍、时间尺度不变，重力也翻倍以保持落地耗时。
+        app.insert_resource(Gravity(Gravity::default().0 * 2.0))
+            .add_systems(
+                FixedPostUpdate,
+                drive_tank
+                    .after(PhysicsSystems::Prepare)
+                    .before(PhysicsSystems::StepSimulation),
+            )
+            .add_systems(PostUpdate, follow_tank.before(TransformSystems::Propagate));
     }
 }
 
@@ -69,19 +78,79 @@ fn drive_tank(
     }
 }
 
-/// 坦克根节点没有父实体，直接读取本帧 Transform；相机方位和距离仍由鼠标控制。
-fn follow_tank(tanks: Query<&Transform, With<Tank>>, mut cameras: Query<&mut PanOrbitCamera>) {
+/// 模型局部 +X 是车尾；高度沿世界 +Y，视线始终指向车身中心。
+pub(super) fn camera_transform(tank: &Transform) -> Transform {
+    let position =
+        tank.translation + tank.rotation * Vec3::X * CAMERA_DISTANCE + Vec3::Y * CAMERA_HEIGHT;
+    Transform::from_translation(position).looking_at(tank.translation, Vec3::Y)
+}
+
+/// 坦克与相机均为根节点，在本帧变换传播前同步机位，避免画面滞后一帧。
+fn follow_tank(
+    tanks: Query<&Transform, With<Tank>>,
+    mut cameras: Query<&mut Transform, (With<FollowCamera>, Without<Tank>)>,
+) {
     let Ok(tank) = tanks.single() else {
         return;
     };
     for mut camera in &mut cameras {
-        camera.target_focus = tank.translation;
+        *camera = camera_transform(tank);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 相机当帧跟随平移和转向；倒车只改变位置，不把机位切到车头。
+    #[test]
+    fn camera_follows_position_heading_and_reverse_without_frame_delay() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, TransformPlugin))
+            .add_systems(
+                PostUpdate,
+                follow_tank.before(bevy::transform::TransformSystems::Propagate),
+            );
+        let tank = app.world_mut().spawn((Tank, Transform::default())).id();
+        let camera = app
+            .world_mut()
+            .spawn((FollowCamera, Transform::default()))
+            .id();
+        for (position, heading, expected_offset) in [
+            (Vec3::ZERO, Quat::IDENTITY, Vec3::new(10.0, 6.0, 0.0)),
+            (
+                Vec3::new(-6.0, 0.75, 4.0),
+                Quat::IDENTITY,
+                Vec3::new(10.0, 6.0, 0.0),
+            ),
+            (
+                Vec3::new(-6.0, 0.75, 4.0),
+                Quat::from_rotation_y(std::f32::consts::FRAC_PI_2),
+                Vec3::new(0.0, 6.0, -10.0),
+            ),
+            (
+                Vec3::new(-6.0, 0.75, 0.0),
+                Quat::from_rotation_y(std::f32::consts::FRAC_PI_2),
+                Vec3::new(0.0, 6.0, -10.0),
+            ),
+        ] {
+            *app.world_mut().get_mut::<Transform>(tank).unwrap() =
+                Transform::from_translation(position).with_rotation(heading);
+            app.update();
+            let view = app.world().get::<Transform>(camera).unwrap();
+            assert!(
+                view.translation
+                    .abs_diff_eq(position + expected_offset, 1e-5)
+            );
+            assert!(
+                view.forward()
+                    .as_vec3()
+                    .abs_diff_eq(-expected_offset.normalize(), 1e-5)
+            );
+            let global = app.world().get::<GlobalTransform>(camera).unwrap();
+            assert!(global.translation().abs_diff_eq(view.translation, 1e-5));
+        }
+    }
 
     /// 验证倒车速度、冲突按键抵消、松键即停及竖直速度保留。
     #[test]
@@ -91,7 +160,7 @@ mod tests {
         let mut linear = Vec3::new(1.0, -0.4, 1.0);
         let mut angular = Vec3::ONE;
         apply_input(&keys, Quat::IDENTITY, &mut linear, &mut angular);
-        assert!(linear.abs_diff_eq(Vec3::new(2.0, -0.4, 0.0), 1e-5));
+        assert!(linear.abs_diff_eq(Vec3::new(4.0, -0.4, 0.0), 1e-5));
         keys.press(KeyCode::ArrowUp);
         keys.press(KeyCode::ArrowLeft);
         keys.press(KeyCode::ArrowRight);
@@ -114,12 +183,12 @@ mod tests {
         let mut angular = Vec3::ZERO;
         let heading = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
         apply_input(&keys, heading, &mut linear, &mut angular);
-        assert!(linear.abs_diff_eq(Vec3::Z * 3.0, 1e-5));
+        assert!(linear.abs_diff_eq(Vec3::Z * 6.0, 1e-5));
         assert!(angular.abs_diff_eq(Vec3::Y * std::f32::consts::FRAC_PI_2, 1e-5));
         keys.release(KeyCode::ArrowUp);
         keys.press(KeyCode::ArrowDown);
         apply_input(&keys, heading, &mut linear, &mut angular);
-        assert!(linear.abs_diff_eq(Vec3::NEG_Z * 2.0, 1e-5));
+        assert!(linear.abs_diff_eq(Vec3::NEG_Z * 4.0, 1e-5));
         assert!(angular.y > 0.0);
         keys.release(KeyCode::ArrowLeft);
         keys.press(KeyCode::ArrowRight);
@@ -150,11 +219,15 @@ mod tests {
         app.cleanup();
         let tank = app
             .world_mut()
-            .spawn((Tank, tank_body(), Transform::from_xyz(0.0, 2.0, 0.0)))
+            .spawn((Tank, tank_body(), Transform::from_xyz(0.0, 4.0, 0.0)))
             .id();
         for _ in 0..192 {
             app.update();
         }
+        assert_eq!(
+            app.world().resource::<Gravity>().0,
+            Vec3::new(0.0, -19.62, 0.0)
+        );
         let position = app.world().get::<Transform>(tank).unwrap().translation;
         assert!(
             (position.y - TANK_SIZE.y / 2.0).abs() < 0.02,
@@ -166,7 +239,7 @@ mod tests {
         for _ in 0..64 {
             app.update();
         }
-        assert!((app.world().get::<Transform>(tank).unwrap().translation.x + 3.0).abs() < 0.05);
+        assert!((app.world().get::<Transform>(tank).unwrap().translation.x + 6.0).abs() < 0.05);
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .release(KeyCode::ArrowUp);
@@ -181,6 +254,18 @@ mod tests {
                 .translation
                 .abs_diff_eq(stopped, 0.01)
         );
+        // 倒车一秒应后退 4 米，再松键验证下一段转向不夹带直线速度。
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::ArrowDown);
+        for _ in 0..64 {
+            app.update();
+        }
+        let reversed = app.world().get::<Transform>(tank).unwrap().translation;
+        assert!((reversed.x - stopped.x - 4.0).abs() < 0.05);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .release(KeyCode::ArrowDown);
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::ArrowLeft);
@@ -202,8 +287,8 @@ mod tests {
         let forward = transform.rotation * Vec3::NEG_X;
         let side = transform.rotation * Vec3::Z;
         let extent_z = forward.z.abs() * TANK_SIZE.x / 2.0 + side.z.abs() * TANK_SIZE.z / 2.0;
-        assert!(transform.translation.z > 14.0);
-        assert!(transform.translation.z + extent_z <= 1000.0_f32.sqrt() / 2.0 + 0.03);
+        assert!(transform.translation.z > 28.0);
+        assert!(transform.translation.z + extent_z <= 4000.0_f32.sqrt() / 2.0 + 0.03);
         assert!((transform.rotation * Vec3::Y).abs_diff_eq(Vec3::Y, 1e-4));
     }
 }

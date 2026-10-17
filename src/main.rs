@@ -1,6 +1,6 @@
 //! Tanker —— 基于 Bevy 的 3D voxel 游戏工程。
 //!
-//! VOX 地板与坦克场景，方向键驾驶，空格开炮，轨道相机随坦克位置移动。
+//! VOX 地板与坦克场景，方向键驾驶，空格开炮，相机从车尾上方跟随坦克位置与朝向。
 //! `assets/pisa_diffuse.ktx2` 与 `pisa_specular.ktx2` 仍取自 bevy_vox_scene 官方仓库示例资源（环境贴图）。
 
 use avian3d::prelude::PhysicsPlugins;
@@ -12,12 +12,14 @@ use bevy::{
     prelude::*,
     world_serialization::WorldAsset,
 };
-use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_vox_scene::{VoxLoaderSettings, VoxScenePlugin};
 
 mod driving;
 mod firing;
 mod ground;
+
+/// MagicaVoxel 单格边长，单位：米；运行时和真实资源测试共用。
+const VOXEL_SIZE: f32 = 0.1;
 
 /// 当前加载的 MagicaVoxel 场景资源路径（相对 `assets/`）。
 const VOX_SCENE_PATH: &str = "tank.vox";
@@ -41,14 +43,13 @@ fn main() {
                 }),
                 ..default()
             }),
-            // voxel_size 统一缩放：MagicaVoxel 一格 = 0.05 世界单位
+            // 统一资源尺寸：1 世界单位 = 1 米。
             VoxScenePlugin {
                 global_settings: Some(VoxLoaderSettings {
-                    voxel_size: 0.05,
+                    voxel_size: VOXEL_SIZE,
                     ..default()
                 }),
             },
-            PanOrbitCameraPlugin,
             firing::FiringPlugin,
             PhysicsPlugins::default(),
             ground::GroundPlugin,
@@ -67,15 +68,10 @@ fn main() {
 /// 场景不放任何 `DirectionalLight`/点光/聚光灯，照明只靠 `GLOBAL_AMBIENT_BRIGHTNESS`
 /// 的全局环境光（`GlobalAmbientLight`）与相机上的 `EnvironmentMapLight`。
 fn setup_scene(mut commands: Commands, assets: Res<AssetServer>) {
+    let tank_transform = Transform::from_xyz(0.0, driving::TANK_SIZE.y / 2.0, 0.0);
     commands.spawn((
         Camera3d::default(),
-        PanOrbitCamera {
-            focus: Vec3::Y * driving::TANK_SIZE.y / 2.0,
-            // 自动跟随位置，不允许右键平移改变目标；旋转、缩放仍由鼠标控制。
-            pan_sensitivity: 0.0,
-            pan_smoothness: 0.0,
-            ..default()
-        },
+        driving::FollowCamera,
         // SSAO 要求关闭 MSAA，两者必须成对配置
         Msaa::Off,
         // 让场景中的玻璃体素能折射其他物体
@@ -83,8 +79,7 @@ fn setup_scene(mut commands: Commands, assets: Res<AssetServer>) {
             steps: 1,
             quality: ScreenSpaceTransmissionQuality::High,
         },
-        Transform::from_xyz(8.0, 4.0, 8.0)
-            .looking_at(Vec3::Y * driving::TANK_SIZE.y / 2.0, Vec3::Y),
+        driving::camera_transform(&tank_transform),
         Tonemapping::BlenderFilmic,
         Bloom {
             intensity: 0.3,
@@ -105,7 +100,7 @@ fn setup_scene(mut commands: Commands, assets: Res<AssetServer>) {
         firing::Tank,
         WorldAssetRoot(scene.clone()),
         driving::tank_body(),
-        Transform::from_xyz(0.0, driving::TANK_SIZE.y / 2.0, 0.0),
+        tank_transform,
     ));
     commands.insert_resource(VoxScene(scene));
 }

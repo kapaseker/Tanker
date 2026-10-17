@@ -10,13 +10,13 @@ use bevy::{
 /// 点按与长按共用的最小发射间隔，单位：秒。
 const FIRE_INTERVAL: f32 = 0.5;
 /// 子弹的匀速飞行速度，单位：世界单位/秒。
-const BULLET_SPEED: f32 = 20.0;
+const BULLET_SPEED: f32 = 40.0;
 /// 从出生点累计计算的最大飞行距离，单位：世界单位。
-const BULLET_RANGE: f32 = 1000.0;
+const BULLET_RANGE: f32 = 2000.0;
 /// 子弹出生中心在坦克根节点下的局部坐标；炮口前方为局部 −X。
 /// 炮口端面为 4×4 格；子弹中心向外偏移半个边长，避免与炮管重叠。
 // shortcut: 坐标按当前 tank.vox 标定，修改模型或独立转动炮塔时改用炮口节点。
-const MUZZLE_POSITION: Vec3 = Vec3::new(-0.9, 0.225, -0.05);
+const MUZZLE_POSITION: Vec3 = Vec3::new(-1.8, 0.45, -0.1);
 
 /// 标记坦克场景根节点，供发射系统定位炮口的世界变换。
 #[derive(Component)]
@@ -103,7 +103,7 @@ impl FireCadence {
 fn muzzle_pose(tank: &GlobalTransform) -> (Vec3, Vec3) {
     (
         tank.transform_point(MUZZLE_POSITION),
-        tank.affine().transform_vector3(Vec3::NEG_X).normalize(),
+        tank.affine().transform_vector3(Vec3::NEG_X).normalize(), 
     )
 }
 
@@ -181,6 +181,41 @@ mod tests {
     use bevy_vox_scene::{VoxLoaderSettings, VoxScenePlugin};
     use std::time::{Duration, Instant};
 
+    /// 汇总场景后代网格的世界包围盒，覆盖模型坐标与根节点变换。
+    fn scene_bounds(world: &World, root: Entity) -> (usize, Vec3, Vec3) {
+        let mut pending = vec![root];
+        let mut mesh_count = 0;
+        let mut minimum = Vec3::splat(f32::INFINITY);
+        let mut maximum = Vec3::splat(f32::NEG_INFINITY);
+        while let Some(entity) = pending.pop() {
+            if let Some(children) = world.get::<Children>(entity) {
+                pending.extend(children.iter());
+            }
+            if let Some(mesh) = world.get::<Mesh3d>(entity) {
+                mesh_count += 1;
+                let aabb = world
+                    .resource::<Assets<Mesh>>()
+                    .get(&mesh.0)
+                    .unwrap()
+                    .compute_aabb()
+                    .unwrap();
+                let transform = world.get::<GlobalTransform>(entity).unwrap();
+                for x in [-1.0, 1.0] {
+                    for y in [-1.0, 1.0] {
+                        for z in [-1.0, 1.0] {
+                            let corner = Vec3::from(aabb.center)
+                                + Vec3::from(aabb.half_extents) * Vec3::new(x, y, z);
+                            let point = transform.transform_point(corner);
+                            minimum = minimum.min(point);
+                            maximum = maximum.max(point);
+                        }
+                    }
+                }
+            }
+        }
+        (mesh_count, minimum, maximum)
+    }
+
     /// 验证立即首发及持续按住时每半秒发射一次。
     #[test]
     fn space_fires_immediately_then_every_half_second() {
@@ -236,7 +271,7 @@ mod tests {
                 .with_rotation(Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)),
         );
         let (position, direction) = muzzle_pose(&tank);
-        assert!(position.abs_diff_eq(Vec3::new(2.95, 2.225, 1.9), 1e-5));
+        assert!(position.abs_diff_eq(Vec3::new(2.9, 2.45, 2.8), 1e-5));
         assert!(direction.abs_diff_eq(Vec3::Z, 1e-5));
     }
 
@@ -254,7 +289,7 @@ mod tests {
                     direction: Vec3::NEG_X,
                     distance: 0.0,
                 },
-                Transform::from_xyz(-0.9, 0.225, -0.05),
+                Transform::from_xyz(-1.8, 0.45, -0.1),
             ))
             .id();
         let child = app.world_mut().spawn(ChildOf(bullet)).id();
@@ -264,10 +299,19 @@ mod tests {
                 .get::<Transform>(bullet)
                 .unwrap()
                 .translation
-                .abs_diff_eq(Vec3::new(-10.9, 0.225, -0.05), 1e-5)
+                .abs_diff_eq(Vec3::new(-21.8, 0.45, -0.1), 1e-5)
         );
-        assert_eq!(app.world().get::<Bullet>(bullet).unwrap().distance, 10.0);
-        for _ in 1..99 {
+        assert_eq!(app.world().get::<Bullet>(bullet).unwrap().distance, 20.0);
+        app.update();
+        assert_eq!(app.world().get::<Bullet>(bullet).unwrap().distance, 40.0);
+        assert!(
+            app.world()
+                .get::<Transform>(bullet)
+                .unwrap()
+                .translation
+                .abs_diff_eq(Vec3::new(-41.8, 0.45, -0.1), 1e-5)
+        );
+        for _ in 2..99 {
             app.update();
         }
         assert!(app.world().get_entity(bullet).is_ok());
@@ -288,7 +332,7 @@ mod tests {
             TransformPlugin,
             VoxScenePlugin {
                 global_settings: Some(VoxLoaderSettings {
-                    voxel_size: 0.05,
+                    voxel_size: crate::VOXEL_SIZE,
                     ..default()
                 }),
             },
@@ -323,6 +367,7 @@ mod tests {
         // 真实资源异步加载；这里使用现实时间限制等待，避免失败时测试无限循环。
         let ground_asset: Handle<WorldAsset> =
             app.world().resource::<AssetServer>().load("ground.vox");
+        let mut ground_instances = app.world_mut().query::<(&WorldAssetRoot, &WorldInstance)>();
         let deadline = Instant::now() + Duration::from_secs(20);
         loop {
             app.update();
@@ -336,6 +381,12 @@ mod tests {
             if ready
                 && assets.is_loaded_with_dependencies(&world.resource::<Gun>().bullet_scene)
                 && assets.is_loaded_with_dependencies(&ground_asset)
+                && ground_instances.iter(world).any(|(root, instance)| {
+                    root.0 == ground_asset
+                        && world
+                            .resource::<WorldInstanceSpawner>()
+                            .instance_is_ready(**instance)
+                })
             {
                 break;
             }
@@ -343,27 +394,33 @@ mod tests {
             std::thread::sleep(Duration::from_millis(1));
         }
 
-        // 真实加载地板，确认 16 个实例复用同一场景且模型包围盒符合米制比例。
-        let mut roots = app.world_mut().query::<&WorldAssetRoot>();
-        assert_eq!(
-            roots
-                .iter(app.world())
-                .filter(|root| root.0 == ground_asset)
-                .count(),
-            16
+        let (_, tank_minimum, tank_maximum) = scene_bounds(app.world(), tank);
+        assert!(
+            (tank_maximum - tank_minimum).abs_diff_eq(Vec3::new(3.2, 1.5, 2.4), 1e-5),
+            "坦克尺寸与碰撞体应一致：{tank_minimum:?}～{tank_maximum:?}"
         );
-        let mut meshes = app.world_mut().query::<&Mesh3d>();
-        assert!(meshes.iter(app.world()).any(|mesh| {
-            app.world()
-                .resource::<Assets<Mesh>>()
-                .get(&mesh.0)
-                .unwrap()
-                .compute_aabb()
-                .is_some_and(|aabb| {
-                    aabb.half_extents
-                        .abs_diff_eq(Vec3::new(3.95, 0.15, 3.95).into(), 1e-4)
-                })
-        }));
+        // 当前炮管端面在 X=-1.6，弹体半长为 0.2 米，出生时恰好位于炮口外侧。
+        assert!((MUZZLE_POSITION.x + 0.2 - tank_minimum.x).abs() < 1e-5);
+
+        // 检查一个场景根下的 16 个模型，以及实际世界包围盒；覆盖定位、缩放和竖直偏移。
+        let mut roots = app.world_mut().query::<(Entity, &WorldAssetRoot)>();
+        let ground_roots: Vec<_> = roots
+            .iter(app.world())
+            .filter(|(_, root)| root.0 == ground_asset)
+            .map(|(entity, _)| entity)
+            .collect();
+        assert_eq!(ground_roots.len(), 1);
+        let (mesh_count, minimum, maximum) = scene_bounds(app.world(), ground_roots[0]);
+        let half_side = 4000.0_f32.sqrt() / 2.0;
+        assert_eq!(mesh_count, 16);
+        assert!(
+            minimum.abs_diff_eq(Vec3::new(-half_side, -0.4, -half_side), 1e-4),
+            "地板下界：{minimum:?}"
+        );
+        assert!(
+            maximum.abs_diff_eq(Vec3::new(half_side, 0.1, half_side), 1e-4),
+            "地板上界：{maximum:?}"
+        );
 
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
@@ -393,6 +450,13 @@ mod tests {
                 .resource::<WorldInstanceSpawner>()
                 .instance_is_ready(instance)
         );
+        let (_, bullet_minimum, bullet_maximum) = scene_bounds(app.world(), bullet);
+        assert!((bullet_maximum - bullet_minimum).abs_diff_eq(Vec3::splat(0.4), 1e-5));
+        let bullet_center = (bullet_minimum + bullet_maximum) / 2.0;
+        assert!(bullet_center.abs_diff_eq(
+            app.world().get::<Transform>(bullet).unwrap().translation,
+            1e-5,
+        ));
         // 保留场景直接子实体的编号，用于确认销毁根节点时一并清理层级。
         let descendants: Vec<_> = app
             .world()
@@ -403,7 +467,7 @@ mod tests {
         let mut meshes = app
             .world_mut()
             .query::<(&Mesh3d, &MeshMaterial3d<StandardMaterial>)>();
-        // 按 0.1 的半尺寸定位子弹网格，区别于同场景中的坦克网格。
+        // 按 0.2 的半尺寸定位子弹网格，区别于同场景中的坦克网格。
         let (_, material) = meshes
             .iter(app.world())
             .find(|(mesh, _)| {
@@ -413,10 +477,10 @@ mod tests {
                     .unwrap()
                     .compute_aabb()
                     .is_some_and(|aabb| {
-                        aabb.half_extents.abs_diff_eq(Vec3::splat(0.1).into(), 1e-5)
+                        aabb.half_extents.abs_diff_eq(Vec3::splat(0.2).into(), 1e-5)
                     })
             })
-            .expect("应加载边长 0.2 的子弹网格");
+            .expect("应加载边长 0.4 的子弹网格");
         let material = app
             .world()
             .resource::<Assets<StandardMaterial>>()
