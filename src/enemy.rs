@@ -6,9 +6,9 @@ use bevy::{asset::LoadState, prelude::*, world_serialization::WorldAsset};
 /// 敌人模型的 X 长、Y 高、Z 宽，单位：米，与生成器的 34×26×14 格对应。
 pub(super) const ENEMY_SIZE: Vec3 = Vec3::new(3.4, 1.4, 2.6);
 /// 单轮敌人数；被击毁后不补充。
-const ENEMY_COUNT: usize = 5;
-/// 出生中心的 X/Z 上限；预留旋转后车体所需的地图边距，单位：米。
-const SPAWN_LIMIT: f32 = 29.0;
+const ENEMY_COUNT: usize = 10;
+/// 交战区半径，单位：米；出生中心在该半径内均匀采样，离 300 米场地边缘留有充足余量。
+const SPAWN_LIMIT: f32 = 120.0;
 /// 敌人与玩家出生点的最小水平中心距离，单位：米。
 const PLAYER_CLEARANCE: f32 = 10.0;
 /// 敌人之间的最小水平中心距离，单位：米。
@@ -196,8 +196,9 @@ mod tests {
                     for z in [-1.0, 1.0] {
                         let corner =
                             transform.transform_point(ENEMY_SIZE * Vec3::new(x, 0.0, z) / 2.0);
-                        assert!(corner.x.abs() < 4000.0_f32.sqrt() / 2.0);
-                        assert!(corner.z.abs() < 4000.0_f32.sqrt() / 2.0);
+                        let half_side = crate::ground::FIELD_SIDE / 2.0;
+                        assert!(corner.x.abs() < half_side);
+                        assert!(corner.z.abs() < half_side);
                     }
                 }
             }

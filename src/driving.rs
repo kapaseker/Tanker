@@ -285,18 +285,21 @@ mod tests {
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .release(KeyCode::ArrowLeft);
+        // 直行直到抵住 300 米处的墙：6 米/秒 × 53 秒 ≈ 318 米，足够贴墙并保持压力。
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::ArrowUp);
-        for _ in 0..640 {
+        for _ in 0..3400 {
             app.update();
         }
         let transform = app.world().get::<Transform>(tank).unwrap();
         let forward = transform.rotation * Vec3::NEG_X;
         let side = transform.rotation * Vec3::Z;
         let extent_z = forward.z.abs() * TANK_SIZE.x / 2.0 + side.z.abs() * TANK_SIZE.z / 2.0;
-        assert!(transform.translation.z > 28.0);
-        assert!(transform.translation.z + extent_z <= 4000.0_f32.sqrt() / 2.0 + 0.03);
+        let wall = crate::ground::FIELD_SIDE / 2.0;
+        let stop = transform.translation.z + extent_z;
+        assert!(transform.translation.z > wall - 2.0, "未到达墙：{transform:?}");
+        assert!(stop <= wall + 0.03, "穿墙：stop={stop} wall={wall}");
         assert!((transform.rotation * Vec3::Y).abs_diff_eq(Vec3::Y, 1e-4));
     }
 }

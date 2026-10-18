@@ -526,9 +526,12 @@ mod tests {
             ))
             .id();
         // 真实资源异步加载；这里使用现实时间限制等待，避免失败时测试无限循环。
-        let ground_asset: Handle<WorldAsset> =
-            app.world().resource::<AssetServer>().load("ground.vox");
-        let mut ground_instances = app.world_mut().query::<(&WorldAssetRoot, &WorldInstance)>();
+        let mut terrain_surface = app
+            .world_mut()
+            .query_filtered::<Entity, With<crate::ground::TerrainSurface>>();
+        let mut terrain_chunks = app
+            .world_mut()
+            .query_filtered::<Entity, With<crate::ground::TerrainChunk>>();
         let deadline = Instant::now() + Duration::from_secs(20);
         loop {
             app.update();
@@ -547,13 +550,7 @@ mod tests {
                         .resource::<WorldInstanceSpawner>()
                         .instance_is_ready(**instance)
                 })
-                && assets.is_loaded_with_dependencies(&ground_asset)
-                && ground_instances.iter(world).any(|(root, instance)| {
-                    root.0 == ground_asset
-                        && world
-                            .resource::<WorldInstanceSpawner>()
-                            .instance_is_ready(**instance)
-                })
+                && terrain_surface.iter(world).next().is_some()
             {
                 break;
             }
@@ -581,24 +578,30 @@ mod tests {
         // 当前炮管端面在 X=-1.6，弹体半长为 0.2 米，出生时恰好位于炮口外侧。
         assert!((MUZZLE_POSITION.x + 0.2 - tank_minimum.x).abs() < 1e-5);
 
-        // 检查一个场景根下的 16 个模型，以及实际世界包围盒；覆盖定位、缩放和竖直偏移。
-        let mut roots = app.world_mut().query::<(Entity, &WorldAssetRoot)>();
-        let ground_roots: Vec<_> = roots
-            .iter(app.world())
-            .filter(|(_, root)| root.0 == ground_asset)
-            .map(|(entity, _)| entity)
-            .collect();
-        assert_eq!(ground_roots.len(), 1);
-        let (mesh_count, minimum, maximum) = scene_bounds(app.world(), ground_roots[0]);
-        let half_side = 4000.0_f32.sqrt() / 2.0;
-        assert_eq!(mesh_count, 16);
+        // 地形已改为程序化编译：两张 1200×1200 字节图生成 10×10 块世界坐标网格与一个高度场碰撞体。
         assert!(
-            minimum.abs_diff_eq(Vec3::new(-half_side, -0.4, -half_side), 1e-4),
-            "地板下界：{minimum:?}"
+            terrain_surface.iter(app.world()).next().is_some(),
+            "高度场物理表面应已铺设"
+        );
+        let mut merged = (0usize, Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY));
+        for chunk in terrain_chunks.iter(app.world()) {
+            let (count, minimum, maximum) = scene_bounds(app.world(), chunk);
+            merged = (merged.0 + count, merged.1.min(minimum), merged.2.max(maximum));
+        }
+        let (mesh_count, minimum, maximum) = merged;
+        assert_eq!(mesh_count, 100, "地形应分成 10×10 块网格");
+        let half_side = crate::ground::FIELD_SIDE / 2.0;
+        assert!(
+            minimum.x <= -half_side && maximum.x >= half_side,
+            "地形应铺满 X 方向 {half_side} 米：{minimum:?}～{maximum:?}"
         );
         assert!(
-            maximum.abs_diff_eq(Vec3::new(half_side, 0.1, half_side), 1e-4),
-            "地板上界：{maximum:?}"
+            minimum.z <= -half_side && maximum.z >= half_side,
+            "地形应铺满 Z 方向 {half_side} 米：{minimum:?}～{maximum:?}"
+        );
+        assert!(
+            minimum.y >= -1.001 && maximum.y <= 1.001,
+            "地形起伏应控制在 ±1 米：{minimum:?}～{maximum:?}"
         );
 
         app.world_mut()

@@ -1,63 +1,240 @@
-//! 加载包含 16 个独立模型的 VOX 场地，物理表面仍为平面。
+//! 加载 600 米见方的地形高度图与土色图，编译成体素风格网格与高度场物理表面。
+//!
+//! 地形由 `scripts/generate_ground.py` 生成两张 1200×1200 的字节图：高度图与土色图。
+//! 本模块把高度图编译成 0.1 米台阶的方块网格（视觉）与高度场碰撞体（物理），
+//! 两者同源，因此坑洼与坡道既能看见也能开上去。
 
 use avian3d::prelude::*;
-use bevy::{asset::LoadState, prelude::*, world_serialization::WorldAsset};
+use bevy::{
+    asset::{AssetLoader, LoadContext, LoadState, RenderAssetUsages, io::Reader},
+    image::{ImageAddressMode, ImageSampler, ImageSamplerDescriptor},
+    mesh::{Indices, PrimitiveTopology},
+    prelude::*,
+    render::render_resource::{Extent3d, TextureDimension, TextureFormat},
+};
 
 /// 正方形场地总面积，单位：平方米。
-const AREA: f32 = 4000.0;
-/// 全图未缩放边长，单位：米（632 格 × 0.1 米），模型定位由 VOX 场景图提供。
-const SOURCE_SIDE: f32 = 63.2;
+const AREA: f32 = 360_000.0;
+/// 场地边长，单位：米（即 [`AREA`] 的平方根；不用 `sqrt` 是为了能写成常量）。
+pub(super) const FIELD_SIDE: f32 = 600.0;
+/// 地形图的作者化采样间距，单位：米；每个采样格渲染成一个方块。
+const AUTHOR_RES: f32 = 0.5;
+/// 地形图单边采样数（[`FIELD_SIDE`] ÷ [`AUTHOR_RES`]）。
+const MAP_SIDE: usize = 1200;
+/// 高度字节中的平地基准值，即 0 米。
+const FLAT: u8 = 10;
+/// 地形量化粒度，单位：米；也是台阶高度与贴图色块的对齐网格。
+const TERRAIN_STEP: f32 = 0.1;
+/// 地形起伏幅度上限，单位：米；对应高度字节区间 [FLAT − 10, FLAT + 10]。
+const TERRAIN_HALF_RANGE: f32 = 1.0;
+/// 地形网格分块边长，单位：米。
+const CHUNK_SIDE: f32 = 60.0;
+/// 每块单边采样数（[`CHUNK_SIDE`] ÷ [`AUTHOR_RES`]）。
+const CHUNK_CELLS: usize = 120;
+/// 场地单边的分块数（[`FIELD_SIDE`] ÷ [`CHUNK_SIDE`]）。
+const CHUNK_COUNT: usize = 10;
+/// 地面 5 色调色板（sRGB），与 `scripts/generate_ground.py` 的 `PALETTE` 必须一致。
+const GROUND_PALETTE: [[u8; 3]; 5] = [
+    [87, 65, 43],
+    [102, 79, 52],
+    [111, 85, 57],
+    [119, 93, 63],
+    [126, 99, 68],
+];
+/// 竖直面相对顶面的明度系数，按格子奇偶交替，避免大片台阶同色。
+const SIDE_SHADE: [f32; 2] = [0.72, 0.84];
 /// 不可见边界的厚度和高度，单位：米。
 const WALL_THICKNESS: f32 = 2.0;
 const WALL_HEIGHT: f32 = 8.0;
 
-/// 保持地板资产存活，并用于一次性汇报依赖加载结果。
-#[derive(Resource)]
-struct GroundAsset(Handle<WorldAsset>);
+/// 地形图的原始字节：高度图每格一个高度档位（[`FLAT`] 为 0 米，每档 0.1 米），
+/// 土色图每格一个 [`GROUND_PALETTE`] 下标；两张图共用本类型，由文件名区分。
+#[derive(Asset, TypePath, Debug)]
+struct GroundMap(Vec<u8>);
 
-/// 注册地板铺设、物理边界及资源加载汇报。
+/// 读取地形图的 `.bin` 字节流，并校验长度与 [`MAP_SIDE`] 对齐。
+#[derive(Default, TypePath)]
+struct GroundMapLoader;
+
+impl AssetLoader for GroundMapLoader {
+    type Asset = GroundMap;
+    type Settings = ();
+    type Error = std::io::Error;
+
+    async fn load(
+        &self,
+        reader: &mut dyn Reader,
+        _settings: &Self::Settings,
+        _load_context: &mut LoadContext<'_>,
+    ) -> Result<Self::Asset, Self::Error> {
+        let mut bytes = Vec::with_capacity(MAP_SIDE * MAP_SIDE);
+        reader.read_to_end(&mut bytes).await?;
+        if bytes.len() != MAP_SIDE * MAP_SIDE {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "地形图应为 {} 字节，实际 {} 字节；请先运行 scripts/generate_ground.py",
+                    MAP_SIDE * MAP_SIDE,
+                    bytes.len()
+                ),
+            ));
+        }
+        Ok(GroundMap(bytes))
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &["bin"]
+    }
+}
+
+/// 标记程序化地形的一块视觉网格，供测试与后续系统识别。
+#[derive(Component)]
+pub(super) struct TerrainChunk;
+
+/// 标记承载地形高度场的静态物理表面。
+#[derive(Component)]
+pub(super) struct TerrainSurface;
+
+/// 两张地形图句柄：驱动汇报与一次性地形编译。
+#[derive(Resource)]
+struct GroundAssets {
+    heights: Handle<GroundMap>,
+    colors: Handle<GroundMap>,
+}
+
+/// 注册地形图资产、编译地形网格并铺设物理表面。
 pub(super) struct GroundPlugin;
 
 impl Plugin for GroundPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_ground)
-            .add_systems(Update, report_ground);
+        app.init_asset::<GroundMap>()
+            .init_asset_loader::<GroundMapLoader>()
+            .add_systems(Startup, load_ground)
+            .add_systems(Update, (spawn_terrain, report_ground));
     }
 }
 
-/// 整体居中并缩放至 4000 平方米，Y 不缩放以保留单格 10 cm 的起伏。
-fn ground_transform() -> Transform {
-    let scale = AREA.sqrt() / SOURCE_SIDE;
-    // 声明高度 6 格，以包围盒中心为原点；列高 3/4/5 对应 −10/0/+10 cm。
-    Transform::from_xyz(0.0, -0.1, 0.0).with_scale(Vec3::new(scale, 1.0, scale))
+/// 启动时只登记两张地形图，实际铺设等资源就绪后由 [`spawn_terrain`] 完成。
+fn load_ground(mut commands: Commands, assets: Res<AssetServer>) {
+    commands.insert_resource(GroundAssets {
+        heights: assets.load("ground_height.bin"),
+        colors: assets.load("ground_albedo.bin"),
+    });
 }
 
-/// 一个根节点加载整张非周期场景，视觉分块不影响平面碰撞与边界。
-fn setup_ground(mut commands: Commands, assets: Res<AssetServer>) {
-    let scene = assets.load("ground.vox");
-    commands.spawn((WorldAssetRoot(scene.clone()), ground_transform()));
-    commands.insert_resource(GroundAsset(scene));
-    spawn_arena(&mut commands);
-}
+/// 地形图就绪后编译与铺设地形：按 60 米分块生成 100 块视觉网格，
+/// 并在同一实体上挂高度场碰撞体。
+fn spawn_terrain(
+    mut commands: Commands,
+    ground: Res<GroundAssets>,
+    mut built: Local<bool>,
+    maps: Res<Assets<GroundMap>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    if *built {
+        return;
+    }
+    let (Some(heights), Some(colors)) = (maps.get(&ground.heights), maps.get(&ground.colors)) else {
+        return;
+    };
 
-/// 物理表面为 Y=0；墙的内侧与场地边缘对齐，墙角相交以封住四角。
-pub(super) fn spawn_arena(commands: &mut Commands) {
-    let side = AREA.sqrt();
+    let material = materials.add(StandardMaterial {
+        base_color_texture: Some(images.add(terrain_texture(&colors.0))),
+        // 与 VOX 场景地板一致的哑光土质：粗糙度 1、非金属。
+        perceptual_roughness: 1.0,
+        metallic: 0.0,
+        // 台阶竖直面可能背向相机掠射观察，关闭背面剔除避免整片剖面被裁掉。
+        cull_mode: None,
+        ..default()
+    });
+    // 高度字节转成以 0 米为基准的量化档位，供网格与高度场共用。
+    let levels: Vec<i32> = heights
+        .0
+        .iter()
+        .map(|value| *value as i32 - FLAT as i32)
+        .collect();
+    for row in 0..CHUNK_COUNT {
+        for col in 0..CHUNK_COUNT {
+            let chunk = build_chunk(&ChunkSource {
+                levels: &levels,
+                colors: &colors.0,
+                side: MAP_SIDE,
+                start: (row * CHUNK_CELLS, col * CHUNK_CELLS),
+                cells: CHUNK_CELLS,
+                origin: (
+                    row as f32 * CHUNK_SIDE - FIELD_SIDE / 2.0,
+                    col as f32 * CHUNK_SIDE - FIELD_SIDE / 2.0,
+                ),
+            });
+            commands.spawn((
+                TerrainChunk,
+                Mesh3d(meshes.add(chunk)),
+                MeshMaterial3d(material.clone()),
+            ));
+        }
+    }
+    // 碰撞体与视觉网格同源：行沿 X、列沿 Z，高度已是米制，故 Y 轴缩放为 1。
     commands.spawn((
+        TerrainSurface,
         RigidBody::Static,
-        Collider::cuboid(side, 2.0, side),
-        Transform::from_xyz(0.0, -1.0, 0.0),
+        Collider::heightfield(heights_as_meters(&heights.0), Vec3::new(FIELD_SIDE, 1.0, FIELD_SIDE)),
         Friction::ZERO,
     ));
+    spawn_walls(&mut commands);
+    *built = true;
+}
+
+/// 高度字节转成米制矩阵；外层行沿 X、内层列沿 Z，与高度场形状约定一致。
+fn heights_as_meters(heights: &[u8]) -> Vec<Vec<f32>> {
+    (0..MAP_SIDE)
+        .map(|row| {
+            (0..MAP_SIDE)
+                .map(|col| (heights[col * MAP_SIDE + row] as f32 - FLAT as f32) * TERRAIN_STEP)
+                .collect()
+        })
+        .collect()
+}
+
+/// 由土色图构造 [`MAP_SIDE`]² 的 sRGB 贴图；最近邻采样让色块边界与 0.1 米网格对齐。
+fn terrain_texture(colors: &[u8]) -> Image {
+    let mut data = Vec::with_capacity(colors.len() * 4);
+    for index in colors {
+        let [red, green, blue] = GROUND_PALETTE[*index as usize % GROUND_PALETTE.len()];
+        data.extend([red, green, blue, u8::MAX]);
+    }
+    let mut image = Image::new(
+        Extent3d {
+            width: MAP_SIDE as u32,
+            height: MAP_SIDE as u32,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    );
+    image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+        // 台阶竖直面的 UV 会超出 [0, 1]，用 repeat 保证仍是连续土色。
+        address_mode_u: ImageAddressMode::Repeat,
+        address_mode_v: ImageAddressMode::Repeat,
+        ..ImageSamplerDescriptor::nearest()
+    });
+    image
+}
+
+/// 物理边界：墙的内侧与场地边缘对齐，墙角相交以封住四角。
+pub(super) fn spawn_walls(commands: &mut Commands) {
     for sign in [-1.0, 1.0] {
-        let edge = sign * (side + WALL_THICKNESS) / 2.0;
+        let edge = sign * (FIELD_SIDE + WALL_THICKNESS) / 2.0;
         for (size, position) in [
             (
-                Vec3::new(WALL_THICKNESS, WALL_HEIGHT, side + 2.0 * WALL_THICKNESS),
+                Vec3::new(WALL_THICKNESS, WALL_HEIGHT, FIELD_SIDE + 2.0 * WALL_THICKNESS),
                 Vec3::new(edge, WALL_HEIGHT / 2.0, 0.0),
             ),
             (
-                Vec3::new(side + 2.0 * WALL_THICKNESS, WALL_HEIGHT, WALL_THICKNESS),
+                Vec3::new(FIELD_SIDE + 2.0 * WALL_THICKNESS, WALL_HEIGHT, WALL_THICKNESS),
                 Vec3::new(0.0, WALL_HEIGHT / 2.0, edge),
             ),
         ] {
@@ -71,40 +248,364 @@ pub(super) fn spawn_arena(commands: &mut Commands) {
     }
 }
 
-/// 加载失败与含依赖加载完成各汇报一次，避免只检查主资产掩盖材质错误。
-fn report_ground(ground: Res<GroundAsset>, assets: Res<AssetServer>, mut reported: Local<bool>) {
+/// 平坦场地 + 墙，仅供物理测试使用，以便驾驶与敌人测试不受地形起伏影响。
+#[cfg(test)]
+pub(super) fn spawn_arena(commands: &mut Commands) {
+    // `Collider::cuboid` 接收全长而非半长，这里给场地整边长。
+    commands.spawn((
+        RigidBody::Static,
+        Collider::cuboid(FIELD_SIDE, 2.0, FIELD_SIDE),
+        Transform::from_xyz(0.0, -1.0, 0.0),
+        Friction::ZERO,
+    ));
+    spawn_walls(commands);
+}
+
+/// 加载失败与完成各汇报一次，避免只检查主资产掩盖另一张图的问题。
+fn report_ground(
+    ground: Res<GroundAssets>,
+    assets: Res<AssetServer>,
+    mut reported: Local<bool>,
+) {
     if *reported {
         return;
     }
-    match assets.get_load_state(&ground.0) {
-        Some(LoadState::Failed(error)) => {
-            error!("地板资源加载失败：{error}");
-            *reported = true;
+    for (name, handle) in [
+        ("高度图", &ground.heights),
+        ("土色图", &ground.colors),
+    ] {
+        match assets.get_load_state(handle) {
+            Some(LoadState::Failed(error)) => {
+                error!("地形{name}加载失败：{error}");
+                *reported = true;
+                return;
+            }
+            _ if assets.is_loaded_with_dependencies(handle) => {}
+            _ => return,
         }
-        _ if assets.is_loaded_with_dependencies(&ground.0) => {
-            info!("vox 场景加载完成：assets/ground.vox（4000 平方米，16 个独立模型）");
-            *reported = true;
-        }
-        _ => {}
     }
+    info!(
+        "地形地图加载完成：{} 米见方 / {:.0} 平方米（高度图 {MAP_SIDE}×{MAP_SIDE} @{AUTHOR_RES} 米，\
+         渲染台阶 {TERRAIN_STEP} 米，起伏 ±{TERRAIN_HALF_RANGE} 米，{CHUNK_COUNT}×{CHUNK_COUNT} 块）",
+        FIELD_SIDE, AREA
+    );
+    *reported = true;
+}
+
+/// 一块地形网格的编译输入。
+struct ChunkSource<'a> {
+    /// 整图的量化档位（高度字节 − [`FLAT`]），单位 0.1 米，0 为平地。
+    levels: &'a [i32],
+    /// 整图的调色板下标，与 `levels` 同尺寸。
+    colors: &'a [u8],
+    /// 整图单边采样数。
+    side: usize,
+    /// 本块在整图中的采样起点（行 i0、列 j0）。
+    start: (usize, usize),
+    /// 本块单边采样数。
+    cells: usize,
+    /// 本块第 0 行 0 列格子的西/北世界边缘 (x, z)。
+    origin: (f32, f32),
+}
+
+/// 地形网格顶点缓冲：位置、法线、UV、顶点色与索引。
+#[derive(Default)]
+struct TerrainBuffers {
+    positions: Vec<[f32; 3]>,
+    normals: Vec<[f32; 3]>,
+    uvs: Vec<[f32; 2]>,
+    colors: Vec<[f32; 4]>,
+    indices: Vec<u32>,
+}
+
+impl TerrainBuffers {
+    /// 追加一个四边形；顶点顺序按逆时针给出，法线由调用方显式指定。
+    fn push_quad(
+        &mut self,
+        corners: [[f32; 3]; 4],
+        normal: Vec3,
+        color: LinearRgba,
+        uvs: [[f32; 2]; 4],
+    ) {
+        let base = self.positions.len() as u32;
+        for (index, corner) in corners.iter().enumerate() {
+            self.positions.push(*corner);
+            self.normals.push(normal.to_array());
+            self.uvs.push(uvs[index]);
+            self.colors
+                .push([color.red, color.green, color.blue, color.alpha]);
+        }
+        self.indices
+            .extend([base, base + 1, base + 2, base, base + 2, base + 3]);
+    }
+
+    /// 转成渲染用网格；顶点位置已经是世界坐标，实体无需平移。
+    fn build(self) -> Mesh {
+        Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+            .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, self.positions)
+            .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, self.normals)
+            .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, self.uvs)
+            .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, self.colors)
+            .with_inserted_indices(Indices::U32(self.indices))
+    }
+}
+
+/// 编译一块地形：顶面按同档位同色号贪心合并成矩形，边界处按 0.1 米生成台阶竖直面。
+fn build_chunk(source: &ChunkSource) -> Mesh {
+    let ChunkSource {
+        levels,
+        colors: color_map,
+        side,
+        start,
+        cells,
+        origin,
+    } = *source;
+    let (row0, col0) = start;
+    let mut buffers = TerrainBuffers::default();
+    // 整图采样索引 → 世界坐标；UV 也用世界坐标，跨块拼接处贴图不跳变。
+    let world_x = |i: i64| origin.0 + (i - row0 as i64) as f32 * AUTHOR_RES;
+    let world_z = |j: i64| origin.1 + (j - col0 as i64) as f32 * AUTHOR_RES;
+    // 场地外的采样按平地处理，让外缘也生成竖直面而不会出现悬空缺口。
+    let level_at = |i: i64, j: i64| {
+        if i < 0 || j < 0 || i >= side as i64 || j >= side as i64 {
+            0
+        } else {
+            levels[j as usize * side + i as usize]
+        }
+    };
+    let color_at = |i: i64, j: i64| color_map[j as usize * side + i as usize];
+
+    // 顶面：沿 X 扩到同档位同色号的尽头，再沿 Z 逐行验证整段一致后继续扩，
+    // 因此一片平地只由少数几个大四边形构成，面数与片区周长同量级。
+    let mut merged = vec![false; cells * cells];
+    for dj in 0..cells {
+        for di in 0..cells {
+            if merged[dj * cells + di] {
+                continue;
+            }
+            let i = row0 as i64 + di as i64;
+            let j = col0 as i64 + dj as i64;
+            let level = level_at(i, j);
+            let color = color_at(i, j);
+            let mut width = 1;
+            while di + width < cells {
+                let i_next = i + width as i64;
+                if merged[dj * cells + di + width]
+                    || level_at(i_next, j) != level
+                    || color_at(i_next, j) != color
+                {
+                    break;
+                }
+                width += 1;
+            }
+            let mut height = 1;
+            'expand_z: while dj + height < cells {
+                for step in 0..width {
+                    let i_probe = i + step as i64;
+                    let j_probe = j + height as i64;
+                    if merged[(dj + height) * cells + di + step]
+                        || level_at(i_probe, j_probe) != level
+                        || color_at(i_probe, j_probe) != color
+                    {
+                        break 'expand_z;
+                    }
+                }
+                height += 1;
+            }
+            for row in 0..height {
+                for step in 0..width {
+                    merged[(dj + row) * cells + di + step] = true;
+                }
+            }
+            let x0 = world_x(i);
+            let x1 = world_x(i + width as i64);
+            let z0 = world_z(j);
+            let z1 = world_z(j + height as i64);
+            let y = level as f32 * TERRAIN_STEP;
+            let (u0, u1) = (x0 / AUTHOR_RES, x1 / AUTHOR_RES);
+            let (v0, v1) = (z0 / AUTHOR_RES, z1 / AUTHOR_RES);
+            buffers.push_quad(
+                [[x0, y, z0], [x0, y, z1], [x1, y, z1], [x1, y, z0]],
+                Vec3::Y,
+                palette_color(color),
+                [[u0, v0], [u0, v1], [u1, v1], [u1, v0]],
+            );
+        }
+    }
+
+    // 台阶竖直面：+X 与 +Z 两条边界由本格生成，使每条边界恰好只生成一次；
+    // 首行与首列额外补 −X / −Z 剖面，让场地外缘也有竖直面。
+    for dj in 0..cells {
+        for di in 0..cells {
+            let i = row0 as i64 + di as i64;
+            let j = col0 as i64 + dj as i64;
+            let level = level_at(i, j);
+            let color = palette_color(color_at(i, j));
+            let (z0, z1) = (world_z(j), world_z(j + 1));
+            let (x0, x1) = (world_x(i), world_x(i + 1));
+            // 场地外缘的相邻格由 level_at 视为平地，因此不需要额外判断边界。
+            push_step(&mut buffers, true, world_x(i + 1), (z0, z1), level, level_at(i + 1, j), color);
+            push_step(&mut buffers, false, world_z(j + 1), (x0, x1), level, level_at(i, j + 1), color);
+            if i == 0 {
+                push_step(&mut buffers, true, world_x(0), (z0, z1), level, level_at(-1, j), color);
+            }
+            if j == 0 {
+                push_step(&mut buffers, false, world_z(0), (x0, x1), level, level_at(i, -1), color);
+            }
+        }
+    }
+    buffers.build()
+}
+
+/// 在一条单元边界上追加竖直台阶面：从较低一侧到较高一侧按 0.1 米逐级生成，
+/// 使侧壁呈现体素台阶而不是斜插面。
+///
+/// `perpendicular_x` 为真表示边界垂直于 X 轴（`position` 是 X 坐标、`span` 是 Z 范围）。
+fn push_step(
+    buffers: &mut TerrainBuffers,
+    perpendicular_x: bool,
+    position: f32,
+    span: (f32, f32),
+    near: i32,
+    far: i32,
+    color: LinearRgba,
+) {
+    let (low, high) = (near.min(far), near.max(far));
+    if low == high {
+        return;
+    }
+    // 法线朝向实体一侧，即较高的一侧。
+    let normal = match (perpendicular_x, near > far) {
+        (true, true) => Vec3::X,
+        (true, false) => Vec3::NEG_X,
+        (false, true) => Vec3::Z,
+        (false, false) => Vec3::NEG_Z,
+    };
+    let side_color = shade(color, SIDE_SHADE[(near + far).unsigned_abs() as usize % 2]);
+    let (start, end) = (span.0 / AUTHOR_RES, span.1 / AUTHOR_RES);
+    for step in low..high {
+        let y0 = step as f32 * TERRAIN_STEP;
+        let y1 = (step + 1) as f32 * TERRAIN_STEP;
+        let (v0, v1) = (y0 / AUTHOR_RES, y1 / AUTHOR_RES);
+        let corners = if perpendicular_x {
+            [
+                [position, y0, span.0],
+                [position, y1, span.0],
+                [position, y1, span.1],
+                [position, y0, span.1],
+            ]
+        } else {
+            [
+                [span.0, y0, position],
+                [span.0, y1, position],
+                [span.1, y1, position],
+                [span.1, y0, position],
+            ]
+        };
+        buffers.push_quad(
+            corners,
+            normal,
+            side_color,
+            [[start, v0], [start, v1], [end, v1], [end, v0]],
+        );
+    }
+}
+
+/// 调色板下标 → 线性 RGBA。
+fn palette_color(index: u8) -> LinearRgba {
+    let [red, green, blue] = GROUND_PALETTE[index as usize % GROUND_PALETTE.len()];
+    Srgba::rgb_u8(red, green, blue).into()
+}
+
+/// 按系数压暗颜色，给竖直面制造体素侧面的明暗差。
+fn shade(color: LinearRgba, factor: f32) -> LinearRgba {
+    LinearRgba::rgb(color.red * factor, color.green * factor, color.blue * factor)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use avian3d::math::Vector;
 
-    /// 检查水平面积、中心位置及竖直格高，防止场景缩放改变起伏幅度。
+    /// 小尺寸合成地图的块编译，用于验证顶面合并与台阶几何。
+    fn synthetic(chunk: (usize, usize)) -> Mesh {
+        // 4×4 采样：一列抬起 3 档（0.3 米），另一格下沉 2 档，其余平地。
+        let mut levels = vec![0i32; 16];
+        levels[1 * 4 + 1] = 3;
+        levels[2 * 4 + 1] = 3;
+        levels[3 * 4 + 2] = -2;
+        build_chunk(&ChunkSource {
+            levels: &levels,
+            colors: &[2u8; 16],
+            side: 4,
+            start: chunk,
+            cells: 4,
+            origin: (0.0, 0.0),
+        })
+    }
+
+    /// 场地常量必须互相对齐，防止面积、边长、采样数与分块数脱节。
     #[test]
-    fn scene_covers_a_centered_four_thousand_square_meters() {
-        let transform = ground_transform();
-        assert!(((SOURCE_SIDE * transform.scale.x).powi(2) - 4000.0).abs() < 0.001);
-        assert_eq!(transform.scale.y, 1.0);
-        assert_eq!(transform.scale.x, transform.scale.z);
-        assert_eq!(transform.translation, Vec3::new(0.0, -0.1, 0.0));
-        for (height, expected) in [(3, -0.1), (4, 0.0), (5, 0.1)] {
-            assert!(
-                ((height as f32 - 3.0) * 0.1 + transform.translation.y - expected).abs() < 1e-6
-            );
-        }
+    fn field_constants_stay_consistent() {
+        assert!((FIELD_SIDE * FIELD_SIDE - AREA).abs() < 0.001);
+        assert!((MAP_SIDE as f32 * AUTHOR_RES - FIELD_SIDE).abs() < 0.001);
+        assert_eq!(CHUNK_CELLS * CHUNK_COUNT, MAP_SIDE);
+        assert!((CHUNK_SIDE * CHUNK_COUNT as f32 - FIELD_SIDE).abs() < 0.001);
+        assert_eq!(TERRAIN_HALF_RANGE / TERRAIN_STEP, FLAT as f32);
+        // 首块与末块的世界原点把场地正好铺满 [−300, 300]。
+        assert_eq!(0.0 * CHUNK_SIDE - FIELD_SIDE / 2.0, -300.0);
+        assert_eq!(9.0 * CHUNK_SIDE - FIELD_SIDE / 2.0 + CHUNK_SIDE, 300.0);
+    }
+
+    /// 网格必须覆盖整块采样范围，且台阶面只出现在相邻档位之间。
+    #[test]
+    fn chunk_mesh_covers_the_area_and_builds_steps() {
+        let mesh = synthetic((0, 0));
+        let Some(bevy::mesh::VertexAttributeValues::Float32x3(positions)) =
+            mesh.attribute(Mesh::ATTRIBUTE_POSITION)
+        else {
+            panic!("地形网格必须有位置属性");
+        };
+        assert_eq!(positions.len() % 4, 0, "顶点数必须是四边形的整数倍");
+        // 4 格 × 0.5 米 = 2 米见方；顶面 0.3 米、下沉面 −0.2 米都在范围内。
+        let x_range = positions.iter().map(|p| p[0]);
+        let bounds = (
+            x_range.clone().fold(f32::MAX, f32::min),
+            x_range.fold(f32::MIN, f32::max),
+        );
+        assert_eq!(bounds, (0.0, 2.0));
+        let y_min = positions.iter().fold(f32::MAX, |acc, p| acc.min(p[1]));
+        let y_max = positions.iter().fold(f32::MIN, |acc, p| acc.max(p[1]));
+        assert!((y_min - -0.2).abs() < 1e-6, "下沉格底面应为 −0.2 米");
+        assert!((y_max - 0.3).abs() < 1e-6, "抬起格顶面应为 0.3 米");
+        // 3 档高差共 3 个台阶面，加 2 档下沉的 2 个台阶面，竖直面方向均只有 ±X / ±Z。
+        let normals = mesh
+            .attribute(Mesh::ATTRIBUTE_NORMAL)
+            .expect("地形网格必须有法线");
+        assert!(matches!(normals, bevy::mesh::VertexAttributeValues::Float32x3(_)));
+        assert!(mesh.attribute(Mesh::ATTRIBUTE_UV_0).is_some());
+        assert!(mesh.attribute(Mesh::ATTRIBUTE_COLOR).is_some());
+    }
+
+    /// 高度场矩阵的行列约定与高度图一致：行沿 X、列沿 Z，值以米计。
+    #[test]
+    fn heightfield_rows_follow_x_and_columns_follow_z() {
+        let mut bytes = vec![FLAT; MAP_SIDE * MAP_SIDE];
+        // 行 3、列 7 → 高度 +1 米；行 7、列 3 → 高度 −0.5 米。
+        bytes[7 * MAP_SIDE + 3] = FLAT + 10;
+        bytes[3 * MAP_SIDE + 7] = FLAT - 5;
+        let meters = heights_as_meters(&bytes);
+        assert_eq!(meters.len(), MAP_SIDE);
+        assert_eq!(meters[0].len(), MAP_SIDE);
+        assert_eq!(meters[3][7], TERRAIN_HALF_RANGE);
+        assert_eq!(meters[7][3], -0.5);
+        assert_eq!(meters[0][0], 0.0);
+        // 高度场与场地边缘对齐：X/Z 各 600 米，高度范围由高度图给定。
+        let collider = Collider::heightfield(meters, Vec3::new(FIELD_SIDE, 1.0, FIELD_SIDE));
+        let aabb = collider.aabb(Vector::ZERO, Rotation::IDENTITY);
+        assert!((aabb.min.x + FIELD_SIDE / 2.0).abs() < 0.001);
+        assert!((aabb.max.x - FIELD_SIDE / 2.0).abs() < 0.001);
+        assert!((aabb.min.y - -0.5).abs() < 0.001);
+        assert!((aabb.max.y - TERRAIN_HALF_RANGE).abs() < 0.001);
     }
 }
