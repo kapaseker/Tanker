@@ -26,6 +26,13 @@ const SPAWN_DROP_Y: f32 = 3.0;
 #[derive(Component)]
 pub(super) struct EnemyTank;
 
+/// 敌人被击毁的消息；位置为被毁车体中心的世界坐标，供表现层（爆炸）消费。
+/// 消息类型放在敌人域：射击系统是生产方，爆炸表现是消费方，后者无需感知射击。
+#[derive(Message)]
+pub(super) struct EnemyDestroyed {
+    pub(super) position: Vec3,
+}
+
 /// 保持共享敌人资源存活，并汇报依赖加载结果。
 #[derive(Resource)]
 struct EnemyAsset(Handle<WorldAsset>);
@@ -98,7 +105,7 @@ fn spawn_enemies(
             return;
         }
     };
-    let scene = assets.load("enemy_tank.vox");
+    let scene = assets.load("tank/enemy/default/default.vox");
     for transform in transforms {
         commands.spawn((
             EnemyTank,
@@ -127,7 +134,7 @@ fn report_enemy(
             *reported = true;
         }
         _ if assets.is_loaded_with_dependencies(&scene.0) => {
-            info!("vox 场景加载完成：assets/enemy_tank.vox");
+            info!("vox 场景加载完成：assets/tank/enemy/default/default.vox");
             *reported = true;
         }
         _ => {}

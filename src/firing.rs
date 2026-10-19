@@ -1,6 +1,6 @@
 //! 坦克空格连发：按炮口世界方向发射，沿飞行路径检测敌人，命中或射程耗尽时清理。
 
-use crate::enemy::EnemyTank;
+use crate::enemy::{EnemyDestroyed, EnemyTank};
 use avian3d::prelude::{Collider, ShapeCastConfig, SpatialQuery, SpatialQueryFilter};
 use bevy::{
     asset::LoadState,
@@ -156,16 +156,30 @@ fn move_bullets(
     mut commands: Commands,
     time: Res<Time>,
     spatial: SpatialQuery,
-    enemies: Query<Entity, With<EnemyTank>>,
+    // 用 GlobalTransform 读取敌人位置，避免与子弹的 &mut Transform 查询冲突（B0001）；
+    // 敌人都是场景根，两者等值。
+    enemies: Query<&GlobalTransform, With<EnemyTank>>,
     mut bullets: Query<(Entity, &mut Transform, &mut Bullet)>,
+    mut destroyed_enemies: MessageWriter<EnemyDestroyed>,
 ) {
     // 本帧前进的世界距离，按游戏时间计算，单位：米。
     let step = BULLET_SPEED * time.delta_secs();
     let shape = Collider::cuboid(BULLET_SIZE, BULLET_SIZE, BULLET_SIZE);
+    // 子弹投射只认敌人，不会撞墙；越过场地边界（±FIELD_SIDE/2）即视为失效，
+    // 防止穿墙飞满射程。单帧最大位移约 0.7 米，越界误差可忽略。
+    let half_field = crate::ground::FIELD_SIDE / 2.0;
     // Commands 在系统结束后才删除实体，同帧后续弹体必须主动跳过已击毁目标。
     let mut destroyed = Vec::new();
     let enemy_count = enemies.iter().count();
     for (entity, mut transform, mut bullet) in &mut bullets {
+        // 先判越界再移动：出生点在场地内，不会误删刚生成的子弹。
+        if transform.translation.x.abs() > half_field
+            || transform.translation.z.abs() > half_field
+        {
+            debug!("子弹飞出场地，销毁：{entity}");
+            commands.entity(entity).despawn();
+            continue;
+        }
         let remaining = (BULLET_RANGE - bullet.distance).max(0.0);
         let travel = step.min(remaining);
         let hit = spatial.cast_shape_predicate(
@@ -179,6 +193,12 @@ fn move_bullets(
         );
         if let Some(hit) = hit {
             destroyed.push(hit.entity);
+            // 爆炸中心取被毁车体的世界位置：与 despawn 对象一一对应，且不偏向受击面。
+            if let Ok(enemy) = enemies.get(hit.entity) {
+                destroyed_enemies.write(EnemyDestroyed {
+                    position: enemy.translation(),
+                });
+            }
             commands.entity(hit.entity).despawn();
             commands.entity(entity).despawn();
             let left = enemy_count - destroyed.len();
@@ -312,7 +332,9 @@ mod tests {
         app.add_plugins((MinimalPlugins, TransformPlugin, PhysicsPlugins::default()))
             .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f64(
                 1.0 / 64.0,
-            )));
+            )))
+            // move_bullets 的 MessageWriter 要求消息类型已注册。
+            .add_message::<EnemyDestroyed>();
         app.finish();
         app.cleanup();
         let enemies = targets
@@ -424,14 +446,29 @@ mod tests {
         );
     }
 
-    /// 用固定半秒步长验证飞行速度，以及 50 秒后对子弹及其子实体的清理。
+    /// 子弹越过场地边界即失效，场内飞行方向不受影响。
     #[test]
-    fn bullets_move_independently_and_despawn_with_their_children_at_range() {
+    fn bullets_expire_outside_the_field() {
+        let (mut app, _) = hit_test_app(&[]);
+        // 299 米处在界内（边界 ±300），一帧 20 米后越界，第二帧被销毁。
+        let outbound = test_bullet(&mut app, Vec3::new(299.0, 1.2, 0.0), Vec3::X, 0.0);
+        let inbound = test_bullet(&mut app, Vec3::new(299.0, 1.2, 0.0), Vec3::NEG_X, 0.0);
+        advance_test_bullets(&mut app, 0.5);
+        assert!(app.world().get_entity(outbound).is_ok());
+        advance_test_bullets(&mut app, 0.5);
+        assert!(app.world().get_entity(outbound).is_err());
+        assert!(app.world().get_entity(inbound).is_ok());
+    }
+
+    /// 用固定半秒步长验证飞行速度，以及越过场地边界后对子弹及其子实体的清理。
+    #[test]
+    fn bullets_move_independently_and_despawn_with_children_at_field_edge() {
         let mut app = App::new();
         let mut time = Time::<()>::default();
         time.advance_by(Duration::from_secs_f32(0.5));
         app.insert_resource(time)
             .init_resource::<avian3d::collider_tree::ColliderTrees>()
+            .add_message::<EnemyDestroyed>()
             .add_systems(Update, move_bullets);
         let bullet = app
             .world_mut()
@@ -462,7 +499,8 @@ mod tests {
                 .translation
                 .abs_diff_eq(Vec3::new(-41.8, 0.45, -0.1), 1e-5)
         );
-        for _ in 2..99 {
+        // 出生点 x=-1.8，每帧向 -X 飞 20 米；第 15 帧后 x=-301.8 越界，下一帧销毁。
+        for _ in 2..15 {
             app.update();
         }
         assert!(app.world().get_entity(bullet).is_ok());
@@ -504,6 +542,7 @@ mod tests {
         .register_type::<MeshMaterial3d<StandardMaterial>>()
         .register_type::<FogVolume>()
         .init_resource::<ButtonInput<KeyCode>>()
+        .add_message::<EnemyDestroyed>()
         .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f32(
             0.25,
         )));
@@ -511,13 +550,13 @@ mod tests {
         app.world_mut()
             .resource_mut::<Time<Virtual>>()
             .set_max_delta(Duration::from_secs(60));
-        let tank_asset = app.world().resource::<AssetServer>().load("tank.vox");
+        let tank_asset = app.world().resource::<AssetServer>().load("tank/player/default/default.vox");
         let tank = app
             .world_mut()
             .spawn((Tank, WorldAssetRoot(tank_asset)))
             .id();
         let enemy_asset: Handle<WorldAsset> =
-            app.world().resource::<AssetServer>().load("enemy_tank.vox");
+            app.world().resource::<AssetServer>().load("tank/enemy/default/default.vox");
         let enemy = app
             .world_mut()
             .spawn((

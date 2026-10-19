@@ -3,7 +3,7 @@ from pathlib import Path
 import struct
 from generate_ground import chunk, dictionary
 
-OUTPUT = Path(__file__).resolve().parents[1] / 'assets' / 'enemy_tank.vox'
+OUTPUT = Path(__file__).resolve().parents[1] / 'assets' / 'tank' / 'enemy' / 'default' / 'default.vox'
 
 
 def build_vox():

@@ -16,6 +16,7 @@ use bevy_vox_scene::{VoxLoaderSettings, VoxScenePlugin};
 
 mod driving;
 mod enemy;
+mod explosion;
 mod firing;
 mod ground;
 
@@ -23,7 +24,7 @@ mod ground;
 const VOXEL_SIZE: f32 = 0.1;
 
 /// 当前加载的 MagicaVoxel 场景资源路径（相对 `assets/`）。
-const VOX_SCENE_PATH: &str = "tank.vox";
+const VOX_SCENE_PATH: &str = "tank/player/default/default.vox";
 
 /// 全局灯光的亮度（cd/m²）。场景不使用 `DirectionalLight`，全部光照由全局环境光
 /// 与相机上的 `EnvironmentMapLight` 环境贴图提供，因此这里给得比默认值（80）高。
@@ -55,6 +56,7 @@ fn main() {
             PhysicsPlugins::default(),
             ground::GroundPlugin,
             enemy::EnemyPlugin,
+            explosion::ExplosionPlugin,
             driving::DrivingPlugin,
         ))
         .insert_resource(GlobalAmbientLight {

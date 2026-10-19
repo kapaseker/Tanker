@@ -12,6 +12,23 @@ x = (row + 0.5 − SIZE/2) × AUTHOR_RES，z = (col + 0.5 − SIZE/2) × AUTHOR_
 import math
 from pathlib import Path
 import random
+import struct
+
+
+def chunk(tag, content=b'', children=b''):
+    """组装一个 VOX 分块：4 字节标记 + 内容长度 + 子块长度 + 内容 + 子块。"""
+    return tag.encode() + struct.pack('<II', len(content), len(children)) + content + children
+
+
+def dictionary(entries):
+    """编码 VOX 节点字典：数量 u32，每项为（键长 + 键 + 值长 + 值）。"""
+    data = struct.pack('<I', len(entries))
+    for key, value in entries.items():
+        key_bytes = key.encode()
+        value_bytes = value.encode()
+        data += struct.pack('<I', len(key_bytes)) + key_bytes
+        data += struct.pack('<I', len(value_bytes)) + value_bytes
+    return data
 
 # 地图按 0.5 米采样作者化，渲染时由 Rust 量化成 0.1 米的体素台阶。
 AUTHOR_RES = .5
