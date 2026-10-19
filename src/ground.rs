@@ -1,6 +1,7 @@
 //! 加载 600 米见方的地形高度图与土色图，编译成体素风格网格与高度场物理表面。
 //!
-//! 地形由 `scripts/generate_ground.py` 生成两张 1200×1200 的字节图：高度图与土色图。
+//! 地形由 `scripts/generate_ground.py` 生成两张 1200×1200 的字节图：高度图与土色图，
+//! 存放在 `assets/terrain/<地形名>/` 下（`.ht` 为高度、`.abd` 为土色）。
 //! 本模块把高度图编译成 0.1 米台阶的方块网格（视觉）与高度场碰撞体（物理），
 //! 两者同源，因此坑洼与坡道既能看见也能开上去。
 
@@ -21,6 +22,10 @@ pub(super) const FIELD_SIDE: f32 = 600.0;
 const AUTHOR_RES: f32 = 0.5;
 /// 地形图单边采样数（[`FIELD_SIDE`] ÷ [`AUTHOR_RES`]）。
 const MAP_SIDE: usize = 1200;
+/// 地形资产根目录（相对 assets/）；每个子目录是一个地形，含 `ground.ht` / `ground.abd`。
+const TERRAIN_ROOT: &str = "terrain";
+/// 当前启用的地形目录名；将来多地形时改为按清单或参数选择。
+const TERRAIN_NAME: &str = "ground";
 /// 高度字节中的平地基准值，即 0 米。
 const FLAT: u8 = 10;
 /// 地形量化粒度，单位：米；也是台阶高度与贴图色块的对齐网格。
@@ -47,12 +52,12 @@ const SIDE_SHADE: [f32; 2] = [0.72, 0.84];
 const WALL_THICKNESS: f32 = 2.0;
 const WALL_HEIGHT: f32 = 8.0;
 
-/// 地形图的原始字节：高度图每格一个高度档位（[`FLAT`] 为 0 米，每档 0.1 米），
-/// 土色图每格一个 [`GROUND_PALETTE`] 下标；两张图共用本类型，由文件名区分。
+/// 地形图的原始字节：高度图（`.ht`）每格一个高度档位（[`FLAT`] 为 0 米，每档 0.1 米），
+/// 土色图（`.abd`）每格一个 [`GROUND_PALETTE`] 下标；两张图共用本类型，由文件名区分。
 #[derive(Asset, TypePath, Debug)]
 struct GroundMap(Vec<u8>);
 
-/// 读取地形图的 `.bin` 字节流，并校验长度与 [`MAP_SIDE`] 对齐。
+/// 读取地形图的 `.ht` / `.abd` 字节流，并校验长度与 [`MAP_SIDE`] 对齐。
 #[derive(Default, TypePath)]
 struct GroundMapLoader;
 
@@ -83,7 +88,7 @@ impl AssetLoader for GroundMapLoader {
     }
 
     fn extensions(&self) -> &[&str] {
-        &["bin"]
+        &["ht", "abd"]
     }
 }
 
@@ -94,6 +99,10 @@ pub(super) struct TerrainChunk;
 /// 标记承载地形高度场的静态物理表面。
 #[derive(Component)]
 pub(super) struct TerrainSurface;
+
+/// 标记地形网格与高度场碰撞体已铺设完成，供依赖地形的生成逻辑（敌人）等待。
+#[derive(Resource)]
+pub(crate) struct TerrainReady;
 
 /// 两张地形图句柄：驱动汇报与一次性地形编译。
 #[derive(Resource)]
@@ -116,9 +125,10 @@ impl Plugin for GroundPlugin {
 
 /// 启动时只登记两张地形图，实际铺设等资源就绪后由 [`spawn_terrain`] 完成。
 fn load_ground(mut commands: Commands, assets: Res<AssetServer>) {
+    // 路径形如 "terrain/ground/ground.ht"；Bevy 资产路径固定用正斜杠。
     commands.insert_resource(GroundAssets {
-        heights: assets.load("ground_height.bin"),
-        colors: assets.load("ground_albedo.bin"),
+        heights: assets.load(format!("{TERRAIN_ROOT}/{TERRAIN_NAME}/ground.ht")),
+        colors: assets.load(format!("{TERRAIN_ROOT}/{TERRAIN_NAME}/ground.abd")),
     });
 }
 
@@ -183,6 +193,8 @@ fn spawn_terrain(
         Friction::ZERO,
     ));
     spawn_walls(&mut commands);
+    // 铺设完成后发就绪信号，敌人等依赖地形的生成逻辑据此确定时机。
+    commands.insert_resource(TerrainReady);
     *built = true;
 }
 

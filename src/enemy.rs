@@ -1,4 +1,7 @@
 //! 开局生成静止敌人靶车；独立于玩家 Tank 标记。
+//!
+//! 敌人从地形上方落下，由重力沉降到地形表面（动态刚体）；
+//! 测试中的 Static 固定靶见 [`mod@tests`]。
 
 use avian3d::prelude::*;
 use bevy::{asset::LoadState, prelude::*, world_serialization::WorldAsset};
@@ -15,6 +18,9 @@ const PLAYER_CLEARANCE: f32 = 10.0;
 const ENEMY_CLEARANCE: f32 = 6.0;
 /// 拒绝采样总次数上限，防止地图或间距变动后卡住启动。
 const SPAWN_ATTEMPTS: usize = 1000;
+/// 出生下落起点高度，单位：米；高于全场最高地形（+1.0）加半车高（0.7），
+/// 落体由物理引擎沉降到地形表面，无需采样高度图。
+const SPAWN_DROP_Y: f32 = 3.0;
 
 /// 仅标记敌人根实体，供炮弹筛选碰撞目标及统计剩余数量。
 #[derive(Component)]
@@ -29,8 +35,8 @@ pub(super) struct EnemyPlugin;
 
 impl Plugin for EnemyPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_enemies)
-            .add_systems(Update, report_enemy);
+        // 生成等待 TerrainReady（Update 轮询），确保下落前地形碰撞体已存在。
+        app.add_systems(Update, (spawn_enemies, report_enemy));
     }
 }
 
@@ -50,7 +56,7 @@ fn spawn_transforms(rng: &mut fastrand::Rng, player: Vec2) -> Result<Vec<Transfo
             continue;
         }
         transforms.push(
-            Transform::from_xyz(position.x, ENEMY_SIZE.y / 2.0, position.y)
+            Transform::from_xyz(position.x, SPAWN_DROP_Y, position.y)
                 .with_rotation(Quat::from_rotation_y(rng.f32() * std::f32::consts::TAU)),
         );
         if transforms.len() == ENEMY_COUNT {
@@ -60,8 +66,31 @@ fn spawn_transforms(rng: &mut fastrand::Rng, player: Vec2) -> Result<Vec<Transfo
     Err("在采样次数上限内无法放下全部敌人，请检查地图与间距设置")
 }
 
-/// 玩家在地图中心出生；敌人是落在 Y=0 平面上的固定障碍物。
-fn spawn_enemies(mut commands: Commands, assets: Res<AssetServer>) {
+/// 敌人刚体：动态落地沉降到地形表面；与玩家 `tank_body()` 的差异均有理由：
+/// 碰撞体按敌人模型标定（ENEMY_SIZE）；保留默认摩擦以在坡面站住（玩家零摩擦靠
+/// 每帧覆写速度，敌人无速度控制器）；允许休眠保持静止省开销。
+// shortcut: 整车箱形包含炮管旁的空隙，需要精确命中时拆分碰撞形状。
+fn enemy_body() -> impl Bundle {
+    (
+        RigidBody::Dynamic,
+        Collider::cuboid(ENEMY_SIZE.x, ENEMY_SIZE.y, ENEMY_SIZE.z),
+        LockedAxes::new().lock_rotation_x().lock_rotation_z(),
+        Friction::default(),
+    )
+}
+
+/// 等地形铺设完成后随机放置敌人；玩家在地图中心出生。
+fn spawn_enemies(
+    mut commands: Commands,
+    mut spawned: Local<bool>,
+    ready: Option<Res<crate::ground::TerrainReady>>,
+    assets: Res<AssetServer>,
+) {
+    // 地形图异步加载，高度场碰撞体就绪前下落会穿透场地，故等待就绪信号。
+    if *spawned || ready.is_none() {
+        return;
+    }
+    *spawned = true;
     let transforms = match spawn_transforms(&mut fastrand::Rng::new(), Vec2::ZERO) {
         Ok(transforms) => transforms,
         Err(message) => {
@@ -74,10 +103,7 @@ fn spawn_enemies(mut commands: Commands, assets: Res<AssetServer>) {
         commands.spawn((
             EnemyTank,
             WorldAssetRoot(scene.clone()),
-            RigidBody::Static,
-            // shortcut: 整车箱形包含炮管旁的空隙，需要精确命中时拆分碰撞形状。
-            Collider::cuboid(ENEMY_SIZE.x, ENEMY_SIZE.y, ENEMY_SIZE.z),
-            Friction::ZERO,
+            enemy_body(),
             transform,
         ));
     }
@@ -188,7 +214,7 @@ mod tests {
             for (index, transform) in transforms.iter().enumerate() {
                 let p = transform.translation.xz();
                 assert!(p.length() >= PLAYER_CLEARANCE);
-                assert_eq!(transform.translation.y, ENEMY_SIZE.y / 2.0);
+                assert_eq!(transform.translation.y, SPAWN_DROP_Y);
                 for other in &transforms[..index] {
                     assert!(p.distance(other.translation.xz()) >= ENEMY_CLEARANCE);
                 }

@@ -27,7 +27,7 @@
 | 部件 | 尺寸 | 权威定义 |
 |---|---|---|
 | 场地落地尺寸 | 600 × 600 m，面积 360000 m² | `FIELD_SIDE` / `AREA`（`src/ground.rs`） |
-| 地形高度图 / 土色图 | 各 1200 × 1200 采样（1440000 字节），作者化间距 0.5 m/采样 | `MAP_SIDE` / `AUTHOR_RES`（`src/ground.rs`）；产物 `assets/ground_height.bin`、`assets/ground_albedo.bin` |
+| 地形高度图 / 土色图 | 各 1200 × 1200 采样（1440000 字节），作者化间距 0.5 m/采样 | `MAP_SIDE` / `AUTHOR_RES`（`src/ground.rs`）；产物 `assets/terrain/ground/ground.ht`、`assets/terrain/ground/ground.abd` |
 | 地形数据来源 | 标准库脚本按固定种子生成两张紧凑字节图 | `scripts/generate_ground.py`（`PALETTE` 须与 `GROUND_PALETTE` 同步） |
 | 地形起伏 | ±1 m，量化到 0.1 m 一级（平地字节值 10，0/20 对应 −1.0/+1.0 m） | `TERRAIN_HALF_RANGE` / `TERRAIN_STEP` / `FLAT`（`src/ground.rs`） |
 | 地形视觉网格 | 600 m 场地按 10 × 10 块编译（每块 60 m / 120 采样），顶面贪心合并、边界生成 0.1 m 台阶竖直面 | `CHUNK_SIDE` / `CHUNK_COUNT` / `CHUNK_CELLS` / `build_chunk()`（`src/ground.rs`） |
@@ -35,7 +35,7 @@
 | 地形物理表面 | Avian 高度场碰撞体，缩放 (600, 1, 600) m；外层行沿 X、内层列沿 Z，值为米 | `Collider::heightfield` + `heights_as_meters()`（`src/ground.rs`） |
 | 竞技场围墙 | 四面；厚 2 m、高 8 m，横竖墙长 = 边长 + 4 m，内侧与场地边缘对齐 | `WALL_THICKNESS` / `WALL_HEIGHT`（`src/ground.rs`） |
 
-地形不再来自 `.vox` 模型：`assets/ground.vox` 已退役删除，视觉与物理均由 `ground_height.bin` 编译而来，两者同源，因此坑洼与坡道既可见也可开上去。
+地形不再来自 `.vox` 模型：`assets/ground.vox` 已退役删除，视觉与物理均由 `ground.ht` 编译而来，两者同源，因此坑洼与坡道既可见也可开上去。地形资产按 `assets/terrain/<地形名>/` 组织，每个地形目录含 `ground.ht`（高度）与 `ground.abd`（土色）。
 
 ## 与尺寸相关的其它常量
 

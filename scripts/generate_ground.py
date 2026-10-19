@@ -1,8 +1,8 @@
 """用标准库生成 600×600 米场地的地形图（高度 + 土色）：python3 scripts/generate_ground.py。
 
 输出两张紧凑地图（各 1200×1200 字节），由 Rust 侧编译成体素风格网格与高度场碰撞体：
-- assets/ground_height.bin：高度值，10 为平地，0 / 20 对应 −1.0 / +1.0 米（每级 0.1 米）
-- assets/ground_albedo.bin：调色板索引（0..4）
+- assets/terrain/ground/ground.ht：高度值，10 为平地，0 / 20 对应 −1.0 / +1.0 米（每级 0.1 米）
+- assets/terrain/ground/ground.abd：调色板索引（0..4）
 
 行列约定：行沿 Bevy X、列沿 Bevy Z；格 (row, col) 的世界中心为
 x = (row + 0.5 − SIZE/2) × AUTHOR_RES，z = (col + 0.5 − SIZE/2) × AUTHOR_RES。
@@ -43,8 +43,10 @@ COLOR_PATCHES = 2500
 COLOR_DIAMETER = (6., 30.)
 
 ASSETS = Path(__file__).resolve().parents[1] / 'assets'
-HEIGHT_OUTPUT = ASSETS / 'ground_height.bin'
-ALBEDO_OUTPUT = ASSETS / 'ground_albedo.bin'
+# 地形资产根目录：每个子目录是一个地形（<地形名>/ground.ht + ground.abd）。
+TERRAIN_DIR = ASSETS / 'terrain' / 'ground'
+HEIGHT_OUTPUT = TERRAIN_DIR / 'ground.ht'
+ALBEDO_OUTPUT = TERRAIN_DIR / 'ground.abd'
 # 与 Rust 侧 GROUND_PALETTE 同步（土质 5 色，索引 2 为底色）。
 PALETTE = ((87, 65, 43), (102, 79, 52), (111, 85, 57), (119, 93, 63), (126, 99, 68))
 
@@ -205,6 +207,7 @@ def encode_height(values):
 def write_assets():
     """生成并写出两张地图，返回 (高度字节, 土色字节)。"""
     heights, colors = generate_maps()
+    TERRAIN_DIR.mkdir(parents=True, exist_ok=True)
     HEIGHT_OUTPUT.write_bytes(encode_height(heights))
     ALBEDO_OUTPUT.write_bytes(bytes(colors))
     print(f'已生成 {HEIGHT_OUTPUT.name} 与 {ALBEDO_OUTPUT.name}'
