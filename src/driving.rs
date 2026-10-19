@@ -6,7 +6,8 @@ use bevy::{prelude::*, transform::TransformSystems};
 
 /// 当前 tank.vox 的包围盒尺寸（X 长、Y 高、Z 宽），单位：米。
 // shortcut: 按现有模型标定；更换 tank.vox 时同步更新包围盒与炮口。
-pub(super) const TANK_SIZE: Vec3 = Vec3::new(3.2, 1.5, 2.4);
+// Z 宽 2.6 = 履带外扩凸齿后模型宽 26 格 × 0.1。
+pub(super) const TANK_SIZE: Vec3 = Vec3::new(3.2, 1.5, 2.6);
 /// 前进与后退速度，单位：米/秒。
 const FORWARD_SPEED: f32 = 6.0;
 const REVERSE_SPEED: f32 = 4.0;
@@ -30,7 +31,7 @@ pub(super) struct FollowCamera;
 // ponytail: 用全局资源而非组件，因为当前只有一辆受控坦克；
 // 若未来出现多辆动态可驾驶坦克，应把 TurnRate 改为挂在 Tank 实体上的组件。
 #[derive(Resource, Default)]
-struct TurnRate(f32);
+pub(crate) struct TurnRate(pub(crate) f32);
 
 /// 注册固定物理步驾驶及渲染帧相机跟随。
 pub(super) struct DrivingPlugin;
@@ -50,26 +51,31 @@ impl Plugin for DrivingPlugin {
     }
 }
 
-/// 简化刚体承托整个模型，锁住俯仰和侧倾；取消摩擦以保持街机匀速。
+/// 简化刚体承托整个模型，锁住全部旋转（俯仰、侧倾、偏航）。
+/// 偏航由驾驶系统直接积分写入，物理接触（起伏地形、碰撞）无法扭转车头，
+/// 避免高度场隐形台阶的接触冲量把直线行驶扭成蛇形。
 pub(super) fn tank_body() -> impl Bundle {
     (
         RigidBody::Dynamic,
         Collider::cuboid(TANK_SIZE.x, TANK_SIZE.y, TANK_SIZE.z),
-        LockedAxes::new().lock_rotation_x().lock_rotation_z(),
+        LockedAxes::new()
+            .lock_rotation_x()
+            .lock_rotation_y()
+            .lock_rotation_z(),
         Friction::ZERO,
         SleepingDisabled,
     )
 }
 
-/// 根据车头方向写入水平速度，保留重力及接触求解产生的竖直速度。
-/// 转向角速度按固定步长 dt 向目标（±TURN_SPEED 或 0）指数渐近，实现平滑启停。
+/// 根据车头方向写入水平速度，保留重力及接触求解产生的竖直速度；
+/// 车头朝向由本函数独占：转向角速度按固定步长 dt 向目标（±TURN_SPEED 或 0）
+/// 指数渐近后直接积分进 heading，绕世界 Y 旋转。物理不参与偏航。
 fn apply_input(
     keys: &ButtonInput<KeyCode>,
-    heading: Quat,
     dt: f32,
     current_turn: &mut f32,
     linear: &mut Vec3,
-    angular: &mut Vec3,
+    heading: &mut Quat,
 ) {
     let speed = match (
         keys.pressed(KeyCode::ArrowUp),
@@ -79,7 +85,7 @@ fn apply_input(
         (false, true) => -REVERSE_SPEED,
         _ => 0.0,
     };
-    let forward = heading * Vec3::NEG_X;
+    let forward = *heading * Vec3::NEG_X;
     linear.x = forward.x * speed;
     linear.z = forward.z * speed;
     // +Y 为车头左转；倒车不反转转向，相反方向同时按下时抵消。
@@ -89,7 +95,8 @@ fn apply_input(
     // 帧率无关的指数渐近：按住时逼近目标角速度，松键时渐降到 0。
     let smooth = 1.0 - (-dt / TURN_SMOOTH_TIME).exp();
     *current_turn += (target - *current_turn) * smooth;
-    *angular = Vec3::Y * *current_turn;
+    // 世界系 Y 轴左转积分；车体只含偏航，与局部 Y 等价。
+    *heading = Quat::from_axis_angle(Vec3::Y, *current_turn * dt) * *heading;
 }
 
 /// 在物理准备完成后读取权威姿态，避免渲染变换同步造成方向滞后一帧。
@@ -97,16 +104,15 @@ fn drive_tank(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
     mut turn_rate: ResMut<TurnRate>,
-    mut tanks: Query<(&Rotation, &mut LinearVelocity, &mut AngularVelocity), With<Tank>>,
+    mut tanks: Query<(&mut Rotation, &mut LinearVelocity), With<Tank>>,
 ) {
-    for (rotation, mut linear, mut angular) in &mut tanks {
+    for (mut rotation, mut linear) in &mut tanks {
         apply_input(
             &keys,
-            rotation.0,
             time.delta_secs(),
             &mut turn_rate.0,
             &mut linear.0,
-            &mut angular.0,
+            &mut rotation.0,
         );
     }
 }
@@ -191,7 +197,12 @@ mod tests {
         }
     }
 
-    /// 验证倒车速度、冲突按键抵消、松键即停及竖直速度保留。
+    /// 提取纯偏航四元数的偏航角，单位：弧度（车体只含 Y 旋转，值域 (−π, π]）。
+    fn yaw(heading: Quat) -> f32 {
+        2.0 * heading.y.atan2(heading.w)
+    }
+
+    /// 验证倒车速度、冲突按键抵消、松键即停、竖直速度保留及无转向输入不改变朝向。
     #[test]
     fn arrows_control_speed_and_cancel_opposing_inputs() {
         const DT: f32 = 1.0 / 64.0;
@@ -199,44 +210,25 @@ mod tests {
         let mut current_turn = 0.0_f32;
         keys.press(KeyCode::ArrowDown);
         let mut linear = Vec3::new(1.0, -0.4, 1.0);
-        let mut angular = Vec3::ONE;
-        apply_input(
-            &keys,
-            Quat::IDENTITY,
-            DT,
-            &mut current_turn,
-            &mut linear,
-            &mut angular,
-        );
+        let mut heading = Quat::IDENTITY;
+        apply_input(&keys, DT, &mut current_turn, &mut linear, &mut heading);
         assert!(linear.abs_diff_eq(Vec3::new(4.0, -0.4, 0.0), 1e-5));
+        assert!(heading.abs_diff_eq(Quat::IDENTITY, 1e-5));
         keys.press(KeyCode::ArrowUp);
         keys.press(KeyCode::ArrowLeft);
         keys.press(KeyCode::ArrowRight);
-        apply_input(
-            &keys,
-            Quat::IDENTITY,
-            DT,
-            &mut current_turn,
-            &mut linear,
-            &mut angular,
-        );
+        apply_input(&keys, DT, &mut current_turn, &mut linear, &mut heading);
         assert_eq!(linear, Vec3::new(0.0, -0.4, 0.0));
-        assert_eq!(angular, Vec3::ZERO);
+        assert!(heading.abs_diff_eq(Quat::IDENTITY, 1e-5));
         keys.clear();
-        apply_input(
-            &keys,
-            Quat::IDENTITY,
-            DT,
-            &mut current_turn,
-            &mut linear,
-            &mut angular,
-        );
+        apply_input(&keys, DT, &mut current_turn, &mut linear, &mut heading);
         assert_eq!(linear, Vec3::new(0.0, -0.4, 0.0));
-        assert_eq!(angular, Vec3::ZERO);
+        assert!(heading.abs_diff_eq(Quat::IDENTITY, 1e-5));
     }
 
-    /// 左转是世界 +Y 角速度；车头局部 −X 旋转后沿世界 +Z 前进。
-    // 转向平滑后角速度逐步逼近目标，故只断言符号而非精确值。
+    /// 左转沿世界 +Y 积分偏航；车头局部 −X 旋转后沿世界 +Z 前进；
+    /// 倒车不反转转向；换向后的角速度渐降，数步后偏航才回落。
+    // 转向平滑后角速度逐步逼近目标，故只断言偏航的增减方向而非精确值。
     #[test]
     fn movement_follows_heading_and_turning_does_not_reverse_when_backing() {
         const DT: f32 = 1.0 / 64.0;
@@ -245,44 +237,26 @@ mod tests {
         keys.press(KeyCode::ArrowUp);
         keys.press(KeyCode::ArrowLeft);
         let mut linear = Vec3::ZERO;
-        let mut angular = Vec3::ZERO;
-        let heading = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
-        apply_input(
-            &keys,
-            heading,
-            DT,
-            &mut current_turn,
-            &mut linear,
-            &mut angular,
-        );
+        let mut heading = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
+        apply_input(&keys, DT, &mut current_turn, &mut linear, &mut heading);
         assert!(linear.abs_diff_eq(Vec3::Z * 6.0, 1e-5));
-        assert!(angular.y > 0.0);
+        assert!(yaw(heading) > std::f32::consts::FRAC_PI_2);
         keys.release(KeyCode::ArrowUp);
         keys.press(KeyCode::ArrowDown);
-        apply_input(
-            &keys,
-            heading,
-            DT,
-            &mut current_turn,
-            &mut linear,
-            &mut angular,
-        );
-        assert!(linear.abs_diff_eq(Vec3::NEG_Z * 4.0, 1e-5));
-        assert!(angular.y > 0.0);
+        // 速度取积分前的朝向（本步先算速度、后积分偏航），车头略微越过 +Z。
+        let forward = heading * Vec3::NEG_X;
+        apply_input(&keys, DT, &mut current_turn, &mut linear, &mut heading);
+        assert!(linear.abs_diff_eq(forward * -REVERSE_SPEED, 1e-5));
+        assert!(linear.abs_diff_eq(Vec3::NEG_Z * REVERSE_SPEED, 0.03));
+        // 倒车不反转转向：角速度仍为正，偏航继续增大。
+        let left_yaw = yaw(heading);
         keys.release(KeyCode::ArrowLeft);
         keys.press(KeyCode::ArrowRight);
-        // 单步渐变后角速度仍为正，需数步才越过 0 转为负。
+        // 单步渐变后角速度仍为正，需数步才越过 0 转为负，偏航随之回落。
         for _ in 0..4 {
-            apply_input(
-                &keys,
-                heading,
-                DT,
-                &mut current_turn,
-                &mut linear,
-                &mut angular,
-            );
+            apply_input(&keys, DT, &mut current_turn, &mut linear, &mut heading);
         }
-        assert!(angular.y < 0.0);
+        assert!(yaw(heading) < left_yaw);
     }
 
     /// 无窗口运行真实 Avian：落地、行驶、松键、转向及边界碰撞。

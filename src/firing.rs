@@ -550,7 +550,7 @@ mod tests {
         app.world_mut()
             .resource_mut::<Time<Virtual>>()
             .set_max_delta(Duration::from_secs(60));
-        let tank_asset = app.world().resource::<AssetServer>().load("tank/player/default/default.vox");
+        let tank_asset = app.world().resource::<AssetServer>().load("tank/player/default/body.vox");
         let tank = app
             .world_mut()
             .spawn((Tank, WorldAssetRoot(tank_asset)))
@@ -610,9 +610,21 @@ mod tests {
         );
 
         let (_, tank_minimum, tank_maximum) = scene_bounds(app.world(), tank);
+        // 车体与履带已拆分：此处仅锁定车体 mesh 尺寸；物理碰撞体仍为整车
+        // TANK_SIZE（含履带），两侧与底部由履带包子实体补足视觉外形。
+        let body_size = Vec3::new(3.1, 1.2, 1.6);
         assert!(
-            (tank_maximum - tank_minimum).abs_diff_eq(Vec3::new(3.2, 1.5, 2.4), 1e-5),
-            "坦克尺寸与碰撞体应一致：{tank_minimum:?}～{tank_maximum:?}"
+            (tank_maximum - tank_minimum).abs_diff_eq(body_size, 1e-5),
+            "车体尺寸应与拆分后模型一致：{tank_minimum:?}～{tank_maximum:?}"
+        );
+        let half = crate::driving::TANK_SIZE / 2.0;
+        assert!(
+            tank_minimum.cmpge(-half - Vec3::splat(1e-5)).all(),
+            "车体不应超出整车碰撞盒下界：{tank_minimum:?}"
+        );
+        assert!(
+            tank_maximum.cmple(half + Vec3::splat(1e-5)).all(),
+            "车体不应超出整车碰撞盒上界：{tank_maximum:?}"
         );
         // 当前炮管端面在 X=-1.6，弹体半长为 0.2 米，出生时恰好位于炮口外侧。
         assert!((MUZZLE_POSITION.x + 0.2 - tank_minimum.x).abs() < 1e-5);

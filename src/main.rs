@@ -19,12 +19,14 @@ mod enemy;
 mod explosion;
 mod firing;
 mod ground;
+mod track;
 
 /// MagicaVoxel 单格边长，单位：米；运行时和真实资源测试共用。
 const VOXEL_SIZE: f32 = 0.1;
 
 /// 当前加载的 MagicaVoxel 场景资源路径（相对 `assets/`）。
-const VOX_SCENE_PATH: &str = "tank/player/default/default.vox";
+/// 车体与履带分离：履带包由 `track::spawn_tracks` 按底盘 ID 加载。
+const VOX_SCENE_PATH: &str = "tank/player/default/body.vox";
 
 /// 全局灯光的亮度（cd/m²）。场景不使用 `DirectionalLight`，全部光照由全局环境光
 /// 与相机上的 `EnvironmentMapLight` 环境贴图提供，因此这里给得比默认值（80）高。
@@ -58,12 +60,14 @@ fn main() {
             enemy::EnemyPlugin,
             explosion::ExplosionPlugin,
             driving::DrivingPlugin,
+            track::TrackAnimationPlugin,
         ))
         .insert_resource(GlobalAmbientLight {
             brightness: GLOBAL_AMBIENT_BRIGHTNESS,
             ..default()
         })
-        .add_systems(Startup, setup_scene)
+        // spawn_tracks 依赖 setup_scene 造出的坦克根实体，链式保证顺序
+        .add_systems(Startup, (setup_scene, track::spawn_tracks).chain())
         .add_systems(Update, report_vox_scene)
         .run();
 }
