@@ -13,8 +13,11 @@ const REVERSE_SPEED: f32 = 4.0;
 /// 左右转向速度，单位：弧度/秒（90°/秒）。
 const TURN_SPEED: f32 = std::f32::consts::FRAC_PI_2;
 
+/// 转向平滑时间，单位：秒。数值越小响应越硬，越大越"绵"
+const TURN_SMOOTH_TIME: f32 = 0.15;
+
 /// 相机距车身中心的水平后退距离与世界竖直高度，单位：米。
-const CAMERA_DISTANCE: f32 = 10.0;
+const CAMERA_DISTANCE: f32 = 12.0;
 const CAMERA_HEIGHT: f32 = 6.0;
 /// 相对于看向车身中心的方向向上抬起的角度，单位：度。
 const CAMERA_PITCH_UP_DEGREES: f32 = 15.0;
@@ -23,6 +26,12 @@ const CAMERA_PITCH_UP_DEGREES: f32 = 15.0;
 #[derive(Component)]
 pub(super) struct FollowCamera;
 
+/// 玩家坦克当前的转向角速度状态，单位：弧度/秒；带符号，+Y 为左转。
+// ponytail: 用全局资源而非组件，因为当前只有一辆受控坦克；
+// 若未来出现多辆动态可驾驶坦克，应把 TurnRate 改为挂在 Tank 实体上的组件。
+#[derive(Resource, Default)]
+struct TurnRate(f32);
+
 /// 注册固定物理步驾驶及渲染帧相机跟随。
 pub(super) struct DrivingPlugin;
 
@@ -30,6 +39,7 @@ impl Plugin for DrivingPlugin {
     fn build(&self, app: &mut App) {
         // 长度翻倍、时间尺度不变，重力也翻倍以保持落地耗时。
         app.insert_resource(Gravity(Gravity::default().0 * 2.0))
+            .insert_resource(TurnRate::default())
             .add_systems(
                 FixedPostUpdate,
                 drive_tank
@@ -52,7 +62,15 @@ pub(super) fn tank_body() -> impl Bundle {
 }
 
 /// 根据车头方向写入水平速度，保留重力及接触求解产生的竖直速度。
-fn apply_input(keys: &ButtonInput<KeyCode>, heading: Quat, linear: &mut Vec3, angular: &mut Vec3) {
+/// 转向角速度按固定步长 dt 向目标（±TURN_SPEED 或 0）指数渐近，实现平滑启停。
+fn apply_input(
+    keys: &ButtonInput<KeyCode>,
+    heading: Quat,
+    dt: f32,
+    current_turn: &mut f32,
+    linear: &mut Vec3,
+    angular: &mut Vec3,
+) {
     let speed = match (
         keys.pressed(KeyCode::ArrowUp),
         keys.pressed(KeyCode::ArrowDown),
@@ -65,18 +83,31 @@ fn apply_input(keys: &ButtonInput<KeyCode>, heading: Quat, linear: &mut Vec3, an
     linear.x = forward.x * speed;
     linear.z = forward.z * speed;
     // +Y 为车头左转；倒车不反转转向，相反方向同时按下时抵消。
-    let turn =
-        i32::from(keys.pressed(KeyCode::ArrowLeft)) - i32::from(keys.pressed(KeyCode::ArrowRight));
-    *angular = Vec3::Y * turn as f32 * TURN_SPEED;
+    let turn = i32::from(keys.pressed(KeyCode::ArrowLeft))
+        - i32::from(keys.pressed(KeyCode::ArrowRight));
+    let target = turn as f32 * TURN_SPEED;
+    // 帧率无关的指数渐近：按住时逼近目标角速度，松键时渐降到 0。
+    let smooth = 1.0 - (-dt / TURN_SMOOTH_TIME).exp();
+    *current_turn += (target - *current_turn) * smooth;
+    *angular = Vec3::Y * *current_turn;
 }
 
 /// 在物理准备完成后读取权威姿态，避免渲染变换同步造成方向滞后一帧。
 fn drive_tank(
+    time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
+    mut turn_rate: ResMut<TurnRate>,
     mut tanks: Query<(&Rotation, &mut LinearVelocity, &mut AngularVelocity), With<Tank>>,
 ) {
     for (rotation, mut linear, mut angular) in &mut tanks {
-        apply_input(&keys, rotation.0, &mut linear.0, &mut angular.0);
+        apply_input(
+            &keys,
+            rotation.0,
+            time.delta_secs(),
+            &mut turn_rate.0,
+            &mut linear.0,
+            &mut angular.0,
+        );
     }
 }
 
@@ -121,21 +152,21 @@ mod tests {
             .spawn((FollowCamera, Transform::default()))
             .id();
         for (position, heading, expected_offset) in [
-            (Vec3::ZERO, Quat::IDENTITY, Vec3::new(10.0, 6.0, 0.0)),
+            (Vec3::ZERO, Quat::IDENTITY, Vec3::new(12.0, 6.0, 0.0)),
             (
                 Vec3::new(-6.0, 0.75, 4.0),
                 Quat::IDENTITY,
-                Vec3::new(10.0, 6.0, 0.0),
+                Vec3::new(12.0, 6.0, 0.0),
             ),
             (
                 Vec3::new(-6.0, 0.75, 4.0),
                 Quat::from_rotation_y(std::f32::consts::FRAC_PI_2),
-                Vec3::new(0.0, 6.0, -10.0),
+                Vec3::new(0.0, 6.0, -12.0),
             ),
             (
                 Vec3::new(-6.0, 0.75, 0.0),
                 Quat::from_rotation_y(std::f32::consts::FRAC_PI_2),
-                Vec3::new(0.0, 6.0, -10.0),
+                Vec3::new(0.0, 6.0, -12.0),
             ),
         ] {
             *app.world_mut().get_mut::<Transform>(tank).unwrap() =
@@ -163,44 +194,94 @@ mod tests {
     /// 验证倒车速度、冲突按键抵消、松键即停及竖直速度保留。
     #[test]
     fn arrows_control_speed_and_cancel_opposing_inputs() {
+        const DT: f32 = 1.0 / 64.0;
         let mut keys = ButtonInput::<KeyCode>::default();
+        let mut current_turn = 0.0_f32;
         keys.press(KeyCode::ArrowDown);
         let mut linear = Vec3::new(1.0, -0.4, 1.0);
         let mut angular = Vec3::ONE;
-        apply_input(&keys, Quat::IDENTITY, &mut linear, &mut angular);
+        apply_input(
+            &keys,
+            Quat::IDENTITY,
+            DT,
+            &mut current_turn,
+            &mut linear,
+            &mut angular,
+        );
         assert!(linear.abs_diff_eq(Vec3::new(4.0, -0.4, 0.0), 1e-5));
         keys.press(KeyCode::ArrowUp);
         keys.press(KeyCode::ArrowLeft);
         keys.press(KeyCode::ArrowRight);
-        apply_input(&keys, Quat::IDENTITY, &mut linear, &mut angular);
+        apply_input(
+            &keys,
+            Quat::IDENTITY,
+            DT,
+            &mut current_turn,
+            &mut linear,
+            &mut angular,
+        );
         assert_eq!(linear, Vec3::new(0.0, -0.4, 0.0));
         assert_eq!(angular, Vec3::ZERO);
         keys.clear();
-        apply_input(&keys, Quat::IDENTITY, &mut linear, &mut angular);
+        apply_input(
+            &keys,
+            Quat::IDENTITY,
+            DT,
+            &mut current_turn,
+            &mut linear,
+            &mut angular,
+        );
         assert_eq!(linear, Vec3::new(0.0, -0.4, 0.0));
         assert_eq!(angular, Vec3::ZERO);
     }
 
     /// 左转是世界 +Y 角速度；车头局部 −X 旋转后沿世界 +Z 前进。
+    // 转向平滑后角速度逐步逼近目标，故只断言符号而非精确值。
     #[test]
     fn movement_follows_heading_and_turning_does_not_reverse_when_backing() {
+        const DT: f32 = 1.0 / 64.0;
         let mut keys = ButtonInput::<KeyCode>::default();
+        let mut current_turn = 0.0_f32;
         keys.press(KeyCode::ArrowUp);
         keys.press(KeyCode::ArrowLeft);
         let mut linear = Vec3::ZERO;
         let mut angular = Vec3::ZERO;
         let heading = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
-        apply_input(&keys, heading, &mut linear, &mut angular);
+        apply_input(
+            &keys,
+            heading,
+            DT,
+            &mut current_turn,
+            &mut linear,
+            &mut angular,
+        );
         assert!(linear.abs_diff_eq(Vec3::Z * 6.0, 1e-5));
-        assert!(angular.abs_diff_eq(Vec3::Y * std::f32::consts::FRAC_PI_2, 1e-5));
+        assert!(angular.y > 0.0);
         keys.release(KeyCode::ArrowUp);
         keys.press(KeyCode::ArrowDown);
-        apply_input(&keys, heading, &mut linear, &mut angular);
+        apply_input(
+            &keys,
+            heading,
+            DT,
+            &mut current_turn,
+            &mut linear,
+            &mut angular,
+        );
         assert!(linear.abs_diff_eq(Vec3::NEG_Z * 4.0, 1e-5));
         assert!(angular.y > 0.0);
         keys.release(KeyCode::ArrowLeft);
         keys.press(KeyCode::ArrowRight);
-        apply_input(&keys, heading, &mut linear, &mut angular);
+        // 单步渐变后角速度仍为正，需数步才越过 0 转为负。
+        for _ in 0..4 {
+            apply_input(
+                &keys,
+                heading,
+                DT,
+                &mut current_turn,
+                &mut linear,
+                &mut angular,
+            );
+        }
         assert!(angular.y < 0.0);
     }
 
@@ -280,8 +361,18 @@ mod tests {
         for _ in 0..64 {
             app.update();
         }
+        // 转向平滑后 1 秒按住的累计转角略小于 90°，用指数渐近的解析积分算期望值：
+        // θ = TURN_SPEED × (T − TURN_SMOOTH_TIME × (1 − e^(−T/TURN_SMOOTH_TIME)))。
+        let t = 1.0_f32;
+        let theta = TURN_SPEED
+            * (t - TURN_SMOOTH_TIME * (1.0 - (-t / TURN_SMOOTH_TIME).exp()));
         let heading = app.world().get::<Transform>(tank).unwrap().rotation;
-        assert!((heading * Vec3::NEG_X).abs_diff_eq(Vec3::Z, 0.03));
+        // 车头局部 −X 绕 +Y 左转 θ 后指向 (−cosθ, 0, sinθ)。
+        let expected = Vec3::new(-theta.cos(), 0.0, theta.sin());
+        assert!(
+            (heading * Vec3::NEG_X).abs_diff_eq(expected, 0.03),
+            "朝向偏差异常：{heading:?} 期望 {expected:?}"
+        );
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .release(KeyCode::ArrowLeft);
