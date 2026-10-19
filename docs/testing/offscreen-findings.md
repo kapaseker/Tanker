@@ -4,7 +4,7 @@
 
 ## 2026-10-19：高度场平地上的直行阻塞
 
-分类：游戏运行集成 / 地形碰撞 / 驾驶。状态：待分诊，未修复。
+分类：游戏运行集成 / 地形碰撞 / 驾驶。状态：已定位根因（高度场内部边缘幽灵接触）；修复方案已记录，尚未实施与验证。
 
 本次用户明确要求只实现测试工具，记录问题，不修改地形碰撞。下述观测已重复出现；具体修复方案仍需进一步验证。没有为了确认这个问题打开可见窗口。
 
@@ -64,7 +64,7 @@ friction：0
 
 同一接触对还包含朝下的支撑法线。水平法线与停止前进同时出现，是进一步调查高度场内部三角形边缘接触的主要线索。摩擦系数为零，因此不能仅通过调整摩擦来解释或处理。
 
-已查阅锁定版本源码：Avian 的 `Collider::heightfield` 将高度矩阵交给 `SharedShape::heightfield`；Parry 高度场默认 flags 为空，另提供 `FIX_INTERNAL_EDGES`。这是候选调查方向，**尚未修改 flags、验证其效果，也没有确认它是最终修复**。不能将“可能需要内部边缘修正”写成已经证实的根因。
+已查阅锁定版本源码：Avian 的 `Collider::heightfield` 将高度矩阵交给 `SharedShape::heightfield`；Parry 高度场默认 flags 为空，另提供 `FIX_INTERNAL_EDGES`。这是候选调查方向，**尚未修改 flags、验证其效果，也没有确认它是最终修复**。不能将“可能需要内部边缘修正”写成已经证实的根因。（当日补充调查已将其确认为根因，见下文“根因定位”与“修复方向”两节。）
 
 ### 为什么原有测试没有覆盖
 
@@ -74,11 +74,46 @@ friction：0
 
 目前没有进行可见窗口下的对照运行，也没有在 Linux 或其它显卡复现。因此已确认的是上述离屏完整场景中的接触异常与直行阻塞，尚不能断言所有平台、所有交互运行方式均表现相同。
 
+### 根因定位（2026-10-19 补充调查）
+
+本次调查只读取数据与锁定版本源码，未修改任何代码，未做修复实验。结论：阻塞来自 Parry 高度场内部三角形边的幽灵接触（ghost collision）。逐条证据如下，均已在本机核实：
+
+1. 出生区地形数据完全平坦。直接读取 `assets/terrain/ground/ground.ht` 中心附近（行、列 595–605）11×11 格，字节全为 `FLAT`（10，即 0 米），不存在真实台阶，排除“量化台阶挡住车头”。
+2. 接触点几何吻合内部边接触。接触点 `(-1.7514584, 0, -1.2510476)` 恰为坦克前底棱（坦克 x = −0.15145837，减去 X 半长 1.6 得 −1.75145837），y = 0 为地面高度；法线 `(-1, 0, 0)` 纯水平，支撑法线不可能水平，属于内部边的假法线。
+3. 锁定版源码确认 flags 为空：Avian 0.7.0 `Collider::heightfield`（`collision/collider/parry/mod.rs`）→ Parry 0.27.0 `SharedShape::heightfield`（`shape/shared_shape.rs`）→ `HeightField::new(..., HeightFieldFlags::empty())`（`shape/heightfield3.rs`）。
+4. Parry 0.27.0 `HeightFieldFlags::FIX_INTERNAL_EDGES` 的文档注释写明其用途是“消除或修正会导致物理模拟出现不正确颠簸的接触法线，尤其在平坦表面上”，与本症状一致。
+5. 时序吻合：第 1 帧接触流形尚未包含假接触，正常前进 0.1 米；第 2 帧起假接触持续存在，驾驶系统每步写入 −6 米/秒，求解器每步将其消掉，坦克停住。摩擦为零不影响该结论：这是法线方向约束，不是摩擦力。转向阶段能移动也吻合——改变运动方向后假法线不再正对运动方向。
+
+排除项：敌人（`PLAYER_CLEARANCE` 为 10 米，玩家停在距出生点 0.15 米处）、边界墙（±300 米）、履带子实体（纯视觉，无碰撞体）、驾驶系统本身（输入恒为 1，平面竞技场对照测试正常行驶）。
+
+机制：高度场每个格子剖分为两个三角形，逐三角形计算接触流形时，内部剖分边可能被选为接触特征；方盒前底棱滑过内部边时产生带水平分量的假接触法线，逆着运动方向顶掉水平速度。
+
+### 修复方向（候选，未验证）
+
+Avian 0.7.0 通过 `pub extern crate parry3d as parry` 重导出 Parry（`lib.rs`），且 `Collider` 实现了 `From<SharedShape>`（`Collider::heightfield` 内部的 `.into()` 可证）。因此不新增依赖即可手工构造带 flags 的高度场碰撞体，替换 `src/ground.rs` 中 `Collider::heightfield` 的调用：
+
+```rust
+use avian3d::parry::{
+    shape::{HeightFieldFlags, SharedShape},
+    utils::Array2,
+};
+
+// data 为 heights_as_meters 展平后的米制高度，行列约定与现有一致。
+let shape = SharedShape::heightfield_with_flags(
+    Array2::new(MAP_SIDE, MAP_SIDE, data),
+    Vec3::new(FIELD_SIDE, 1.0, FIELD_SIDE),
+    HeightFieldFlags::FIX_INTERNAL_EDGES,
+);
+let collider = Collider::from(shape);
+```
+
+该方案只改碰撞体构造，不改地形数据、不断言降级。效果（直行恢复、不引入新的穿透或颠簸）必须经下节的验收流程确认后才算修复成立；若 flags 无效，再回到接触数据继续排查。
+
 ### 证据路径与后续验收
 
 本机最终证据位于 `.scratch/offscreen-verification/drive-final-03/`：`report.txt`、`frame-000000.png`、`frame-000180.png`、`frame-000300.png`。`.scratch/` 被 Git 忽略，仅本机保留；本文作为仓库内的长期记录保留复现条件和关键数据。
 
-后续修复应先用小型无窗口物理测试复现同类高度场接触，再评估内部边缘修正等方案。修复后应保持真实高度场，重新运行 `drive`，检查三个关键帧、直行位移、两侧履带里程、转向与相机跟随，并保留同一环境的修改前后证据。不能改用平面场地让集成场景通过。
+后续修复应先按“修复方向”一节，用小型无窗口物理测试在真实高度场上复现同类接触，并验证 `FIX_INTERNAL_EDGES` 的效果。修复后应保持真实高度场，重新运行 `drive`，检查三个关键帧、直行位移、两侧履带里程、转向与相机跟随，并保留同一环境的修改前后证据。不能改用平面场地让集成场景通过。
 
 ## 本次工具交付的验证范围
 
