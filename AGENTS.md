@@ -10,8 +10,28 @@
 - 平台：Linux x11（winit 走 dlopen），3D 渲染走 Vulkan
 - 构建命令：`cargo build`；运行：`cargo run`
 - Git：远端 `origin`（GitHub `kapaseker/Tanker`），默认分支 **master**（非 main）；`Cargo.lock` 纳入版本控制（可执行程序惯例）
-- 运行验证：`cargo run` 后日志应出现 `AdapterInfo { ... backend: Vulkan ... }` 与 `Creating new window Tanker`；加载 vox 场景时还应出现 `tanker: vox 场景加载完成：assets/<场景>.vox`。这些日志仅证明启动和主场景资源加载，仍需检查依赖资源错误；涉及画面的改动还需实际检查渲染效果
+- 运行验证默认使用下述无窗口离屏入口；检查 GPU/后端、资源与依赖错误、退出码及报告。成功启动或资源加载日志不代表测试通过；涉及画面的改动还必须读取生成的关键帧检查实际效果。`cargo run` 的可见窗口仅用于用户主动游玩或明确同意的窗口行为验证
 - ⚠️ **资源根路径**：Bevy 的 `AssetPlugin` 按 `BEVY_ASSET_ROOT` → `CARGO_MANIFEST_DIR` → 可执行文件所在目录 的优先级解析 `assets/`。未设置前两个环境变量时，直接执行 `./target/debug/tanker` 会从 `target/debug/assets/` 查找资源。使用 `cargo run`（Cargo 会注入 `CARGO_MANIFEST_DIR`），或从工程根目录显式设置 `BEVY_ASSET_ROOT="$PWD"`
+
+## 无窗口测试与画面验证
+
+- 测试、排查 bug 或对比画面效果时，尽量全部在后台完成：纯逻辑优先 `cargo test`，需要实际场景、GPU 或动态效果时使用离屏入口，不自行启动可见游戏窗口、抢占焦点或通过桌面截图验证。
+- 从工程根目录执行：
+
+  ```text
+  cargo run -- --capture .scratch/capture.png
+  cargo run -- --offscreen-test scene --output .scratch/offscreen/scene
+  cargo run -- --offscreen-test drive --output .scratch/offscreen/drive
+  cargo run -- --offscreen-test combat --output .scratch/offscreen/combat
+  ```
+
+- `--capture` 生成一张默认场景 PNG；三个场景分别验证静态场景、直行与转弯及履带、开炮命中与爆炸清理，输出 `frame-<六位模拟帧>.png` 和 `report.txt`。按改动选择相关场景，覆盖不到的 bug 应扩充离屏预设或逻辑测试，不默认改用窗口。
+- 离屏模式复用实际游戏场景、资源和渲染配置，固定为 1280×720、随机种子 42、1/60 秒模拟步长。资源、实例与 GPU 管线就绪后先模拟 120 帧落地，再开始场景计帧；截图等待不推进模拟时间。
+- 产物目录自动创建，已有目标产物拒绝覆盖；重复验证使用新路径。只有断言通过且全部图片保存成功才返回 0；资源、渲染、断言、写入错误或启动后超过 120 秒均失败退出，编译不计入超时。
+- 验证时检查退出码和报告，并读取关键帧确认效果；图片不是纯色仅是最低自动检查，不代表模型、材质或动画正确。跨显卡/驱动不要求像素完全一致，固定种子与步长也不保证跨平台物理完全一致。
+- 离屏入口失败或环境缺少 GPU 能力时，说明阻碍，不自动退回可见窗口，也不宣称画面验证通过。后台渲染仍会占用 GPU。
+- 焦点、真实键鼠、全屏、显示缩放等必须依赖窗口的验证，先说明原因并取得用户同意；启动窗口前还应遵守后台进程的隐藏窗口要求。
+- `drive` 若报告真实地形上的直行阻塞，先读 `docs/testing/offscreen-findings.md` 中的现有发现；保留失败证据，不降低断言，也不在仅要求测试工具时顺带修改游戏碰撞。
 
 ## Bevy 源码使用规则（重要）
 

@@ -26,6 +26,13 @@ struct ExplosionLifetime(Timer);
 #[derive(Resource)]
 struct ExplosionAssets(Option<Handle<WorldAsset>>);
 
+/// 离屏战斗开始前预热爆炸资源，命中帧不能因异步加载跳过表现。
+pub(super) fn assets_ready(world: &World) -> bool {
+    world.get_resource::<ExplosionAssets>().and_then(|assets| assets.0.as_ref()).is_some_and(|handle| {
+        world.resource::<AssetServer>().is_loaded_with_dependencies(handle)
+    })
+}
+
 /// 注册爆炸资源加载、击毁消息消费与到期清理。
 pub(super) struct ExplosionPlugin;
 

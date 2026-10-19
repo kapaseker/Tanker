@@ -28,7 +28,7 @@ pub(super) struct Tank;
 
 /// 子弹根节点的飞行状态；独立于坦克场景层级，发射后保持原方向。
 #[derive(Component)]
-struct Bullet {
+pub(super) struct Bullet {
     /// 发射瞬间确定的世界空间单位方向向量，不随相机或坦克转向。
     direction: Vec3,
     /// 自出生以来累计飞行的距离，单位：世界单位。
@@ -42,6 +42,13 @@ struct Gun {
     bullet_scene: Handle<WorldAsset>,
     /// 每次发射后的剩余冷却时间，松开空格或资源未就绪也继续计时。
     cadence: FireCadence,
+}
+
+/// 离屏运行须在开始计帧前确认弹体及其依赖已加载，避免首次输入被吞掉。
+pub(super) fn assets_ready(world: &World) -> bool {
+    world.get_resource::<Gun>().is_some_and(|gun| {
+        world.resource::<AssetServer>().is_loaded_with_dependencies(&gun.bullet_scene)
+    })
 }
 
 /// 注册子弹资源加载、空格发射与飞行清理系统。

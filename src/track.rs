@@ -49,6 +49,13 @@ pub(crate) struct TrackAnim {
     phase: [usize; 2],
 }
 
+impl TrackAnim {
+    /// 离屏断言读取累计里程；只比较最终相位会漏掉恰好绕回初始相位的运动。
+    pub(super) fn distances(&self) -> [f32; 2] {
+        self.dist
+    }
+}
+
 /// 履带包几何校验通过标记，防止校验系统重复运行。
 #[derive(Component)]
 pub(crate) struct TracksValidated;

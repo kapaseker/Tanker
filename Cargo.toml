@@ -22,6 +22,8 @@ bevy = { version = "0.19", default-features = false, features = [
   "bevy_winit",
   "x11",
   "default_font",
+  # 离屏关键帧使用 PNG 编码；复用 Bevy 已有图像依赖。
+  "png",
   # 3D 渲染管线
   "3d_api",
   "3d_bevy_render",

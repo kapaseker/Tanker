@@ -19,6 +19,7 @@ mod enemy;
 mod explosion;
 mod firing;
 mod ground;
+mod offscreen;
 mod track;
 
 /// MagicaVoxel 单格边长，单位：米；运行时和真实资源测试共用。
@@ -37,38 +38,65 @@ const GLOBAL_AMBIENT_BRIGHTNESS: f32 = 5000.0;
 #[derive(Resource)]
 struct VoxScene(Handle<WorldAsset>);
 
-fn main() {
-    App::new()
-        .add_plugins((
-            DefaultPlugins.set(WindowPlugin {
-                primary_window: Some(Window {
-                    title: "Tanker".into(),
-                    ..default()
-                }),
+/// 先校验命令行，再创建渲染器；参数错误不会意外打开窗口。
+fn main() -> std::process::ExitCode {
+    let result =
+        offscreen::Options::parse(std::env::args_os().skip(1).collect()).and_then(run_game);
+    match result {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("验证失败：{error}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+/// 普通游戏与离屏验证共用场景、资源及业务插件，仅切换运行和输出方式。
+fn run_game(options: Option<offscreen::Options>) -> Result<(), String> {
+    if let Some(options) = &options {
+        options.prepare()?;
+    }
+    let _watchdog = options.as_ref().map(offscreen::Options::watchdog);
+    let mut app = App::new();
+    if options.is_some() {
+        offscreen::configure(&mut app);
+    } else {
+        app.add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                title: "Tanker".into(),
                 ..default()
             }),
-            // 统一资源尺寸：1 世界单位 = 1 米。
-            VoxScenePlugin {
-                global_settings: Some(VoxLoaderSettings {
-                    voxel_size: VOXEL_SIZE,
-                    ..default()
-                }),
-            },
-            firing::FiringPlugin,
-            PhysicsPlugins::default(),
-            ground::GroundPlugin,
-            enemy::EnemyPlugin,
-            explosion::ExplosionPlugin,
-            driving::DrivingPlugin,
-            track::TrackAnimationPlugin,
-        ))
-        .insert_resource(GlobalAmbientLight {
-            brightness: GLOBAL_AMBIENT_BRIGHTNESS,
             ..default()
-        })
-        .add_systems(Startup, setup_scene)
-        .add_systems(Update, report_vox_scene)
-        .run();
+        }));
+    }
+    app.add_plugins((
+        // 统一资源尺寸：1 世界单位 = 1 米。
+        VoxScenePlugin {
+            global_settings: Some(VoxLoaderSettings {
+                voxel_size: VOXEL_SIZE,
+                ..default()
+            }),
+        },
+        firing::FiringPlugin,
+        PhysicsPlugins::default(),
+        ground::GroundPlugin,
+        enemy::EnemyPlugin,
+        explosion::ExplosionPlugin,
+        driving::DrivingPlugin,
+        track::TrackAnimationPlugin,
+    ))
+    .insert_resource(GlobalAmbientLight {
+        brightness: GLOBAL_AMBIENT_BRIGHTNESS,
+        ..default()
+    })
+    .add_systems(Startup, setup_scene)
+    .add_systems(Update, report_vox_scene);
+    if let Some(options) = options {
+        offscreen::run(app, options)
+    } else {
+        app.run();
+        Ok(())
+    }
 }
 
 /// 搭建 voxel 场景：相机（环境贴图 + 玻璃透射）与场景图根节点。

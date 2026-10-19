@@ -8,7 +8,7 @@ use bevy::{asset::LoadState, prelude::*, world_serialization::WorldAsset};
 /// 敌人模型的 X 长、Y 高、Z 宽，单位：米，与生成器的 34×26×14 格对应。
 pub(super) const ENEMY_SIZE: Vec3 = Vec3::new(3.4, 1.4, 2.6);
 /// 单轮敌人数；被击毁后不补充。
-const ENEMY_COUNT: usize = 10;
+pub(super) const ENEMY_COUNT: usize = 10;
 /// 交战区半径，单位：米；出生中心在该半径内均匀采样，离 300 米场地边缘留有充足余量。
 const SPAWN_LIMIT: f32 = 120.0;
 /// 敌人与玩家出生点的最小水平中心距离，单位：米。
@@ -85,13 +85,19 @@ fn spawn_enemies(
     mut spawned: Local<bool>,
     ready: Option<Res<crate::ground::TerrainReady>>,
     assets: Res<AssetServer>,
+    offscreen: Option<Res<crate::offscreen::Options>>,
 ) {
     // 地形图异步加载，高度场碰撞体就绪前下落会穿透场地，故等待就绪信号。
     if *spawned || ready.is_none() {
         return;
     }
     *spawned = true;
-    let transforms = match spawn_transforms(&mut fastrand::Rng::new(), Vec2::ZERO) {
+    let mut rng = if offscreen.is_some() {
+        fastrand::Rng::with_seed(crate::offscreen::SEED)
+    } else {
+        fastrand::Rng::new()
+    };
+    let transforms = match spawn_transforms(&mut rng, Vec2::ZERO) {
         Ok(transforms) => transforms,
         Err(message) => {
             error!("敌人生成失败：{message}");
