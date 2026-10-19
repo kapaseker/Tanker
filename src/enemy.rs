@@ -3,7 +3,6 @@
 //! 敌人从地形上方落下，由重力沉降到地形表面（动态刚体）；
 //! 测试中的 Static 固定靶见 [`mod@tests`]。
 
-use avian3d::prelude::*;
 use bevy::{asset::LoadState, prelude::*, world_serialization::WorldAsset};
 
 /// 敌人模型的 X 长、Y 高、Z 宽，单位：米，与生成器的 34×26×14 格对应。
@@ -73,17 +72,11 @@ fn spawn_transforms(rng: &mut fastrand::Rng, player: Vec2) -> Result<Vec<Transfo
     Err("在采样次数上限内无法放下全部敌人，请检查地图与间距设置")
 }
 
-/// 敌人刚体：动态落地沉降到地形表面；与玩家 `tank_body()` 的差异均有理由：
-/// 碰撞体按敌人模型标定（ENEMY_SIZE）；保留默认摩擦以在坡面站住（玩家零摩擦靠
-/// 每帧覆写速度，敌人无速度控制器）；允许休眠保持静止省开销。
+/// 与玩家共用驾驶刚体和逐车输入状态，仅碰撞体按敌人尺寸标定。
+/// 零输入控制器停止水平驱动；保留重力和接触求解，允许碰撞导致短暂位移。
 // shortcut: 整车箱形包含炮管旁的空隙，需要精确命中时拆分碰撞形状。
 fn enemy_body() -> impl Bundle {
-    (
-        RigidBody::Dynamic,
-        Collider::cuboid(ENEMY_SIZE.x, ENEMY_SIZE.y, ENEMY_SIZE.z),
-        LockedAxes::new().lock_rotation_x().lock_rotation_z(),
-        Friction::default(),
-    )
+    crate::driving::body_for_size(ENEMY_SIZE)
 }
 
 /// 等地形铺设完成后随机放置敌人；玩家在地图中心出生。
@@ -105,10 +98,11 @@ fn spawn_enemies(
             return;
         }
     };
-    let scene = assets.load("tank/enemy/default/default.vox");
+    let scene = assets.load("tank/enemy/default/body.vox");
     for transform in transforms {
         commands.spawn((
             EnemyTank,
+            crate::track::ENEMY_TRACKS,
             WorldAssetRoot(scene.clone()),
             enemy_body(),
             transform,
@@ -134,7 +128,7 @@ fn report_enemy(
             *reported = true;
         }
         _ if assets.is_loaded_with_dependencies(&scene.0) => {
-            info!("vox 场景加载完成：assets/tank/enemy/default/default.vox");
+            info!("vox 场景加载完成：assets/tank/enemy/default/body.vox");
             *reported = true;
         }
         _ => {}
@@ -144,6 +138,7 @@ fn report_enemy(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use avian3d::prelude::*;
 
     /// 玩家撞上静止敌人会停下，击毁后原来的通路恢复。
     #[test]

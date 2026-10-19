@@ -15,6 +15,7 @@
 //! 履带包节点命名：track_l_0..2 / track_r_0..2；全部不带 `_hidden`。
 //! 初始与动画显隐由运行时外层实体统一控制，避免内部隐藏阻止相位显示。
 
+use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -37,6 +38,17 @@ struct Voxel {
     y: i32,
     z: i32,
     c: u8,
+}
+
+/// 沿 VOX 车头 +X 顺序闭环：上段向前、车头下绕、下段向后、车尾上绕。
+/// 下方两角各削一格，66 个轮廓点恰好整除齿距，三相位回绕时接缝连续。
+fn track_loop() -> Vec<(i32, i32)> {
+    (0..=29)
+        .map(|x| (x, 5))
+        .chain((1..5).rev().map(|z| (29, z)))
+        .chain((1..=28).rev().map(|x| (x, 0)))
+        .chain((1..5).map(|z| (0, z)))
+        .collect()
 }
 
 fn main() {
@@ -129,48 +141,36 @@ fn main() {
     println!("已写出 {}（{} 字节）", body_path.display(), body_out.len());
 
     // ---- 履带包文件：每侧每相位一个 model，nTRN 只带名字 ----
-    // side: (该侧履带新 y 区间, 外侧面层 y, 侧面凸齿 y)
-    let sides = [("l", (1, 4), 1, 0), ("r", (21, 24), 24, 25)];
+    // side: (该侧履带新 y 区间, 侧面凸齿 y)
+    let sides = [("l", (1, 4), 0), ("r", (21, 24), 25)];
+    let rim = track_loop();
     let mut track_models: Vec<(String, Vec<Voxel>)> = Vec::new();
-    for &(side, (ty0, ty1), face_y, tooth_y) in &sides {
+    for &(side, (ty0, ty1), tooth_y) in &sides {
         for p in 0..PITCH {
-            let mut variant: Vec<Voxel> = tracks
+            // 轮组保留原色且各相位不变；有序映射同时消除角点与顶齿的重复体素。
+            let mut cells: BTreeMap<(i32, i32, i32), u8> = tracks
                 .iter()
                 .filter(|v| (ty0..=ty1).contains(&v.y))
-                .map(|&v| {
-                    // 外侧面层颜色重排为周期 3 图案（相位 p 错位 1 格）
-                    if v.y == face_y {
-                        Voxel {
-                            c: if (v.x + p) % PITCH == 0 {
-                                C_LIGHT
-                            } else {
-                                C_DARK
-                            },
-                            ..v
-                        }
-                    } else {
-                        v
-                    }
-                })
+                .filter(|v| v.z != 0 || (v.x != 0 && v.x != 29))
+                .map(|v| ((v.x, v.y, v.z), v.c))
                 .collect();
-            // 侧面凸齿：外扩 1 格全高竖条；顶面凸齿：z=6 跨履带全宽
-            for &v in tracks.iter() {
-                if v.y == ty0 && (v.x + p) % PITCH == 0 {
-                    variant.push(Voxel {
-                        y: tooth_y,
-                        c: C_LIGHT,
-                        ..v
-                    });
-                    for y in ty0..=ty1 {
-                        variant.push(Voxel {
-                            y,
-                            z: 6,
-                            c: C_LIGHT,
-                            ..v
-                        });
+            for (s, &(x, z)) in rim.iter().enumerate() {
+                let tooth = (s as i32 - p).rem_euclid(PITCH) == 0;
+                for y in ty0..=ty1 {
+                    cells.insert((x, y, z), if tooth { C_LIGHT } else { C_DARK });
+                    // 顶齿沿用原高度 z=6，底部与前后端不外扩，保持碰撞盒尺寸。
+                    if tooth && z == 5 {
+                        cells.insert((x, y, 6), C_LIGHT);
                     }
                 }
+                if tooth {
+                    cells.insert((x, tooth_y, z), C_LIGHT);
+                }
             }
+            let variant = cells
+                .into_iter()
+                .map(|((x, y, z), c)| Voxel { x, y, z, c })
+                .collect();
             track_models.push((format!("track_{side}_{p}"), variant));
         }
     }
@@ -307,6 +307,20 @@ fn push_dict(out: &mut Vec<u8>, entries: &[(&str, &str)]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 闭环没有重复角点或断裂，周长是齿距整数倍，保证末相位回到首相位不跳齿。
+    #[test]
+    fn tread_loop_closes_without_duplicate_points_or_phase_seam() {
+        let rim = track_loop();
+        let points: std::collections::BTreeSet<_> = rim.iter().copied().collect();
+        assert_eq!(points.len(), rim.len());
+        assert_eq!(rim.len() as i32 % PITCH, 0);
+        for i in 0..rim.len() {
+            let (x, z) = rim[i];
+            let (next_x, next_z) = rim[(i + 1) % rim.len()];
+            assert_eq!((next_x - x).abs().max((next_z - z).abs()), 1);
+        }
+    }
 
     /// nTRN 尾部必须依次写 reserved、layer_id、帧数、帧字典，不能错位为零帧。
     #[test]

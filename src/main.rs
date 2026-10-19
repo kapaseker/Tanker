@@ -66,8 +66,7 @@ fn main() {
             brightness: GLOBAL_AMBIENT_BRIGHTNESS,
             ..default()
         })
-        // spawn_tracks 依赖 setup_scene 造出的坦克根实体，链式保证顺序
-        .add_systems(Startup, (setup_scene, track::spawn_tracks).chain())
+        .add_systems(Startup, setup_scene)
         .add_systems(Update, report_vox_scene)
         .run();
 }
@@ -106,6 +105,7 @@ fn setup_scene(mut commands: Commands, assets: Res<AssetServer>) {
     let scene = assets.load(VOX_SCENE_PATH);
     commands.spawn((
         firing::Tank,
+        track::PLAYER_TRACKS,
         WorldAssetRoot(scene.clone()),
         driving::tank_body(),
         tank_transform,

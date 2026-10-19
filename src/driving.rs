@@ -1,11 +1,11 @@
-//! 方向键街机驾驶与车尾上方相机跟随；物理单位为米、秒。
+//! 逐车街机驾驶、玩家方向键输入与车尾相机跟随；物理单位为米、秒。
 
 use crate::firing::Tank;
 use avian3d::prelude::*;
 use bevy::{prelude::*, transform::TransformSystems};
 
-/// 当前 tank.vox 的包围盒尺寸（X 长、Y 高、Z 宽），单位：米。
-// shortcut: 按现有模型标定；更换 tank.vox 时同步更新包围盒与炮口。
+/// 玩家车体与履带组合的包围盒尺寸（X 长、Y 高、Z 宽），单位：米。
+// shortcut: 按现有模型标定；更换模型时同步更新包围盒与炮口。
 // Z 宽 2.6 = 履带外扩凸齿后模型宽 26 格 × 0.1。
 pub(super) const TANK_SIZE: Vec3 = Vec3::new(3.2, 1.5, 2.6);
 /// 前进与后退速度，单位：米/秒。
@@ -27,10 +27,29 @@ const CAMERA_PITCH_UP_DEGREES: f32 = 15.0;
 #[derive(Component)]
 pub(super) struct FollowCamera;
 
-/// 玩家坦克当前的转向角速度状态，单位：弧度/秒；带符号，+Y 为左转。
-// ponytail: 用全局资源而非组件，因为当前只有一辆受控坦克；
-// 若未来出现多辆动态可驾驶坦克，应把 TurnRate 改为挂在 Tank 实体上的组件。
-#[derive(Resource, Default)]
+/// 每辆坦克各自的驾驶意图；敌人默认零输入，未来控制器可直接写入。
+#[derive(Component, Default)]
+pub(crate) struct DrivingInput {
+    /// 前后输入，范围 −1..=1；正值前进，负值倒车，零立即停止水平驱动。
+    pub(crate) throttle: f32,
+    /// 左右输入，范围 −1..=1；正值左转，倒车不反转转向。
+    pub(crate) turn: f32,
+}
+
+impl DrivingInput {
+    /// 方向相反的按键抵消；只由玩家输入系统调用。
+    fn from_keys(keys: &ButtonInput<KeyCode>) -> Self {
+        Self {
+            throttle: (i32::from(keys.pressed(KeyCode::ArrowUp))
+                - i32::from(keys.pressed(KeyCode::ArrowDown))) as f32,
+            turn: (i32::from(keys.pressed(KeyCode::ArrowLeft))
+                - i32::from(keys.pressed(KeyCode::ArrowRight))) as f32,
+        }
+    }
+}
+
+/// 每辆坦克当前的转向角速度，单位：弧度/秒；带符号，+Y 为左转。
+#[derive(Component, Default)]
 pub(crate) struct TurnRate(pub(crate) f32);
 
 /// 注册固定物理步驾驶及渲染帧相机跟随。
@@ -40,10 +59,10 @@ impl Plugin for DrivingPlugin {
     fn build(&self, app: &mut App) {
         // 长度翻倍、时间尺度不变，重力也翻倍以保持落地耗时。
         app.insert_resource(Gravity(Gravity::default().0 * 2.0))
-            .insert_resource(TurnRate::default())
             .add_systems(
                 FixedPostUpdate,
-                drive_tank
+                (read_player_input, drive_tank)
+                    .chain()
                     .after(PhysicsSystems::Prepare)
                     .before(PhysicsSystems::StepSimulation),
             )
@@ -55,9 +74,16 @@ impl Plugin for DrivingPlugin {
 /// 偏航由驾驶系统直接积分写入，物理接触（起伏地形、碰撞）无法扭转车头，
 /// 避免高度场隐形台阶的接触冲量把直线行驶扭成蛇形。
 pub(super) fn tank_body() -> impl Bundle {
+    body_for_size(TANK_SIZE)
+}
+
+/// 按整车尺寸创建共享驾驶刚体与逐车状态；尺寸单位为米，敌人不接玩家输入。
+pub(super) fn body_for_size(size: Vec3) -> impl Bundle {
     (
+        DrivingInput::default(),
+        TurnRate::default(),
         RigidBody::Dynamic,
-        Collider::cuboid(TANK_SIZE.x, TANK_SIZE.y, TANK_SIZE.z),
+        Collider::cuboid(size.x, size.y, size.z),
         LockedAxes::new()
             .lock_rotation_x()
             .lock_rotation_y()
@@ -71,27 +97,24 @@ pub(super) fn tank_body() -> impl Bundle {
 /// 车头朝向由本函数独占：转向角速度按固定步长 dt 向目标（±TURN_SPEED 或 0）
 /// 指数渐近后直接积分进 heading，绕世界 Y 旋转。物理不参与偏航。
 fn apply_input(
-    keys: &ButtonInput<KeyCode>,
+    input: &DrivingInput,
     dt: f32,
     current_turn: &mut f32,
     linear: &mut Vec3,
     heading: &mut Quat,
 ) {
-    let speed = match (
-        keys.pressed(KeyCode::ArrowUp),
-        keys.pressed(KeyCode::ArrowDown),
-    ) {
-        (true, false) => FORWARD_SPEED,
-        (false, true) => -REVERSE_SPEED,
-        _ => 0.0,
-    };
+    let throttle = input.throttle.clamp(-1.0, 1.0);
+    let speed = throttle
+        * if throttle >= 0.0 {
+            FORWARD_SPEED
+        } else {
+            REVERSE_SPEED
+        };
     let forward = *heading * Vec3::NEG_X;
     linear.x = forward.x * speed;
     linear.z = forward.z * speed;
     // +Y 为车头左转；倒车不反转转向，相反方向同时按下时抵消。
-    let turn = i32::from(keys.pressed(KeyCode::ArrowLeft))
-        - i32::from(keys.pressed(KeyCode::ArrowRight));
-    let target = turn as f32 * TURN_SPEED;
+    let target = input.turn.clamp(-1.0, 1.0) * TURN_SPEED;
     // 帧率无关的指数渐近：按住时逼近目标角速度，松键时渐降到 0。
     let smooth = 1.0 - (-dt / TURN_SMOOTH_TIME).exp();
     *current_turn += (target - *current_turn) * smooth;
@@ -99,16 +122,29 @@ fn apply_input(
     *heading = Quat::from_axis_angle(Vec3::Y, *current_turn * dt) * *heading;
 }
 
-/// 在物理准备完成后读取权威姿态，避免渲染变换同步造成方向滞后一帧。
+/// 仅玩家接收方向键，敌人保留自己的输入（当前恒为默认零值）。
+fn read_player_input(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut players: Query<&mut DrivingInput, With<Tank>>,
+) {
+    for mut input in &mut players {
+        *input = DrivingInput::from_keys(&keys);
+    }
+}
+
+/// 在物理准备完成后逐车应用输入，避免共享转向状态或渲染姿态滞后一帧。
 fn drive_tank(
     time: Res<Time>,
-    keys: Res<ButtonInput<KeyCode>>,
-    mut turn_rate: ResMut<TurnRate>,
-    mut tanks: Query<(&mut Rotation, &mut LinearVelocity), With<Tank>>,
+    mut tanks: Query<(
+        &DrivingInput,
+        &mut TurnRate,
+        &mut Rotation,
+        &mut LinearVelocity,
+    )>,
 ) {
-    for (mut rotation, mut linear) in &mut tanks {
+    for (input, mut turn_rate, mut rotation, mut linear) in &mut tanks {
         apply_input(
-            &keys,
+            input,
             time.delta_secs(),
             &mut turn_rate.0,
             &mut linear.0,
@@ -142,6 +178,93 @@ fn follow_tank(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 玩家键盘只写玩家意图；敌人显式输入复用同一驾驶算法，零输入靶车独立静止。
+    #[test]
+    fn player_and_enemies_share_driving_without_sharing_input_or_turn_state() {
+        use bevy::time::TimeUpdateStrategy;
+        use std::time::Duration;
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .init_resource::<ButtonInput<KeyCode>>()
+            .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f64(
+                1.0 / 64.0,
+            )))
+            .add_systems(Update, (read_player_input, drive_tank).chain());
+        let mut spawn = |player| {
+            let mut entity = app.world_mut().spawn((
+                DrivingInput::default(),
+                TurnRate::default(),
+                Rotation::default(),
+                LinearVelocity(Vec3::new(0.0, -0.4, 0.0)),
+            ));
+            if player {
+                entity.insert(Tank);
+            } else {
+                entity.insert(crate::enemy::EnemyTank);
+            }
+            entity.id()
+        };
+        let player = spawn(true);
+        let moving_enemy = spawn(false);
+        let idle_enemy = spawn(false);
+        app.update();
+        for (key, throttle, turn) in [
+            (KeyCode::ArrowUp, 1.0, 1.0),
+            (KeyCode::ArrowDown, -1.0, 1.0),
+            (KeyCode::ArrowDown, -1.0, -1.0),
+        ] {
+            let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.reset_all();
+            keys.press(key);
+            keys.press(if turn > 0.0 {
+                KeyCode::ArrowLeft
+            } else {
+                KeyCode::ArrowRight
+            });
+            *app.world_mut()
+                .get_mut::<DrivingInput>(moving_enemy)
+                .unwrap() = DrivingInput { throttle, turn };
+            for _ in 0..64 {
+                app.update();
+                assert_eq!(
+                    app.world().get::<LinearVelocity>(player).unwrap().0,
+                    app.world().get::<LinearVelocity>(moving_enemy).unwrap().0
+                );
+                assert_eq!(
+                    app.world().get::<Rotation>(player).unwrap().0,
+                    app.world().get::<Rotation>(moving_enemy).unwrap().0
+                );
+                assert_eq!(
+                    app.world().get::<TurnRate>(player).unwrap().0,
+                    app.world().get::<TurnRate>(moving_enemy).unwrap().0
+                );
+                assert_eq!(
+                    app.world().get::<LinearVelocity>(idle_enemy).unwrap().0,
+                    Vec3::new(0.0, -0.4, 0.0)
+                );
+                assert_eq!(app.world().get::<TurnRate>(idle_enemy).unwrap().0, 0.0);
+                assert_eq!(
+                    app.world().get::<Rotation>(idle_enemy).unwrap().0,
+                    Quat::IDENTITY
+                );
+            }
+        }
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        *app.world_mut()
+            .get_mut::<DrivingInput>(moving_enemy)
+            .unwrap() = DrivingInput::default();
+        for _ in 0..64 {
+            app.update();
+        }
+        assert_eq!(
+            app.world().get::<LinearVelocity>(moving_enemy).unwrap().0,
+            Vec3::new(0.0, -0.4, 0.0)
+        );
+        assert!(app.world().get::<TurnRate>(moving_enemy).unwrap().0.abs() < 0.01);
+    }
 
     /// 相机当帧跟随平移与转向，视线保持向上抬 15°；倒车不把机位切到车头。
     #[test]
@@ -211,17 +334,35 @@ mod tests {
         keys.press(KeyCode::ArrowDown);
         let mut linear = Vec3::new(1.0, -0.4, 1.0);
         let mut heading = Quat::IDENTITY;
-        apply_input(&keys, DT, &mut current_turn, &mut linear, &mut heading);
+        apply_input(
+            &DrivingInput::from_keys(&keys),
+            DT,
+            &mut current_turn,
+            &mut linear,
+            &mut heading,
+        );
         assert!(linear.abs_diff_eq(Vec3::new(4.0, -0.4, 0.0), 1e-5));
         assert!(heading.abs_diff_eq(Quat::IDENTITY, 1e-5));
         keys.press(KeyCode::ArrowUp);
         keys.press(KeyCode::ArrowLeft);
         keys.press(KeyCode::ArrowRight);
-        apply_input(&keys, DT, &mut current_turn, &mut linear, &mut heading);
+        apply_input(
+            &DrivingInput::from_keys(&keys),
+            DT,
+            &mut current_turn,
+            &mut linear,
+            &mut heading,
+        );
         assert_eq!(linear, Vec3::new(0.0, -0.4, 0.0));
         assert!(heading.abs_diff_eq(Quat::IDENTITY, 1e-5));
-        keys.clear();
-        apply_input(&keys, DT, &mut current_turn, &mut linear, &mut heading);
+        keys.reset_all();
+        apply_input(
+            &DrivingInput::from_keys(&keys),
+            DT,
+            &mut current_turn,
+            &mut linear,
+            &mut heading,
+        );
         assert_eq!(linear, Vec3::new(0.0, -0.4, 0.0));
         assert!(heading.abs_diff_eq(Quat::IDENTITY, 1e-5));
     }
@@ -238,14 +379,26 @@ mod tests {
         keys.press(KeyCode::ArrowLeft);
         let mut linear = Vec3::ZERO;
         let mut heading = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
-        apply_input(&keys, DT, &mut current_turn, &mut linear, &mut heading);
+        apply_input(
+            &DrivingInput::from_keys(&keys),
+            DT,
+            &mut current_turn,
+            &mut linear,
+            &mut heading,
+        );
         assert!(linear.abs_diff_eq(Vec3::Z * 6.0, 1e-5));
         assert!(yaw(heading) > std::f32::consts::FRAC_PI_2);
         keys.release(KeyCode::ArrowUp);
         keys.press(KeyCode::ArrowDown);
         // 速度取积分前的朝向（本步先算速度、后积分偏航），车头略微越过 +Z。
         let forward = heading * Vec3::NEG_X;
-        apply_input(&keys, DT, &mut current_turn, &mut linear, &mut heading);
+        apply_input(
+            &DrivingInput::from_keys(&keys),
+            DT,
+            &mut current_turn,
+            &mut linear,
+            &mut heading,
+        );
         assert!(linear.abs_diff_eq(forward * -REVERSE_SPEED, 1e-5));
         assert!(linear.abs_diff_eq(Vec3::NEG_Z * REVERSE_SPEED, 0.03));
         // 倒车不反转转向：角速度仍为正，偏航继续增大。
@@ -254,7 +407,13 @@ mod tests {
         keys.press(KeyCode::ArrowRight);
         // 单步渐变后角速度仍为正，需数步才越过 0 转为负，偏航随之回落。
         for _ in 0..4 {
-            apply_input(&keys, DT, &mut current_turn, &mut linear, &mut heading);
+            apply_input(
+                &DrivingInput::from_keys(&keys),
+                DT,
+                &mut current_turn,
+                &mut linear,
+                &mut heading,
+            );
         }
         assert!(yaw(heading) < left_yaw);
     }
@@ -338,8 +497,7 @@ mod tests {
         // 转向平滑后 1 秒按住的累计转角略小于 90°，用指数渐近的解析积分算期望值：
         // θ = TURN_SPEED × (T − TURN_SMOOTH_TIME × (1 − e^(−T/TURN_SMOOTH_TIME)))。
         let t = 1.0_f32;
-        let theta = TURN_SPEED
-            * (t - TURN_SMOOTH_TIME * (1.0 - (-t / TURN_SMOOTH_TIME).exp()));
+        let theta = TURN_SPEED * (t - TURN_SMOOTH_TIME * (1.0 - (-t / TURN_SMOOTH_TIME).exp()));
         let heading = app.world().get::<Transform>(tank).unwrap().rotation;
         // 车头局部 −X 绕 +Y 左转 θ 后指向 (−cosθ, 0, sinθ)。
         let expected = Vec3::new(-theta.cos(), 0.0, theta.sin());
@@ -363,7 +521,10 @@ mod tests {
         let extent_z = forward.z.abs() * TANK_SIZE.x / 2.0 + side.z.abs() * TANK_SIZE.z / 2.0;
         let wall = crate::ground::FIELD_SIDE / 2.0;
         let stop = transform.translation.z + extent_z;
-        assert!(transform.translation.z > wall - 2.0, "未到达墙：{transform:?}");
+        assert!(
+            transform.translation.z > wall - 2.0,
+            "未到达墙：{transform:?}"
+        );
         assert!(stop <= wall + 0.03, "穿墙：stop={stop} wall={wall}");
         assert!((transform.rotation * Vec3::Y).abs_diff_eq(Vec3::Y, 1e-4));
     }

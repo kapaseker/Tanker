@@ -527,6 +527,7 @@ mod tests {
             },
             FiringPlugin,
             crate::ground::GroundPlugin,
+            crate::track::TrackAnimationPlugin,
         ))
         .init_resource::<avian3d::collider_tree::ColliderTrees>()
         .init_asset::<StandardMaterial>()
@@ -556,11 +557,12 @@ mod tests {
             .spawn((Tank, WorldAssetRoot(tank_asset)))
             .id();
         let enemy_asset: Handle<WorldAsset> =
-            app.world().resource::<AssetServer>().load("tank/enemy/default/default.vox");
+            app.world().resource::<AssetServer>().load("tank/enemy/default/body.vox");
         let enemy = app
             .world_mut()
             .spawn((
                 WorldAssetRoot(enemy_asset.clone()),
+                crate::track::ENEMY_TRACKS,
                 Transform::from_xyz(10.0, 0.7, 0.0),
             ))
             .id();
@@ -584,6 +586,7 @@ mod tests {
             if ready
                 && assets.is_loaded_with_dependencies(&world.resource::<Gun>().bullet_scene)
                 && assets.is_loaded_with_dependencies(&enemy_asset)
+                && world.get::<crate::track::TracksValidated>(enemy).is_some()
                 && world.get::<WorldInstance>(enemy).is_some_and(|instance| {
                     world
                         .resource::<WorldInstanceSpawner>()
