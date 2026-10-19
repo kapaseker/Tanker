@@ -14,7 +14,7 @@ class GroundTests(unittest.TestCase):
         self.assertEqual(len(self.heights), ground.SIZE * ground.SIZE)
         self.assertEqual(len(self.colors), len(self.heights))
         self.assertTrue(0 <= min(self.heights) and max(self.heights) <= 2*ground.LEVEL_MAX)
-        self.assertTrue(set(self.colors) <= {0, 1, 2, 3, 4})
+        self.assertTrue(set(self.colors) <= set(range(len(ground.PALETTE))))
         self.assertGreater(len(set(self.colors)), 1)
 
     def test_terrain_is_grouped_and_covers_a_quarter_to_a_half(self):
@@ -44,7 +44,11 @@ class GroundTests(unittest.TestCase):
         self.assertEqual(heights, self.heights)
         self.assertEqual(colors, self.colors)
         self.assertEqual(ground.HEIGHT_OUTPUT.read_bytes(), ground.encode_height(self.heights))
-        self.assertEqual(ground.ALBEDO_OUTPUT.read_bytes(), bytes(self.colors))
+        # 土色图布局：[数量 u8][数量×3 RGB][索引矩阵]。
+        expected_albedo = (bytes([len(ground.PALETTE)])
+                           + b''.join(bytes(rgb) for rgb in ground.PALETTE)
+                           + bytes(self.colors))
+        self.assertEqual(ground.ALBEDO_OUTPUT.read_bytes(), expected_albedo)
 
 
 if __name__ == '__main__':

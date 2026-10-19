@@ -1,7 +1,9 @@
 //! 加载 600 米见方的地形高度图与土色图，编译成体素风格网格与高度场物理表面。
 //!
-//! 地形由 `scripts/generate_ground.py` 生成两张 1200×1200 的字节图：高度图与土色图，
-//! 存放在 `assets/terrain/<地形名>/` 下（`.ht` 为高度、`.abd` 为土色）。
+//! 地形由 `scripts/generate_ground.py` 生成高度图与土色图，
+//! 存放在 `assets/terrain/<地形名>/` 下：`.ht` 为高度（1200×1200 字节矩阵），
+//! `.abd` 为土色（`[调色板数量 u8][数量×3 字节 RGB][1200×1200 索引字节]`，
+//! 索引指向文件自带的调色板）。
 //! 本模块把高度图编译成 0.1 米台阶的方块网格（视觉）与高度场碰撞体（物理），
 //! 两者同源，因此坑洼与坡道既能看见也能开上去。
 
@@ -38,26 +40,19 @@ const CHUNK_SIDE: f32 = 60.0;
 const CHUNK_CELLS: usize = 120;
 /// 场地单边的分块数（[`FIELD_SIDE`] ÷ [`CHUNK_SIDE`]）。
 const CHUNK_COUNT: usize = 10;
-/// 地面 5 色调色板（sRGB），与 `scripts/generate_ground.py` 的 `PALETTE` 必须一致。
-const GROUND_PALETTE: [[u8; 3]; 5] = [
-    [87, 65, 43],
-    [102, 79, 52],
-    [111, 85, 57],
-    [119, 93, 63],
-    [126, 99, 68],
-];
 /// 竖直面相对顶面的明度系数，按格子奇偶交替，避免大片台阶同色。
 const SIDE_SHADE: [f32; 2] = [0.72, 0.84];
 /// 不可见边界的厚度和高度，单位：米。
 const WALL_THICKNESS: f32 = 2.0;
 const WALL_HEIGHT: f32 = 8.0;
 
-/// 地形图的原始字节：高度图（`.ht`）每格一个高度档位（[`FLAT`] 为 0 米，每档 0.1 米），
-/// 土色图（`.abd`）每格一个 [`GROUND_PALETTE`] 下标；两张图共用本类型，由文件名区分。
+/// 地形图的原始字节：高度图（`.ht`）每格一个高度档位（[`FLAT`] 为 0 米，每档 0.1 米）；
+/// 土色图（`.abd`）为调色板 + 索引矩阵（格式见 [`parse_albedo`]）。
+/// 本类型只承载原始字节，格式校验由使用方在主线程 panic。
 #[derive(Asset, TypePath, Debug)]
 struct GroundMap(Vec<u8>);
 
-/// 读取地形图的 `.ht` / `.abd` 字节流，并校验长度与 [`MAP_SIDE`] 对齐。
+/// 读取地形图的 `.ht` / `.abd` 字节流；只负责搬运字节，格式校验由 [`spawn_terrain`] panic。
 #[derive(Default, TypePath)]
 struct GroundMapLoader;
 
@@ -74,16 +69,6 @@ impl AssetLoader for GroundMapLoader {
     ) -> Result<Self::Asset, Self::Error> {
         let mut bytes = Vec::with_capacity(MAP_SIDE * MAP_SIDE);
         reader.read_to_end(&mut bytes).await?;
-        if bytes.len() != MAP_SIDE * MAP_SIDE {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!(
-                    "地形图应为 {} 字节，实际 {} 字节；请先运行 scripts/generate_ground.py",
-                    MAP_SIDE * MAP_SIDE,
-                    bytes.len()
-                ),
-            ));
-        }
         Ok(GroundMap(bytes))
     }
 
@@ -149,9 +134,18 @@ fn spawn_terrain(
     let (Some(heights), Some(colors)) = (maps.get(&ground.heights), maps.get(&ground.colors)) else {
         return;
     };
+    // 资产坏文件即死：主线程 panic，原因即错误日志，不带病运行。
+    if heights.0.len() != MAP_SIDE * MAP_SIDE {
+        panic!(
+            "地形高度图不合规：应为 {} 字节，实际 {} 字节；请重新运行 scripts/generate_ground.py",
+            MAP_SIDE * MAP_SIDE,
+            heights.0.len()
+        );
+    }
+    let (palette, indices) = parse_albedo(&colors.0);
 
     let material = materials.add(StandardMaterial {
-        base_color_texture: Some(images.add(terrain_texture(&colors.0))),
+        base_color_texture: Some(images.add(terrain_texture(indices, &palette))),
         // 与 VOX 场景地板一致的哑光土质：粗糙度 1、非金属。
         perceptual_roughness: 1.0,
         metallic: 0.0,
@@ -169,7 +163,8 @@ fn spawn_terrain(
         for col in 0..CHUNK_COUNT {
             let chunk = build_chunk(&ChunkSource {
                 levels: &levels,
-                colors: &colors.0,
+                colors: indices,
+                palette: &palette,
                 side: MAP_SIDE,
                 start: (row * CHUNK_CELLS, col * CHUNK_CELLS),
                 cells: CHUNK_CELLS,
@@ -209,11 +204,44 @@ fn heights_as_meters(heights: &[u8]) -> Vec<Vec<f32>> {
         .collect()
 }
 
-/// 由土色图构造 [`MAP_SIDE`]² 的 sRGB 贴图；最近邻采样让色块边界与 0.1 米网格对齐。
-fn terrain_texture(colors: &[u8]) -> Image {
-    let mut data = Vec::with_capacity(colors.len() * 4);
-    for index in colors {
-        let [red, green, blue] = GROUND_PALETTE[*index as usize % GROUND_PALETTE.len()];
+/// 解析土色图 `.abd`：`[调色板数量 u8][数量×3 字节 sRGB][1200×1200 索引字节]`。
+/// 返回 (调色板, 索引矩阵)；文件不规范时 panic，panic 消息即错误日志。
+fn parse_albedo(bytes: &[u8]) -> (Vec<[u8; 3]>, &[u8]) {
+    let panic_invalid = |reason: String| -> ! {
+        panic!("地形土色图不合规：{reason}；请重新运行 scripts/generate_ground.py")
+    };
+    let Some(&count) = bytes.first() else {
+        panic_invalid("文件为空".into());
+    };
+    if count == 0 {
+        panic_invalid("调色板数量为 0".into());
+    }
+    let expected = 1 + count as usize * 3 + MAP_SIDE * MAP_SIDE;
+    if bytes.len() != expected {
+        panic_invalid(format!(
+            "调色板 {count} 色时应为 {expected} 字节，实际 {} 字节",
+            bytes.len()
+        ));
+    }
+    let palette = bytes[1..1 + count as usize * 3]
+        .chunks_exact(3)
+        .map(|rgb| [rgb[0], rgb[1], rgb[2]])
+        .collect();
+    let indices = &bytes[1 + count as usize * 3..];
+    if let Some((at, index)) = indices.iter().enumerate().find(|(_, index)| **index >= count) {
+        panic_invalid(format!(
+            "第 {at} 格下标 {index} 超出调色板数量 {count}"
+        ));
+    }
+    (palette, indices)
+}
+
+/// 由土色索引矩阵构造 [`MAP_SIDE`]² 的 sRGB 贴图；最近邻采样让色块边界与 0.1 米网格对齐。
+/// 索引已由 [`parse_albedo`] 校验，这里直接查表。
+fn terrain_texture(indices: &[u8], palette: &[[u8; 3]]) -> Image {
+    let mut data = Vec::with_capacity(indices.len() * 4);
+    for index in indices {
+        let [red, green, blue] = palette[*index as usize];
         data.extend([red, green, blue, u8::MAX]);
     }
     let mut image = Image::new(
@@ -308,8 +336,10 @@ fn report_ground(
 struct ChunkSource<'a> {
     /// 整图的量化档位（高度字节 − [`FLAT`]），单位 0.1 米，0 为平地。
     levels: &'a [i32],
-    /// 整图的调色板下标，与 `levels` 同尺寸。
+    /// 整图的调色板下标，与 `levels` 同尺寸；已由 [`parse_albedo`] 校验越界。
     colors: &'a [u8],
+    /// 文件自带的土色调色板（sRGB）。
+    palette: &'a [[u8; 3]],
     /// 整图单边采样数。
     side: usize,
     /// 本块在整图中的采样起点（行 i0、列 j0）。
@@ -367,6 +397,7 @@ fn build_chunk(source: &ChunkSource) -> Mesh {
     let ChunkSource {
         levels,
         colors: color_map,
+        palette,
         side,
         start,
         cells,
@@ -439,7 +470,7 @@ fn build_chunk(source: &ChunkSource) -> Mesh {
             buffers.push_quad(
                 [[x0, y, z0], [x0, y, z1], [x1, y, z1], [x1, y, z0]],
                 Vec3::Y,
-                palette_color(color),
+                palette_color(color, palette),
                 [[u0, v0], [u0, v1], [u1, v1], [u1, v0]],
             );
         }
@@ -452,7 +483,7 @@ fn build_chunk(source: &ChunkSource) -> Mesh {
             let i = row0 as i64 + di as i64;
             let j = col0 as i64 + dj as i64;
             let level = level_at(i, j);
-            let color = palette_color(color_at(i, j));
+            let color = palette_color(color_at(i, j), palette);
             let (z0, z1) = (world_z(j), world_z(j + 1));
             let (x0, x1) = (world_x(i), world_x(i + 1));
             // 场地外缘的相邻格由 level_at 视为平地，因此不需要额外判断边界。
@@ -523,9 +554,9 @@ fn push_step(
     }
 }
 
-/// 调色板下标 → 线性 RGBA。
-fn palette_color(index: u8) -> LinearRgba {
-    let [red, green, blue] = GROUND_PALETTE[index as usize % GROUND_PALETTE.len()];
+/// 调色板下标 → 线性 RGBA；下标已由 [`parse_albedo`] 校验。
+fn palette_color(index: u8, palette: &[[u8; 3]]) -> LinearRgba {
+    let [red, green, blue] = palette[index as usize];
     Srgba::rgb_u8(red, green, blue).into()
 }
 
@@ -549,6 +580,7 @@ mod tests {
         build_chunk(&ChunkSource {
             levels: &levels,
             colors: &[2u8; 16],
+            palette: &[[87, 65, 43], [102, 79, 52], [111, 85, 57], [119, 93, 63], [126, 99, 68]],
             side: 4,
             start: chunk,
             cells: 4,
@@ -619,5 +651,46 @@ mod tests {
         assert!((aabb.max.x - FIELD_SIDE / 2.0).abs() < 0.001);
         assert!((aabb.min.y - -0.5).abs() < 0.001);
         assert!((aabb.max.y - TERRAIN_HALF_RANGE).abs() < 0.001);
+    }
+
+    /// 5 色合法 `.abd` 样本：数量字节 + 15 字节调色板 + 全 0 索引矩阵。
+    fn valid_albedo() -> Vec<u8> {
+        let mut bytes = vec![5u8];
+        bytes.extend_from_slice(&[
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+        ]);
+        bytes.resize(1 + 15 + MAP_SIDE * MAP_SIDE, 0);
+        bytes
+    }
+
+    /// 合法 `.abd` 应拆出完整调色板与索引矩阵。
+    #[test]
+    fn parse_albedo_reads_palette_and_indices() {
+        let bytes = valid_albedo();
+        let (palette, indices) = parse_albedo(&bytes);
+        assert_eq!(palette.len(), 5);
+        assert_eq!(palette[0], [1, 2, 3]);
+        assert_eq!(palette[4], [13, 14, 15]);
+        assert_eq!(indices.len(), MAP_SIDE * MAP_SIDE);
+        assert_eq!(indices[0], 0);
+    }
+
+    /// 长度与调色板数量不匹配即死。
+    #[test]
+    #[should_panic(expected = "地形土色图不合规")]
+    fn parse_albedo_panics_on_wrong_size() {
+        let mut bytes = valid_albedo();
+        bytes.pop();
+        parse_albedo(&bytes);
+    }
+
+    /// 索引超出调色板数量即死，并指出位置。
+    #[test]
+    #[should_panic(expected = "超出调色板数量")]
+    fn parse_albedo_panics_on_out_of_range_index() {
+        let mut bytes = valid_albedo();
+        let last = bytes.len() - 1;
+        bytes[last] = 5;
+        parse_albedo(&bytes);
     }
 }
