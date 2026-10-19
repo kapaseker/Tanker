@@ -4,7 +4,7 @@
 
 ## 2026-10-19：高度场平地上的直行阻塞
 
-分类：游戏运行集成 / 地形碰撞 / 驾驶。状态：已定位根因（高度场内部边缘幽灵接触）；修复方案已记录，尚未实施与验证。
+分类：游戏运行集成 / 地形碰撞 / 驾驶。状态：已修复并验证（2026-10-19 当日实施，见文末"修复实施与验收"）。
 
 本次用户明确要求只实现测试工具，记录问题，不修改地形碰撞。下述观测已重复出现；具体修复方案仍需进一步验证。没有为了确认这个问题打开可见窗口。
 
@@ -88,7 +88,7 @@ friction：0
 
 机制：高度场每个格子剖分为两个三角形，逐三角形计算接触流形时，内部剖分边可能被选为接触特征；方盒前底棱滑过内部边时产生带水平分量的假接触法线，逆着运动方向顶掉水平速度。
 
-### 修复方向（候选，未验证）
+### 修复方向（已实施，细节见文末）
 
 Avian 0.7.0 通过 `pub extern crate parry3d as parry` 重导出 Parry（`lib.rs`），且 `Collider` 实现了 `From<SharedShape>`（`Collider::heightfield` 内部的 `.into()` 可证）。因此不新增依赖即可手工构造带 flags 的高度场碰撞体，替换 `src/ground.rs` 中 `Collider::heightfield` 的调用：
 
@@ -107,13 +107,45 @@ let shape = SharedShape::heightfield_with_flags(
 let collider = Collider::from(shape);
 ```
 
-该方案只改碰撞体构造，不改地形数据、不断言降级。效果（直行恢复、不引入新的穿透或颠簸）必须经下节的验收流程确认后才算修复成立；若 flags 无效，再回到接触数据继续排查。
+实施时核对锁定版源码确认了一个关键细节：Parry 的 `Array2` 是**列主序**存储（`flat_index(i,j) = i + j*nrows`），而 `HeightField` 的行索引沿 z、列索引沿 x。Avian 的 `Vec<Vec>` 行主序展平恰好被列主序存储转置一次，再被 Parry 的"行=z"读取转置一次，两次抵消——所以 `data` 必须按**行主序**展平（与 Avian 内部一致），否则会引入物理地形与视觉网格关于 x=z 对角线镜像的转置 bug。`src/ground.rs` 的 `heightfield_collider` 已按此实现，并有专门测试同时校验 flags 与世界映射（抬高采样格必须出现在 `x_at/z_at` 对应位置、镜像位置保持平地）。
 
 ### 证据路径与后续验收
 
 本机最终证据位于 `.scratch/offscreen-verification/drive-final-03/`：`report.txt`、`frame-000000.png`、`frame-000180.png`、`frame-000300.png`。`.scratch/` 被 Git 忽略，仅本机保留；本文作为仓库内的长期记录保留复现条件和关键数据。
 
 后续修复应先按“修复方向”一节，用小型无窗口物理测试在真实高度场上复现同类接触，并验证 `FIX_INTERNAL_EDGES` 的效果。修复后应保持真实高度场，重新运行 `drive`，检查三个关键帧、直行位移、两侧履带里程、转向与相机跟随，并保留同一环境的修改前后证据。不能改用平面场地让集成场景通过。
+
+### 修复实施与验收（2026-10-19）
+
+按上文修复方向实施：`src/ground.rs` 新增 `terrain_collider` / `heightfield_collider`，地形碰撞体改用 `SharedShape::heightfield_with_flags` 构造并设置 `FIX_INTERNAL_EDGES`；地形数据、断言与离屏场景均未改动。验收结果：
+
+- 单元测试 `fix_internal_edges_unblocks_straight_driving_on_real_terrain` 在真实 `ground.ht` 高度场上用真实 Avian + 驾驶系统复现并验证：空 flags 对照组直行受阻（位移不足 2 米），开启 `FIX_INTERNAL_EDGES` 后 3 秒前进超过 10 米。另有测试校验碰撞体 flags 与"行沿 X、列沿 Z"世界映射未被展平顺序转置。
+- `cargo test` 38 项全部通过；`cargo check --all-targets` 通过。
+- 离屏 `drive`（`.scratch/offscreen/drive-fix-01/`，退出码 0）：直行 3 秒前进 16.79 米、两侧履带里程各 16.78 米、转弯偏航变化大于 1 弧度、相机跟随正常；第 0、180、300 帧已人工读取检查，坦克贴地无穿透、无异常颠簸。
+- 离屏 `scene`（`.scratch/offscreen/scene-fix-01/`）与 `combat`（`.scratch/offscreen/combat-fix-01/`）回归通过，敌人布局与击毁清理不受影响。
+- 本次验证宿主为 Linux，GPU 为 AMD Radeon 780M（RADV PHOENIX），Vulkan 后端；补充了此前"未在 Linux 复现"的空白。原始失败证据出自 Windows RTX 4060，两环境结论一致。
+
+### 地形碰撞体素化与 drive 场景适配（2026-10-19）
+
+上节的高度场方案彻底去除了内部边幽灵接触，但高度场在相邻采样间线性插值，物理上仍是隐形斜坡：视觉是 0.1 米台阶的坎，坦克却平滑滑上，与体素风格不符。本次将地形碰撞体替换为与视觉网格同源的体素台阶复合碰撞体（`collider_cuboids`：同档位贪心合并矩形 → cuboid，顶面即台阶顶、侧面即竖直坎），坦克碰撞体改为等尺寸圆角盒（`STEP_CLIMB_RADIUS = 0.2` 米），使其能翻越一档（0.1 米）矮坎，两档及以上为墙。实验依据：圆角半径必须大于坎高，翻坎才存在向上接触法线（半径 0.1 米翻不过 0.1 米坎）。
+
+行为变化：真实地形对坦克成为有意障碍。drive 首跑（`.scratch/offscreen/drive-voxel-01/`，证据保留）直行 3 秒仅前进 6.4 米——坦克在 x≈−6.4 米处撞上出生平地（半径 8 米圆）外 x=−8 米处 0.2 米的真实台阶墙，属体素碰撞的预期行为而非幽灵接触失效。据此适配 drive 场景：直行段缩短为 1 秒（60 帧，车头前缘仍留在出生平地内），直行断言由 10 米改为 4 米，转弯段改为 61–180 帧。旧断言"3 秒直行 >10 米"依赖隐形斜坡的可通行性，已过时。
+
+验收：`cargo test` 38 项通过（含 `tank_climbs_one_voxel_step` 翻坎回归与 `voxel_collider_keeps_straight_driving_on_real_terrain` 无幽灵接触回归）；离屏 `drive`（`.scratch/offscreen/drive-voxel-02/`）1 秒直行 6.00 米、履带里程 6.00/6.00、转弯偏航 2.9 弧度，`scene` 与 `combat` 回归通过，关键帧已人工检查坦克贴地、翻坎、开炮正常。
+
+### 出生出口缓坡（2026-10-19）
+
+体素碰撞落地后发现：出生平地（高度 0.0）低于周边地形，且正前方向（−X）的坑沿恰为 2 档（0.2 米），超过坦克 1 档翻坎上限，出生后直行无法离开出生区（其余方向坑沿多为 1 档可翻出）。按用户决策修改 `scripts/generate_ground.py`：新增 `spawn_exit_ramp`，在直行方向开半宽 2.5 米的走廊，坑沿只削不填为每 2 米升 1 档的台阶。固定种子重生成后仅 40 格变化（x∈[−9.75,−8.25]、z∈[−2.25,2.25]，0.2→0.1），`.abd` 不变。新增回归测试 `tank_exits_spawn_pit_straight_ahead`（真实 `ground.ht` 直行爬出出生坑）；`cargo test` 39 项通过，离屏 drive/scene/combat 回归通过（`.scratch/offscreen/*-exit-01/`），关键帧确认坦克直行爬出出生区。
+
+### 移除出生圆坑并全局限制台阶为 1 档（2026-10-19）
+
+用户要求：直接出生在大平面上（去掉"坑中平地"的圆坑），且全图不允许出现 0.2 米的坎——所有坎必须是 0.1 米跨度。再次修改 `scripts/generate_ground.py`：
+
+- 删除 `flat_pad`（8 米圆 pad，正是圆坑成因）与 `spawn_exit_ramp`；改为 `SPAWN_CLEAR_M = 24`：出生保护区内不铺任何地形片区，与场地其他绝对平地同高（0.0）。
+- 新增 `limit_slopes`：对整图取 1-Lipschitz 下包络（带权 chamfer 正反扫描直到稳定），相邻格高度差全部压到 1 级（0.1 米）以内；只削不填，坑底与坡顶极值、片区分布不变。
+- Rust 侧用数据契约测试 `real_terrain_has_only_one_level_steps_and_flat_spawn` 替换原出口测试，直接校验真实 `ground.ht` 的两条硬约束（全图 4 邻接高度差 ≤1 级、出生 24 米平区全平）。
+
+验证：重生成后全图 0 条超限边、出生平区 0 非平地格、覆盖 35.0%；`cargo test` 39 项通过；离屏 drive/scene/combat 回归通过（`.scratch/offscreen/*-flat-01/`），scene 关键帧确认出生点为开阔平面、无圆坑。地形台阶全部在坦克翻越能力内，游戏内任意路线均可通行。
 
 ## 本次工具交付的验证范围
 

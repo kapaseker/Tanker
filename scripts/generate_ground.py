@@ -1,6 +1,6 @@
 """用标准库生成 600×600 米场地的地形图（高度 + 土色）：python3 scripts/generate_ground.py。
 
-输出两张紧凑地图（高度图 1200×1200 字节，土色图含文件自带调色板），由 Rust 侧编译成体素风格网格与高度场碰撞体：
+输出两张紧凑地图（高度图 1200×1200 字节，土色图含文件自带调色板），由 Rust 侧编译成体素风格网格与体素台阶碰撞体：
 - assets/terrain/ground/ground.ht：高度值，10 为平地，0 / 20 对应 −1.0 / +1.0 米（每级 0.1 米）
 - assets/terrain/ground/ground.abd：调色板 + 索引（[数量 u8][数量×3 RGB][1200×1200 索引]，索引指向文件自带调色板）
 
@@ -8,6 +8,7 @@
 x = (row + 0.5 − SIZE/2) × AUTHOR_RES，z = (col + 0.5 − SIZE/2) × AUTHOR_RES。
 
 地形分布：少量大片区 + 若干小片区，坑洼与坡道混合；非平地覆盖 25%–45%，其余为绝对平地。
+全图经过坡度限制：相邻格高度差不超过 1 级（0.1 米），与坦克翻坎能力匹配。
 """
 import math
 from pathlib import Path
@@ -48,8 +49,9 @@ SEED_TRIES = 24
 COVER_TARGET = (.26, .34)
 COVER_LIMIT = .38
 COVER_RANGE = (.25, .45)
-# 出生点保护半径（米）：玩家出生处必须绝对平坦。
-SPAWN_PAD_M = 8.
+# 出生保护区半径（米）：区域内不铺任何地形片区，玩家直接出生在大平面上，
+# 与场地其他绝对平地同高（0.0），不存在"坑中平地"的圆坑。
+SPAWN_CLEAR_M = 24.
 # 片区尺度（米）、数量上限与调色板斑块数量；大片区刻意少而大，保证大片留白。
 BIG_DIAMETER = (140., 260.)
 SMALL_DIAMETER = (12., 32.)
@@ -102,11 +104,16 @@ def apply_region(values, rng, diameter, pit, nonflat):
     坑洼用余弦径向 falloff 从边缘的 0 平滑降到中心 −RELIEF_MAX；坡道沿随机方向
     做单向单调坡（落差 ≤ 2×RELIEF_MAX），只在垂直于坡向的两侧收边，使坡顶与坡底
     真正达到 ±RELIEF_MAX。片区重叠时取形变更强的一方，避免叠加出超深坑或超高山包。
+    出生保护区内不铺任何形变，保证玩家直接出生在绝对平面上。
     """
     center = (rng.uniform(0, SIZE), rng.uniform(0, SIZE))
     direction = rng.uniform(0, math.tau)
+    clear_cells = SPAWN_CLEAR_M / AUTHOR_RES
     added = 0
     for cell, r, tau, side in region_cells(rng, center, diameter, direction):
+        x, y = cell % SIZE, cell // SIZE
+        if math.hypot(x + .5 - HALF, y + .5 - HALF) < clear_cells:
+            continue
         falloff = .5 + .5*math.cos(math.pi*(r if pit else side))
         relief = -falloff if pit else (1 - 2*tau)*falloff
         level = max(-LEVEL_MAX, min(LEVEL_MAX, round(relief*RELIEF_MAX/VOXEL)))
@@ -119,20 +126,41 @@ def apply_region(values, rng, diameter, pit, nonflat):
     return nonflat + added
 
 
-def flat_pad(values, nonflat):
-    """出生点保护：中心半径 SPAWN_PAD_M 内强制平地，返回更新后的非平地格数。"""
-    radius = SPAWN_PAD_M / AUTHOR_RES
-    low, high = math.floor(HALF - radius), math.ceil(HALF + radius)
-    removed = 0
-    for y in range(low, high):
-        for x in range(low, high):
-            if math.hypot(x + .5 - HALF, y + .5 - HALF) > radius:
-                continue
-            cell = y*SIZE + x
-            if values[cell] != FLAT:
-                values[cell] = FLAT
-                removed += 1
-    return nonflat - removed
+def limit_slopes(values):
+    """坡度限制：把相邻格高度差压到 1 级（0.1 米）以内。
+
+    体素碰撞的坦克只能翻 1 档坎，因此整图不允许出现跳 2 级以上的坎。这里取
+    原地形的 1-Lipschitz 下包络：每格高度收到"不超过任一邻居 +1 级"（带权
+    chamfer 松弛，正反两遍扫描直到稳定）。只削不填——绝对平地保持平地，
+    陡坎与坡面陡处被削成逐格 1 级的台阶，坑底与坡顶的极值不变，
+    非平地的分布（哪些片区存在）也不变。
+    """
+    for _ in range(16):
+        changed = False
+        for reverse in (False, True):
+            cells = range(SIZE * SIZE)
+            if reverse:
+                cells = reversed(cells)
+            for cell in cells:
+                v = values[cell]
+                x, y = cell % SIZE, cell // SIZE
+                if not reverse:
+                    # 正向扫描：已定值的上、左邻居把当前格向下收紧。
+                    if x > 0:
+                        v = min(v, values[cell - 1] + 1)
+                    if y > 0:
+                        v = min(v, values[cell - SIZE] + 1)
+                else:
+                    # 反向扫描：已定值的下、右邻居继续向下收紧。
+                    if x < SIZE - 1:
+                        v = min(v, values[cell + 1] + 1)
+                    if y < SIZE - 1:
+                        v = min(v, values[cell + SIZE] + 1)
+                if v != values[cell]:
+                    values[cell] = v
+                    changed = True
+        if not changed:
+            return
 
 
 def component_stats(values):
@@ -201,7 +229,7 @@ def generate_maps():
             nonflat = apply_region(values, rng, diameter, rng.random() < .5, nonflat)
             if nonflat/len(values) >= COVER_LIMIT:
                 break
-        nonflat = flat_pad(values, nonflat)
+        limit_slopes(values)
         ratio = nonflat/len(values)
         if not COVER_RANGE[0] <= ratio <= COVER_RANGE[1]:
             continue

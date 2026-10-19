@@ -8,7 +8,7 @@
 
 - 世界单位：1 世界单位 = 1 米，由 `VoxScenePlugin` 的全局 `VoxLoaderSettings` 统一设定（`src/main.rs`）。
 - 体素格：MagicaVoxel 单格边长 = 0.1 米（`VOXEL_SIZE`，`src/main.rs`）；所有 `.vox` 模型尺寸都按“格数 × 0.1”换算。
-- 地形栅格：地形图按 0.5 米采样作者化，视觉网格与高度场统一量化到 0.1 米台阶（`AUTHOR_RES` / `TERRAIN_STEP`，`src/ground.rs`）。
+- 地形栅格：地形图按 0.5 米采样作者化，视觉网格与碰撞体统一量化到 0.1 米台阶（`AUTHOR_RES` / `TERRAIN_STEP`，`src/ground.rs`）。
 - VOX 轴向映射：VOX 的 Z 为高度（→ Bevy +Y），VOX 的 Y 为宽度（→ Bevy Z），VOX 的 +X 为车头方向（→ Bevy −X）。
 - 尺寸约定：下表 X 为车长方向、Y 为高度、Z 为车宽方向；坦克车头朝局部 −X（`src/driving.rs`）。
 
@@ -16,8 +16,8 @@
 
 | 部件 | 网格尺寸（VOX X×Y×Z，格） | X 长 | Y 高 | Z 宽 | 权威定义 | 备注 |
 |---|---|---|---|---|---|---|
-| 玩家坦克 | 32×26×15 | 3.2 | 1.5 | 2.6 | `TANK_SIZE`（`src/driving.rs`） | 整车箱形碰撞体；`assets/tank/player/default/body.vox` + `assets/tank/tracks/player/lugged/default.vox` |
-| 敌人坦克 | 34×26×14 | 3.4 | 1.4 | 2.6 | `ENEMY_SIZE`（`src/enemy.rs`） | 箱形碰撞体包含炮管旁空隙；`assets/tank/enemy/default/body.vox` + `assets/tank/tracks/enemy/lugged/default.vox` |
+| 玩家坦克 | 32×26×15 | 3.2 | 1.5 | 2.6 | `TANK_SIZE` / `STEP_CLIMB_RADIUS`（`src/driving.rs`） | 整车圆角箱形碰撞体（圆角 0.2 m，能翻 1 档 0.1 m 台阶，总尺寸不变）；`assets/tank/player/default/body.vox` + `assets/tank/tracks/player/lugged/default.vox` |
+| 敌人坦克 | 34×26×14 | 3.4 | 1.4 | 2.6 | `ENEMY_SIZE` / `STEP_CLIMB_RADIUS`（`src/enemy.rs` 经 `body_for_size`） | 圆角箱形碰撞体包含炮管旁空隙（圆角 0.2 m）；`assets/tank/enemy/default/body.vox` + `assets/tank/tracks/enemy/lugged/default.vox` |
 | 子弹 | 4×4×4 | 0.4 | 0.4 | 0.4 | `BULLET_SIZE`（`src/firing.rs`） | 立方体；子弹性 `assets/bullet.vox` |
 
 坦克与敌人的视觉包围盒有集成测试断言，与上表一致（`src/firing.rs` 中 `real_vox_assets_fire_and_clean_up_scene_instances`）。
@@ -42,7 +42,7 @@
 | 地形起伏 | ±1 m，量化到 0.1 m 一级（平地字节值 10，0/20 对应 −1.0/+1.0 m） | `TERRAIN_HALF_RANGE` / `TERRAIN_STEP` / `FLAT`（`src/ground.rs`） |
 | 地形视觉网格 | 600 m 场地按 10 × 10 块编译（每块 60 m / 120 采样），顶面贪心合并、边界生成 0.1 m 台阶竖直面 | `CHUNK_SIDE` / `CHUNK_COUNT` / `CHUNK_CELLS` / `build_chunk()`（`src/ground.rs`） |
 | 地形分布 | 少量大片区 + 若干小片区，往返旋转椭圆；非平地覆盖 25%–45%（目标 26%–34%）；出生点周围 8 m 强制平地 | `COVER_RANGE` / `BIG_DIAMETER` / `SMALL_DIAMETER` / `SPAWN_PAD_M`（`scripts/generate_ground.py`） |
-| 地形物理表面 | Avian 高度场碰撞体，缩放 (600, 1, 600) m；外层行沿 X、内层列沿 Z，值为米 | `Collider::heightfield` + `heights_as_meters()`（`src/ground.rs`） |
+| 地形物理表面 | 体素台阶复合碰撞体：每 60 m 分块一个 Avian compound，cuboid 由同档位（忽略颜色）贪心合并矩形生成，顶面量化 0.1 m、底面统一 −1.1 m，侧面即竖直坎；无高度场插值隐形斜坡 | `Collider::compound` + `collider_cuboids()` / `COLLIDER_BASE_Y`（`src/ground.rs`） |
 | 竞技场围墙 | 四面；厚 2 m、高 8 m，横竖墙长 = 边长 + 4 m，内侧与场地边缘对齐 | `WALL_THICKNESS` / `WALL_HEIGHT`（`src/ground.rs`） |
 
 地形不再来自 `.vox` 模型：`assets/ground.vox` 已退役删除，视觉与物理均由 `ground.ht` 编译而来，两者同源，因此坑洼与坡道既可见也可开上去。地形资产按 `assets/terrain/<地形名>/` 组织，每个地形目录含 `ground.ht`（高度）与 `ground.abd`（土色）。

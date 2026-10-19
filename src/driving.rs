@@ -72,10 +72,19 @@ impl Plugin for DrivingPlugin {
 
 /// 简化刚体承托整个模型，锁住全部旋转（俯仰、侧倾、偏航）。
 /// 偏航由驾驶系统直接积分写入，物理接触（起伏地形、碰撞）无法扭转车头，
-/// 避免高度场隐形台阶的接触冲量把直线行驶扭成蛇形。
+/// 避免体素台阶的接触冲量把直线行驶扭成蛇形。
 pub(super) fn tank_body() -> impl Bundle {
     body_for_size(TANK_SIZE)
 }
+
+/// 坦克碰撞体的圆角半径，单位：米。
+///
+/// 体素地形碰撞体是垂直台阶（cuboid 侧面），纯方盒撞任何坎都会被水平法线
+/// 挡死。圆角大于一档坎高（0.1 米）时，坎顶边缘低于圆心，接触法线带向上
+/// 分量，坦克借行驶推力翻上矮坎；两档及以上的高坎仍是墙。圆角通过
+/// "核心盒收短 2×半径 + 圆角半径"合成，碰撞体总尺寸与 [`TANK_SIZE`] 等车身
+/// 尺寸保持一致。
+const STEP_CLIMB_RADIUS: f32 = 0.2;
 
 /// 按整车尺寸创建共享驾驶刚体与逐车状态；尺寸单位为米，敌人不接玩家输入。
 pub(super) fn body_for_size(size: Vec3) -> impl Bundle {
@@ -83,7 +92,13 @@ pub(super) fn body_for_size(size: Vec3) -> impl Bundle {
         DrivingInput::default(),
         TurnRate::default(),
         RigidBody::Dynamic,
-        Collider::cuboid(size.x, size.y, size.z),
+        // 圆角箱形碰撞体：外形不变、四角收圆，让坦克能翻越一档体素台阶。
+        Collider::round_cuboid(
+            size.x - 2.0 * STEP_CLIMB_RADIUS,
+            size.y - 2.0 * STEP_CLIMB_RADIUS,
+            size.z - 2.0 * STEP_CLIMB_RADIUS,
+            STEP_CLIMB_RADIUS,
+        ),
         LockedAxes::new()
             .lock_rotation_x()
             .lock_rotation_y()
