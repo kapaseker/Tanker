@@ -5,19 +5,28 @@
 
 use bevy::{asset::LoadState, prelude::*, world_serialization::WorldAsset};
 
-/// 敌人模型的 X 长、Y 高、Z 宽，单位：米，与生成器的 34×26×14 格对应。
-pub(super) const ENEMY_SIZE: Vec3 = Vec3::new(3.4, 1.4, 2.6);
+/// 非炮管碰撞尺寸（长、高、宽），单位米；高度直接复用玩家权威值。
+pub(super) const ENEMY_SIZE: Vec3 = Vec3::new(
+    (crate::enemy_model::COLLISION_MAX[0] - crate::enemy_model::COLLISION_MIN[0]) as f32
+        * crate::VOXEL_SIZE,
+    crate::driving::TANK_SIZE.y,
+    (crate::enemy_model::COLLISION_MAX[1] - crate::enemy_model::COLLISION_MIN[1]) as f32
+        * crate::VOXEL_SIZE,
+);
 /// 单轮敌人数；被击毁后不补充。
 pub(super) const ENEMY_COUNT: usize = 10;
 /// 交战区半径，单位：米；出生中心在该半径内均匀采样，离 300 米场地边缘留有充足余量。
 const SPAWN_LIMIT: f32 = 120.0;
-/// 敌人与玩家出生点的最小水平中心距离，单位：米。
-const PLAYER_CLEARANCE: f32 = 10.0;
-/// 敌人之间的最小水平中心距离，单位：米。
-const ENEMY_CLEARANCE: f32 = 6.0;
+/// 水平外接圆之间保留的净空，单位米；覆盖随机朝向，避免出生时接触。
+const SPAWN_GAP: f32 = 1.0;
+
+/// 两种底盘的最小中心距，外接圆保证任意偏航均有净空。
+fn spawn_clearance(a: Vec3, b: Vec3) -> f32 {
+    a.xz().length() / 2.0 + b.xz().length() / 2.0 + SPAWN_GAP
+}
 /// 拒绝采样总次数上限，防止地图或间距变动后卡住启动。
 const SPAWN_ATTEMPTS: usize = 1000;
-/// 出生下落起点高度，单位：米；高于全场最高地形（+1.0）加半车高（0.7），
+/// 出生下落起点高度，单位：米；高于全场最高地形（+1.0）加半车高（1.3），
 /// 落体由物理引擎沉降到地形表面，无需采样高度图。
 const SPAWN_DROP_Y: f32 = 3.0;
 
@@ -42,7 +51,24 @@ pub(super) struct EnemyPlugin;
 impl Plugin for EnemyPlugin {
     fn build(&self, app: &mut App) {
         // 生成等待 TerrainReady（Update 轮询），确保下落前地形碰撞体已存在。
-        app.add_systems(Update, (spawn_enemies, report_enemy));
+        app.add_systems(Update, (spawn_enemies, spawn_enemy_barrels, report_enemy));
+    }
+}
+
+/// 敌人根加入时零偏移安装独立炮管；无碰撞体，不赋予敌人开火能力。
+pub(super) fn spawn_enemy_barrels(
+    mut commands: Commands,
+    assets: Res<AssetServer>,
+    enemies: Query<Entity, Added<EnemyTank>>,
+) {
+    for enemy in &enemies {
+        let barrel = commands
+            .spawn((
+                Name::new("enemy_barrel"),
+                WorldAssetRoot(assets.load("tank/barrels/enemy/default.vox")),
+            ))
+            .id();
+        commands.entity(enemy).add_child(barrel);
     }
 }
 
@@ -54,10 +80,10 @@ fn spawn_transforms(rng: &mut fastrand::Rng, player: Vec2) -> Result<Vec<Transfo
             (rng.f32() * 2.0 - 1.0) * SPAWN_LIMIT,
             (rng.f32() * 2.0 - 1.0) * SPAWN_LIMIT,
         );
-        if position.distance(player) < PLAYER_CLEARANCE
-            || transforms
-                .iter()
-                .any(|other| position.distance(other.translation.xz()) < ENEMY_CLEARANCE)
+        if position.distance(player) < spawn_clearance(ENEMY_SIZE, crate::driving::TANK_SIZE)
+            || transforms.iter().any(|other| {
+                position.distance(other.translation.xz()) < spawn_clearance(ENEMY_SIZE, ENEMY_SIZE)
+            })
         {
             continue;
         }
@@ -74,7 +100,7 @@ fn spawn_transforms(rng: &mut fastrand::Rng, player: Vec2) -> Result<Vec<Transfo
 
 /// 与玩家共用驾驶刚体和逐车输入状态，仅碰撞体按敌人尺寸标定。
 /// 零输入控制器停止水平驱动；保留重力和接触求解，允许碰撞导致短暂位移。
-// shortcut: 整车箱形包含炮管旁的空隙，需要精确命中时拆分碰撞形状。
+// shortcut: 整车圆角框包含装甲间空隙，需要逐部件命中时再拆分；炮管不参与碰撞。
 fn enemy_body() -> impl Bundle {
     crate::driving::body_for_size(ENEMY_SIZE)
 }
@@ -115,7 +141,12 @@ fn spawn_enemies(
         ));
     }
     commands.insert_resource(EnemyAsset(scene));
-    info!("已随机放置 {ENEMY_COUNT} 辆敌人坦克");
+    info!(
+        "已随机放置 {ENEMY_COUNT} 辆敌人坦克；碰撞尺寸 {ENEMY_SIZE:?} 米，炮管 {:.1} 米、轴高 {:.1} 米",
+        (crate::enemy_model::BARREL_X.1 - crate::enemy_model::BARREL_X.0) as f32
+            * crate::VOXEL_SIZE,
+        crate::enemy_model::BORE_HEIGHT * crate::VOXEL_SIZE
+    );
 }
 
 /// 加载失败或包含依赖的加载成功各只汇报一次。
@@ -215,6 +246,33 @@ mod tests {
         assert!(app.world().get::<Transform>(player).unwrap().translation.x < stopped.x - 5.0);
     }
 
+    /// 敌人与玩家同高；真实圆角碰撞体在不同偏航下仍遵守非炮管边界。
+    #[test]
+    fn enemy_collision_matches_player_height_and_rotated_contract() {
+        use avian3d::prelude::Collider;
+        assert_eq!(ENEMY_SIZE.y, crate::driving::TANK_SIZE.y);
+        assert_eq!(crate::enemy_model::CANVAS.2, crate::player_model::CANVAS.2);
+        assert!(ENEMY_SIZE.abs_diff_eq(Vec3::new(6.6, 2.6, 3.4), 1e-5));
+        let mut world = World::new();
+        let entity = world.spawn(enemy_body()).id();
+        let collider = world.get::<Collider>(entity).unwrap();
+        for yaw in [
+            0.0,
+            std::f32::consts::FRAC_PI_4,
+            std::f32::consts::FRAC_PI_2,
+        ] {
+            let rotation = Quat::from_rotation_y(yaw);
+            let core = ENEMY_SIZE / 2.0 - Vec3::splat(0.2);
+            let extent = (rotation * Vec3::X * core.x).abs()
+                + Vec3::Y * core.y
+                + (rotation * Vec3::Z * core.z).abs()
+                + Vec3::splat(0.2);
+            let actual = collider.aabb(Vec3::ZERO, rotation, 0.0);
+            assert!(actual.min.abs_diff_eq(-extent, 1e-5));
+            assert!(actual.max.abs_diff_eq(extent, 1e-5));
+        }
+    }
+
     /// 多个固定种子验证完整数量、安全距离及旋转后每个角都在地图内。
     #[test]
     fn random_spawns_respect_clearance_and_rotated_bounds() {
@@ -224,10 +282,13 @@ mod tests {
             assert_eq!(transforms.len(), ENEMY_COUNT);
             for (index, transform) in transforms.iter().enumerate() {
                 let p = transform.translation.xz();
-                assert!(p.length() >= PLAYER_CLEARANCE);
+                assert!(p.length() >= spawn_clearance(ENEMY_SIZE, crate::driving::TANK_SIZE));
                 assert_eq!(transform.translation.y, SPAWN_DROP_Y);
                 for other in &transforms[..index] {
-                    assert!(p.distance(other.translation.xz()) >= ENEMY_CLEARANCE);
+                    assert!(
+                        p.distance(other.translation.xz())
+                            >= spawn_clearance(ENEMY_SIZE, ENEMY_SIZE)
+                    );
                 }
                 for x in [-1.0, 1.0] {
                     for z in [-1.0, 1.0] {

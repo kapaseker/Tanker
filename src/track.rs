@@ -20,21 +20,35 @@ pub(crate) struct TrackSpec {
     path: &'static str,
     /// 整车 X 长、Y 高、Z 宽，单位：米；动画差速及几何校验共用。
     size: Vec3,
-    /// 玩家包包含独立轮节点；敌人继续使用旧六相位格式。
-    wheels: bool,
+    /// 各侧独立轮节点，支持不同车型的轮数。
+    wheels: [&'static [crate::player_model::WheelSpec]; 2],
+    /// VOX 画布用于安装轴心，不能用非炮管碰撞尺寸代替。
+    canvas: (u32, u32, u32),
+    /// 内腔竖直开区间，单位体素格；完整旋转包络必须在其中。
+    clearance: (f32, f32),
 }
 
 /// 玩家默认底盘适配的 lugged 履带。
 pub(crate) const PLAYER_TRACKS: TrackSpec = TrackSpec {
     path: "tank/tracks/player/lugged/default.vox",
     size: TANK_SIZE,
-    wheels: true,
+    wheels: [
+        &crate::player_model::WHEELS[0],
+        &crate::player_model::WHEELS[1],
+    ],
+    canvas: crate::player_model::CANVAS,
+    clearance: (1.0, 11.0),
 };
-/// 默认敌人底盘适配的 lugged 履带，保持敌人原有整车尺寸。
+/// 默认敌人底盘适配的 lugged 履带，左右各四个负重轮和两个端轮。
 pub(crate) const ENEMY_TRACKS: TrackSpec = TrackSpec {
     path: "tank/tracks/enemy/lugged/default.vox",
     size: crate::enemy::ENEMY_SIZE,
-    wheels: false,
+    wheels: [
+        &crate::enemy_model::WHEELS[0],
+        &crate::enemy_model::WHEELS[1],
+    ],
+    canvas: crate::enemy_model::CANVAS,
+    clearance: crate::enemy_model::WHEEL_CLEARANCE,
 };
 /// 相位变体节点名，顺序 [左, 右] × [0, 1, 2]，与履带包场景图一致。
 const VARIANT_NAMES: [[&str; TRACK_PHASES as usize]; 2] = [
@@ -49,8 +63,8 @@ pub(crate) struct TrackAnim {
     variants: [[Entity; TRACK_PHASES as usize]; 2],
     /// 带符号累计里程，单位：米；负值表示履带倒转
     dist: [f32; 2],
-    /// 轮子与相位平级挂载，随坦克销毁；敌人没有独立轮节点。
-    wheels: Option<[[Entity; 7]; 2]>,
+    /// 轮子与相位平级挂载，按车型保存实体，随坦克销毁。
+    wheels: [Vec<Entity>; 2],
     /// 当前显示的相位，与 spawn_tracks 设置的外层初始显隐一致。
     phase: [usize; 2],
 }
@@ -82,7 +96,7 @@ impl Plugin for TrackAnimationPlugin {
     }
 }
 
-/// 在坦克根实体下挂载六个相位及玩家十四个独立轮，并持有全部实体。
+/// 在坦克根实体下挂载六个相位及车型指定的独立轮，并持有全部实体。
 /// 在 Update 中处理新加入的 TrackSpec，覆盖开局玩家及地形就绪后出生的敌人。
 ///
 /// 对齐说明：履带包与车体的 model 均使用统一 SIZE 且体素为全局坐标，
@@ -114,21 +128,21 @@ pub(crate) fn spawn_tracks(
                 children.push(entity);
             }
         }
-        let wheels = spec.wheels.then(|| {
-            crate::player_model::WHEELS.map(|side| {
-                side.map(|wheel| {
+        let wheels = spec.wheels.map(|side| {
+            side.iter()
+                .map(|wheel| {
                     let entity = commands
                         .spawn((
                             Name::new(wheel.name),
                             WorldAssetRoot(assets.load(format!("{}#{}", spec.path, wheel.name))),
-                            wheel_transform(&wheel, 0.0),
+                            wheel_transform(wheel, spec.canvas, 0.0),
                             Visibility::Inherited,
                         ))
                         .id();
                     children.push(entity);
                     entity
                 })
-            })
+                .collect()
         });
         commands.entity(tank).add_children(&children);
         commands.entity(tank).insert(TrackAnim {
@@ -191,7 +205,7 @@ fn validate_tracks(
             .iter()
             .flatten()
             .copied()
-            .chain(anim.wheels.iter().flatten().flatten().copied())
+            .chain(anim.wheels.iter().flatten().copied())
             .collect();
         let mut ready = true;
         let mut failure = None;
@@ -215,28 +229,25 @@ fn validate_tracks(
             }
         }
         if ready && failure.is_none() {
-            if let Some(wheels) = &anim.wheels {
-                for (side, entities) in wheels.iter().enumerate() {
-                    for (index, &root) in entities.iter().enumerate() {
-                        let wheel = &crate::player_model::WHEELS[side][index];
-                        if let Some((low, high)) =
-                            first_mesh_aabb(root, &children, &mesh_parts, &mesh_assets)
+            let wheels = &anim.wheels;
+            for (side, entities) in wheels.iter().enumerate() {
+                for (index, &root) in entities.iter().enumerate() {
+                    let wheel = &spec.wheels[side][index];
+                    if let Some((low, high)) =
+                        first_mesh_aabb(root, &children, &mesh_parts, &mesh_assets)
+                    {
+                        let size = Vec3::new(
+                            wheel.size.0 as f32,
+                            wheel.size.2 as f32,
+                            wheel.size.1 as f32,
+                        ) * crate::VOXEL_SIZE;
+                        if !(high - low).abs_diff_eq(size, 1e-4)
+                            || (high + low).length() > 1e-4
+                            || wheel.center[2] - wheel.envelope <= spec.clearance.0
+                            || wheel.center[2] + wheel.envelope >= spec.clearance.1
                         {
-                            let size = Vec3::new(
-                                wheel.size.0 as f32,
-                                wheel.size.2 as f32,
-                                wheel.size.1 as f32,
-                            ) * crate::VOXEL_SIZE;
-                            if !(high - low).abs_diff_eq(size, 1e-4)
-                                || (high + low).length() > 1e-4
-                                || wheel.center[2] - wheel.envelope <= 1.0
-                                || wheel.center[2] + wheel.envelope >= 11.0
-                            {
-                                failure = Some(format!(
-                                    "轮节点轴心、尺寸或旋转净空不匹配：{}",
-                                    wheel.name
-                                ));
-                            }
+                            failure =
+                                Some(format!("轮节点轴心、尺寸或旋转净空不匹配：{}", wheel.name));
                         }
                     }
                 }
@@ -301,9 +312,13 @@ fn side_speed(linear: Vec3, angular_y: f32, r_side: Vec3, forward: Vec3) -> f32 
 }
 
 /// VOX 全局中心映射为游戏（−X、Z、Y）；正转角使接地点抵消 −X 前进速度。
-fn wheel_transform(wheel: &crate::player_model::WheelSpec, distance: f32) -> Transform {
+fn wheel_transform(
+    wheel: &crate::player_model::WheelSpec,
+    canvas: (u32, u32, u32),
+    distance: f32,
+) -> Transform {
     let [x, y, z] = wheel.center;
-    let (sx, sy, sz) = crate::player_model::CANVAS;
+    let (sx, sy, sz) = canvas;
     Transform::from_xyz(
         (sx as f32 / 2.0 - x) * crate::VOXEL_SIZE,
         (z - sz as f32 / 2.0) * crate::VOXEL_SIZE,
@@ -341,15 +356,12 @@ fn advance_track_phases(
         for side in 0..2 {
             let speed = side_speed(linear.0, turn_rate.0, offsets[side], forward);
             anim.dist[side] += speed * dt;
-            if let Some(wheels) = &anim.wheels {
-                for (index, &entity) in wheels[side].iter().enumerate() {
-                    if let Ok(mut transform) = transforms.get_mut(entity) {
-                        transform.rotation = wheel_transform(
-                            &crate::player_model::WHEELS[side][index],
-                            anim.dist[side],
-                        )
-                        .rotation;
-                    }
+            let wheels = &anim.wheels;
+            for (index, &entity) in wheels[side].iter().enumerate() {
+                if let Ok(mut transform) = transforms.get_mut(entity) {
+                    transform.rotation =
+                        wheel_transform(&spec.wheels[side][index], spec.canvas, anim.dist[side])
+                            .rotation;
                 }
             }
             let phase = phase_for_dist(anim.dist[side]);
@@ -373,7 +385,7 @@ mod tests {
     use super::*;
     use crate::firing::Tank;
 
-    /// 测试所用默认底盘半宽，单位：米；玩家为 3.6 米宽，敌人保持 2.6 米宽。
+    /// 测试所用默认底盘半宽，单位：米；玩家为 3.6 米宽，敌人为 3.4 米宽。
     const HALF_TRACK_WIDTH: f32 = TANK_SIZE.z / 2.0;
     use bevy::{
         camera::visibility::{VisibilityClass, VisibilityPlugin},
@@ -487,7 +499,7 @@ mod tests {
             app.update();
             let world = app.world_mut();
             let mesh_count = world.query::<&Mesh3d>().iter(world).count();
-            if mesh_count == 32
+            if mesh_count == 56
                 && [tank, enemies[0], idle_enemy]
                     .into_iter()
                     .all(|entity| world.get::<TracksValidated>(entity).is_some())
@@ -548,7 +560,7 @@ mod tests {
             .iter()
             .flatten()
             .copied()
-            .chain(anim.wheels.iter().flatten().flatten().copied())
+            .chain(anim.wheels.iter().flatten().copied())
             .collect();
         let instances: Vec<_> = roots
             .iter()
@@ -571,15 +583,15 @@ mod tests {
             assert!(!spawner.instance_is_ready(instance));
         }
         let world = app.world_mut();
-        assert_eq!(world.query::<&Mesh3d>().iter(world).count(), 26);
+        assert_eq!(world.query::<&Mesh3d>().iter(world).count(), 38);
         assert_visible_tracks(&mut app, player);
         assert_visible_tracks(&mut app, idle_enemy);
-        // 敌人旧包没有轮标签：误声明玩家格式必须明确报错，不能静默缺轮。
+        // 敌人每侧仅6轮：误声明玩家7轮规格必须报错，不能静默缺轮。
         let broken = app
             .world_mut()
             .spawn((
                 TrackSpec {
-                    wheels: true,
+                    wheels: PLAYER_TRACKS.wheels,
                     ..ENEMY_TRACKS
                 },
                 Transform::default(),
@@ -599,50 +611,48 @@ mod tests {
     /// 运动学在真实加载网格上验证；轮轴不随角度漂移，左右里程互相独立。
     fn assert_wheels(app: &App, tank: Entity) {
         let anim = app.world().get::<TrackAnim>(tank).unwrap();
-        if let Some(wheels) = anim.wheels {
-            for side in 0..2 {
-                for (index, entity) in wheels[side].into_iter().enumerate() {
-                    let spec = &crate::player_model::WHEELS[side][index];
-                    let transform = app.world().get::<Transform>(entity).unwrap();
-                    let expected = wheel_transform(spec, anim.dist[side]);
-                    assert!(
-                        transform
-                            .translation
-                            .abs_diff_eq(expected.translation, 1e-5)
-                    );
-                    assert!(transform.rotation.abs_diff_eq(expected.rotation, 1e-5));
-                    let mut pending = vec![entity];
-                    let mut count = 0;
-                    while let Some(child) = pending.pop() {
-                        if let Some(children) = app.world().get::<Children>(child) {
-                            pending.extend(children.iter());
-                        }
-                        if let Some(mesh) = app.world().get::<Mesh3d>(child) {
-                            count += 1;
-                            assert!(app.world().get::<InheritedVisibility>(child).unwrap().get());
-                            let mesh = app.world().resource::<Assets<Mesh>>().get(&mesh.0).unwrap();
-                            let bounds = mesh.get_aabb().unwrap();
-                            assert!(
-                                Vec3::from(bounds.center).length() < 1e-5,
-                                "真实局部网格必须轴心居中"
-                            );
-                            let global = app.world().get::<GlobalTransform>(child).unwrap();
-                            let axis = app
-                                .world()
-                                .get::<GlobalTransform>(entity)
-                                .unwrap()
-                                .translation();
-                            assert!(
-                                global.translation().distance(axis) < 1e-5,
-                                "场景内部不得偏移轴心"
-                            );
-                        }
+        let wheels = &anim.wheels;
+        let track_spec = app.world().get::<TrackSpec>(tank).unwrap();
+        for side in 0..2 {
+            for (index, &entity) in wheels[side].iter().enumerate() {
+                let spec = &track_spec.wheels[side][index];
+                let transform = app.world().get::<Transform>(entity).unwrap();
+                let expected = wheel_transform(spec, track_spec.canvas, anim.dist[side]);
+                assert!(
+                    transform
+                        .translation
+                        .abs_diff_eq(expected.translation, 1e-5)
+                );
+                assert!(transform.rotation.abs_diff_eq(expected.rotation, 1e-5));
+                let mut pending = vec![entity];
+                let mut count = 0;
+                while let Some(child) = pending.pop() {
+                    if let Some(children) = app.world().get::<Children>(child) {
+                        pending.extend(children.iter());
                     }
-                    assert_eq!(count, 1);
+                    if let Some(mesh) = app.world().get::<Mesh3d>(child) {
+                        count += 1;
+                        assert!(app.world().get::<InheritedVisibility>(child).unwrap().get());
+                        let mesh = app.world().resource::<Assets<Mesh>>().get(&mesh.0).unwrap();
+                        let bounds = mesh.get_aabb().unwrap();
+                        assert!(
+                            Vec3::from(bounds.center).length() < 1e-5,
+                            "真实局部网格必须轴心居中"
+                        );
+                        let global = app.world().get::<GlobalTransform>(child).unwrap();
+                        let axis = app
+                            .world()
+                            .get::<GlobalTransform>(entity)
+                            .unwrap()
+                            .translation();
+                        assert!(
+                            global.translation().distance(axis) < 1e-5,
+                            "场景内部不得偏移轴心"
+                        );
+                    }
                 }
+                assert_eq!(count, 1);
             }
-        } else {
-            assert!(!app.world().get::<TrackSpec>(tank).unwrap().wheels);
         }
     }
 
@@ -650,8 +660,8 @@ mod tests {
     #[test]
     fn wheel_roll_direction_matches_ground_contact() {
         let spec = &crate::player_model::WHEELS[0][0];
-        let forward = wheel_transform(spec, 0.001);
-        let reverse = wheel_transform(spec, -0.001);
+        let forward = wheel_transform(spec, PLAYER_TRACKS.canvas, 0.001);
+        let reverse = wheel_transform(spec, PLAYER_TRACKS.canvas, -0.001);
         let bottom = Vec3::NEG_Y * spec.radius * crate::VOXEL_SIZE;
         assert!((forward.rotation * bottom).x > 0.0);
         assert!((reverse.rotation * bottom).x < 0.0);

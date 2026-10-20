@@ -1,55 +1,130 @@
-"""生成暗红敌人车体与 lugged 履带包；运行：python scripts/generate_enemy.py。"""
+"""确定性生成暗红敌人三包；尺寸和轮位读取 src/enemy_model.rs。"""
 from pathlib import Path
+import ast
+import math
+import re
 import struct
 from generate_ground import chunk, dictionary
 
-ASSETS = Path(__file__).resolve().parents[1] / 'assets' / 'tank'
-BODY_OUTPUT = ASSETS / 'enemy' / 'default' / 'body.vox'
-TRACKS_OUTPUT = ASSETS / 'tracks' / 'enemy' / 'lugged' / 'default.vox'
+ROOT = Path(__file__).resolve().parents[1]
+ASSETS = ROOT / 'assets' / 'tank'
+BODY_OUTPUT = ASSETS / 'enemy/default/body.vox'
+BARREL_OUTPUT = ASSETS / 'barrels/enemy/default.vox'
+TRACKS_OUTPUT = ASSETS / 'tracks/enemy/lugged/default.vox'
+OUTPUTS = (BODY_OUTPUT, BARREL_OUTPUT, TRACKS_OUTPUT)
+CONTRACT = (ROOT / 'src/enemy_model.rs').read_text()
 
 
-def build_cells():
-    """VOX 的 +X 对应车头（Bevy −X），Z 为高度，每格由加载器映射为 0.1 米。"""
+def literal(name):
+    """只解析声明中的字面量；格式漂移时报错，不执行 Rust 或任意代码。"""
+    return ast.literal_eval(re.search(r'pub const '+name+r':[^=]+=(.*?);', CONTRACT).group(1).strip())
+
+
+CANVAS = literal('CANVAS')
+HULL_X = literal('HULL_X')
+BARREL_X = literal('BARREL_X')
+BORE_HEIGHT = literal('BORE_HEIGHT')
+# 轮类型参数从同一契约读取；只接受 WheelSpec 当前的两种字面量分支。
+wheel_fn = CONTRACT[CONTRACT.index('const fn wheel'):]
+
+
+def wheel_value(field, end):
+    """读取端轮/负重轮对应字段；不解释或执行其它 Rust 表达式。"""
+    branches = re.search(field+r': if end \{ (.*?) \} else \{ (.*?) \}', wheel_fn)
+    return ast.literal_eval(branches.group(1 if end else 2))
+
+
+heights = tuple(map(float, re.search(
+    r'center: \[x, y, if end \{ (.*?) \} else \{ (.*?) \}', wheel_fn).groups()))
+WHEELS = []
+for name, x, y, kind in re.findall(
+        r'wheel\("(wheel_[lr]_\d+)", ([\d.]+), ([\d.]+), (true|false)\)', CONTRACT):
+    end = kind == 'true'
+    center = (float(x), float(y), heights[0 if end else 1])
+    WHEELS.append((name, center, wheel_value('size', end)[0],
+                   wheel_value('radius', end), wheel_value('envelope', end)))
+if len(WHEELS) != 12:
+    raise ValueError('敌人轮契约必须包含左右各6轮')
+
+
+def box(cells, x0, x1, y0, y1, z0, z1, color, bevel=0):
+    """半开区间填充，削平面四角；后写细节覆盖底色。"""
+    for x in range(x0,x1):
+        for y in range(y0,y1):
+            if min(x-x0,x1-1-x)+min(y-y0,y1-1-y) >= bevel:
+                for z in range(z0,z1):
+                    cells[x,y,z] = color
+
+
+def body_cells():
+    """倾斜首上、短尾舱和阶梯炮塔；侧裙抬高，保留轮间透空。"""
     cells = {}
+    box(cells,25,89,7,27,5,12,3,2)
+    for z in range(12,16):
+        box(cells,26,90-(z-12)*2,7,27,z,z+1,1 if z<15 else 2,3)
+    box(cells,27,39,9,25,15,16,3,1)
+    for x in range(28,38,2):
+        box(cells,x,x+1,11,23,15,16,4)
+    # 炮塔尾舱低一格，前楔逐层收窄，区别于玩家的长炮塔。
+    box(cells,43,76,6,28,16,20,1,4)
+    box(cells,45,76,7,27,20,23,1,4)
+    box(cells,47,74,9,25,23,25,2,3)
+    box(cells,50,57,12,20,25,26,3,2)
+    box(cells,72,76,14,20,18,22,3,0)
+    for y in (1,31):
+        for x in range(27,85,12):
+            box(cells,x,x+10,y,y+2,15,17,1,0)
+            # 短横梁连接侧裙与甲板，位于凸齿上方，不侵入轮组净空。
+            box(cells,x+3,x+5,3 if y==1 else 27,7 if y==1 else 31,14,16,3)
+        box(cells,26,88,5 if y==1 else 28,6 if y==1 else 29,14,16,3,0)
+    return cells
 
-    def box(x0, x1, y0, y1, z0, z1, color, bevel=0):
-        # 削去平面四角，区别于主坦克的直角车身；后写部件覆盖接缝体素。
-        for x in range(x0, x1+1):
-            for y in range(y0, y1+1):
-                if min(x-x0, x1-x) + min(y-y0, y1-y) < bevel:
-                    continue
-                for z in range(z0, z1+1):
-                    cells[x, y, z] = color
 
-    # 双侧深灰履带、侧面轮组和红色挡泥板。
-    for y in (0, 21):
-        box(0, 26, y, y+4, 0, 4, 4, bevel=1)
-        for x in (3, 8, 13, 18, 23):
-            box(x-1, x+1, y, y+4, 1, 3, 5)
-        # 挡泥板抬到 z=7（车体侧壁顶面之上），留出 z=5、6 的空隙露出履带上沿。
-        box(0, 26, y, y+4, 7, 7, 3, bevel=1)
-    box(1, 26, 4, 21, 3, 6, 1, bevel=2)
-    box(3, 25, 5, 20, 7, 7, 2, bevel=3)
-    # 矮宽棱角炮塔、偏长炮管与顶盖；炮口保持暗色，主体使用哑光暗红。
-    box(8, 23, 7, 18, 8, 10, 1, bevel=3)
-    box(10, 21, 8, 17, 11, 11, 2, bevel=2)
-    box(21, 33, 11, 13, 9, 10, 5)
-    box(31, 33, 10, 14, 9, 11, 3, bevel=1)
-    box(33, 33, 11, 13, 10, 10, 4)
-    box(13, 18, 10, 15, 12, 13, 3, bevel=1)
-    # 车尾散热格栅，打破大片纯色。
-    for x in range(3, 8, 2):
-        box(x, x, 8, 17, 8, 8, 4)
+def barrel_cells():
+    """炮管不参与碰撞；炮盾连接面和炮轴来自契约。"""
+    cells = {}
+    a,b = BARREL_X
+    h = int(BORE_HEIGHT)
+    box(cells,a,b,16,18,h-1,h+1,2)
+    box(cells,a,a+5,15,19,h-2,h+2,3)
+    box(cells,a+19,a+25,15,19,h-2,h+2,1,1)
+    box(cells,b-2,b,16,18,h-1,h+1,4)
+    return cells
 
+
+def track_loop():
+    """底部两角各削两格，150点闭环整除齿距3，前进沿顶部向+X。"""
+    a,b = HULL_X
+    return ([(x,12) for x in range(a,b)] + [(b-1,z) for z in range(11,1,-1)]
+            + [(b-2,1)] + [(x,0) for x in range(b-3,a+1,-1)]
+            + [(a+1,1)] + [(a,z) for z in range(2,12)])
+
+
+def wheel_cells(spec):
+    """局部画布居中；仅保留所有顶点均位于旋转包络内的格。"""
+    name,center,size,radius,envelope = spec
+    cells = {}
+    for x in range(size):
+        for z in range(size):
+            if math.hypot(max(abs(x-size/2),abs(x+1-size/2)), max(abs(z-size/2),abs(z+1-size/2))) > envelope:
+                continue
+            dx,dz = x+0.5-size/2,z+0.5-size/2
+            spoke = any(dx*math.cos(a)+dz*math.sin(a)>0 and abs(-dx*math.sin(a)+dz*math.cos(a))<0.55 for a in (0,1.7,4.0))
+            color = 4 if math.hypot(dx,dz)>radius-1.2 else (5 if spoke else 1)
+            for y in range(4):
+                cells[x,y,z] = color
     return cells
 
 
 def build_vox(models):
-    """所有模型共用 34×26×14 全局坐标，加载后车体与履带自动居中对齐。"""
+    """车身、炮管及相位共享画布；轮节点使用按轴心居中的局部画布。"""
     children = b''
     for name, cells in models:
         voxels = b''.join(bytes((*position, color)) for position, color in sorted(cells.items()))
-        children += chunk('SIZE', struct.pack('<III', 34, 26, 14))
+        size = next(((w[2], 4, w[2]) for w in WHEELS if w[0] == name), CANVAS)
+        if any(not all(0 <= p[i] < size[i] for i in range(3)) for p in cells):
+            raise ValueError(f'{name} 存在超出画布的体素')
+        children += chunk('SIZE', struct.pack('<III', *size))
         children += chunk('XYZI', struct.pack('<I', len(cells)) + voxels)
     children += chunk('nTRN', struct.pack('<i', 0) + dictionary({})
                       + struct.pack('<iiii', 1, -1, -1, 1) + dictionary({}))
@@ -72,38 +147,29 @@ def build_vox(models):
 
 
 def build_assets():
-    """保留红色车身及挡泥板，将灰色履带拆成左右各三相位。"""
-    original = build_cells()
-    tracks = {p: c for p, c in original.items()
-              if p[2] < 5 and (p[1] <= 4 or p[1] >= 21) and c in (4, 5)}
-    body = {p: c for p, c in original.items() if p not in tracks}
-    # 60 个轮廓点构成闭环：上段向车头 +X、前端向下、下段向后、后端向上。
-    # 长度整除齿距 3，避免三个相位循环时接缝突然跳齿。
-    rim = ([(x, 4) for x in range(27)]
-           + [(26, z) for z in range(3, 0, -1)]
-           + [(x, 0) for x in range(26, -1, -1)]
-           + [(0, z) for z in range(1, 4)])
+    """输出车身、炮管和六相位加十二轮；不读取旧产物。"""
+    rim = track_loop()
+    assert len(rim) == len(set(rim)) and len(rim)%3 == 0
     models = []
-    for side, face in (('l', 0), ('r', 25)):
+    for side,y0,y1,outer,inner in (('l',1,7,0,6),('r',27,33,33,27)):
         for phase in range(3):
-            # 外侧一格仅放轮廓上的凸齿；其内侧保留原有静止轮组，不再整面变色。
-            cells = {p: c for p, c in tracks.items()
-                     if (p[1] <= 4) == (side == 'l') and p[1] != face}
-            core_y = range(1, 5) if side == 'l' else range(21, 25)
-            for s, (x, z) in enumerate(rim):
-                tooth = (s-phase) % 3 == 0
-                for y in core_y:
-                    # 挡泥板与内侧车身保持原样，不能被履带轮廓覆盖。
-                    if (x, y, z) not in body:
-                        cells[x, y, z] = 5 if tooth else 4
+            cells = {}
+            box(cells,26,88,inner,inner+1,6,8,4)
+            for i,(x,z) in enumerate(rim):
+                tooth = (i-phase)%3 == 0
+                for y in range(y0,y1):
+                    cells[x,y,z] = 5 if tooth else 4
+                    if tooth and z == 12:
+                        cells[x,y,13] = 5
                 if tooth:
-                    cells[x, face, z] = 5
-            models.append((f'track_{side}_{phase}', cells))
-    return build_vox([('body', body)]), build_vox(models)
+                    cells[x,outer,z] = 5
+            models.append((f'track_{side}_{phase}',cells))
+    models += [(w[0],wheel_cells(w)) for w in WHEELS]
+    return build_vox([('body',body_cells())]), build_vox([('barrel',barrel_cells())]), build_vox(models)
 
 
 if __name__ == '__main__':
-    for path, data in zip((BODY_OUTPUT, TRACKS_OUTPUT), build_assets()):
-        path.parent.mkdir(parents=True, exist_ok=True)
+    for path,data in zip(OUTPUTS,build_assets()):
+        path.parent.mkdir(parents=True,exist_ok=True)
         path.write_bytes(data)
         print(f'已生成 {path}')

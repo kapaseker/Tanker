@@ -383,7 +383,11 @@ mod tests {
                     .spawn((
                         crate::enemy::EnemyTank,
                         RigidBody::Static,
-                        Collider::cuboid(3.4, 1.4, 2.6),
+                        Collider::cuboid(
+                            crate::enemy::ENEMY_SIZE.x,
+                            crate::enemy::ENEMY_SIZE.y,
+                            crate::enemy::ENEMY_SIZE.z,
+                        ),
                         Transform::from_translation(position)
                             .with_rotation(Quat::from_rotation_y(yaw)),
                     ))
@@ -419,11 +423,11 @@ mod tests {
             .id()
     }
 
-    /// 真实尺度炮口水平射击会掠过旧矮目标，垫高后才命中；不偷偷改变弹道。
+    /// 玩家真实炮口水平命中平地敌人；目标底部远高于弹道时仍应掠过。
     #[test]
-    fn modern_muzzle_passes_above_old_enemy_but_hits_elevated_target() {
+    fn modern_muzzle_hits_ground_level_enemy_without_platform() {
         let origin = MUZZLE_POSITION + Vec3::Y * crate::driving::TANK_SIZE.y / 2.0;
-        for (height, should_hit) in [(0.7, false), (2.0, true)] {
+        for (height, should_hit) in [(crate::enemy::ENEMY_SIZE.y / 2.0, true), (4.0, false)] {
             let (mut app, enemies) = hit_test_app(&[(Vec3::new(-12.0, height, 0.0), 0.0)]);
             let bullet = test_bullet(&mut app, origin, Vec3::NEG_X, 0.0);
             advance_test_bullets(&mut app, 0.5);
@@ -453,8 +457,8 @@ mod tests {
     /// 擦过旋转车体、超出剩余射程的目标都不会被击毁。
     #[test]
     fn misses_and_targets_beyond_range_survive() {
-        let (mut app, enemies) = hit_test_app(&[(Vec3::new(-6.0, 0.7, 0.0), 0.8)]);
-        let miss = test_bullet(&mut app, Vec3::new(0.0, 1.2, 3.0), Vec3::NEG_X, 0.0);
+        let (mut app, enemies) = hit_test_app(&[(Vec3::new(-6.0, 1.3, 0.0), 0.8)]);
+        let miss = test_bullet(&mut app, Vec3::new(0.0, 1.2, 5.0), Vec3::NEG_X, 0.0);
         let expired = test_bullet(
             &mut app,
             Vec3::new(0.0, 1.2, 0.0),
@@ -596,6 +600,7 @@ mod tests {
         .register_type::<FogVolume>()
         .init_resource::<ButtonInput<KeyCode>>()
         .add_message::<EnemyDestroyed>()
+        .add_systems(Update, crate::enemy::spawn_enemy_barrels)
         .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f32(
             0.25,
         )));
@@ -624,7 +629,8 @@ mod tests {
             .spawn((
                 WorldAssetRoot(enemy_asset.clone()),
                 crate::track::ENEMY_TRACKS,
-                Transform::from_xyz(10.0, 0.7, 0.0),
+                EnemyTank,
+                Transform::from_xyz(15.0, crate::enemy::ENEMY_SIZE.y / 2.0, 0.0),
             ))
             .id();
         // 真实资源异步加载；这里使用现实时间限制等待，避免失败时测试无限循环。
@@ -646,7 +652,11 @@ mod tests {
             });
             let barrel_ready = world
                 .iter_entities()
-                .filter(|e| e.contains::<PlayerBarrel>())
+                .filter(|e| {
+                    e.contains::<WorldAssetRoot>()
+                        && e.contains::<ChildOf>()
+                        && !e.contains::<crate::track::TracksValidated>()
+                })
                 .all(|e| {
                     e.get::<WorldInstance>().is_some_and(|i| {
                         world
@@ -674,16 +684,28 @@ mod tests {
         }
 
         let (_, enemy_minimum, enemy_maximum) = scene_bounds(app.world(), enemy);
-        assert!((enemy_maximum - enemy_minimum).abs_diff_eq(crate::enemy::ENEMY_SIZE, 1e-5));
+        assert!((enemy_maximum - enemy_minimum).abs_diff_eq(Vec3::new(9.0, 2.6, 3.4), 1e-4));
+        // 炮管和所有轮相位的实例也必须随敌人根注销。
+        let mut pending = vec![enemy];
+        let mut enemy_instances = Vec::new();
+        while let Some(root) = pending.pop() {
+            if let Some(children) = app.world().get::<Children>(root) {
+                pending.extend(children.iter());
+            }
+            if let Some(instance) = app.world().get::<WorldInstance>(root) {
+                enemy_instances.push(**instance);
+            }
+        }
+        assert_eq!(enemy_instances.len(), 20);
         assert!(enemy_minimum.y.abs() < 1e-5, "敌人履带应贴合 Y=0 地面");
-        let enemy_instance = **app.world().get::<WorldInstance>(enemy).unwrap();
+
         app.world_mut().despawn(enemy);
         app.update();
-        assert!(
+        assert!(enemy_instances.into_iter().all(|instance| {
             !app.world()
                 .resource::<WorldInstanceSpawner>()
-                .instance_is_ready(enemy_instance)
-        );
+                .instance_is_ready(instance)
+        }));
 
         let (_, tank_minimum, tank_maximum) = scene_bounds(app.world(), tank);
         // 三包组合必须覆盖真实尺寸；底部与两侧由履带补全；炮管超出碰撞框是预期行为。
@@ -695,11 +717,7 @@ mod tests {
         assert!(tank_minimum.x < -crate::driving::TANK_SIZE.x / 2.0);
 
         // 多色车身仍须通过 UV 采样到生成器中的三种装甲色，不能退化成单色材质。
-        let armor_colors = [
-            [83, 99, 55, 255],
-            [108, 121, 72, 255],
-            [58, 70, 40, 255],
-        ];
+        let armor_colors = [[83, 99, 55, 255], [108, 121, 72, 255], [58, 70, 40, 255]];
         let mut sampled_colors = std::collections::BTreeSet::new();
         let mut pending = vec![tank];
         while let Some(entity) = pending.pop() {
@@ -737,8 +755,10 @@ mod tests {
             let size = atlas.texture_descriptor.size;
             for &[u, v] in uvs {
                 assert!(
-                    u.is_finite() && v.is_finite()
-                        && (0.0..=1.0).contains(&u) && (0.0..=1.0).contains(&v)
+                    u.is_finite()
+                        && v.is_finite()
+                        && (0.0..=1.0).contains(&u)
+                        && (0.0..=1.0).contains(&v)
                 );
                 let x = ((u * size.width as f32) as u32).min(size.width - 1);
                 let y = ((v * size.height as f32) as u32).min(size.height - 1);
@@ -902,7 +922,17 @@ mod tests {
         assert_eq!(player_instances.len(), 22);
         app.world_mut().despawn(tank);
         app.update();
-        assert!(player_instances.into_iter().all(|i| !app.world().resource::<WorldInstanceSpawner>().instance_is_ready(i)));
-        assert_eq!(app.world_mut().query::<&PlayerBarrel>().iter(app.world()).count(), 0);
+        assert!(player_instances.into_iter().all(|i| {
+            !app.world()
+                .resource::<WorldInstanceSpawner>()
+                .instance_is_ready(i)
+        }));
+        assert_eq!(
+            app.world_mut()
+                .query::<&PlayerBarrel>()
+                .iter(app.world())
+                .count(),
+            0
+        );
     }
 }

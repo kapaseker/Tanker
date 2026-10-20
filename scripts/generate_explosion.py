@@ -13,7 +13,7 @@ OUTPUT = Path(__file__).resolve().parents[1] / 'assets' / 'tank' / 'enemy' / 'de
 # 帧数与单帧时长（1/12 秒）须与 src/explosion.rs 的 EXPLOSION_FRAME_RATE 对齐；
 # 实际存活时长以加载后 FlipbookFrame 的数量推导，避免两处漂移。
 FRAMES = 12
-# 单帧立方体边长（格）；40 格 × 0.1 米 = 4 米，覆盖敌人车体（3.4 米）。
+# 作者化基准边长40格（4米）；运行时 EXPLOSION_SCALE=2 放大至8米，适配新车体。
 SIZE = 40
 # 球壳半径从起爆火球扩到最大烟团，单位：格。
 SHELL_START = 4.0

@@ -49,7 +49,7 @@ enum Scenario {
     Scene,
     Drive,
     Combat,
-    /// 玩家轮组的侧面动画与三视点对照。
+    /// 所选车型轮组的侧面动画与三视点对照。
     Wheels,
 }
 
@@ -62,7 +62,7 @@ impl Scenario {
             // （半长 3.75 m + 行驶 6 m）仍留在半径 24 m 的出生平区内；
             // 平区外的台阶全部是可翻越的 1 档坎，不构成驾驶失效判据。
             Self::Drive => &[0, 60, 180],
-            Self::Combat => &[0, 6, 24, 120],
+            Self::Combat => &[0, 6, 24, 48, 60, 120],
             Self::Wheels => &[
                 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 75, 90, 105, 120, 130, 240, 250,
             ],
@@ -90,12 +90,14 @@ pub(super) struct Options {
     scenario: Scenario,
     output: PathBuf,
     single_image: bool,
+    /// 仅 wheels 接受 --model enemy；默认继续验证玩家。
+    enemy_wheels: bool,
 }
 
 impl Options {
     /// 无参数返回普通游戏；其余参数必须完整匹配已公布的接口。
     pub(super) fn parse(args: Vec<OsString>) -> Result<Option<Self>, String> {
-        let usage = "用法：--capture <图片.png> 或 --offscreen-test <scene|drive|combat|wheels> --output <目录>";
+        let usage = "用法：--capture <图片.png> 或 --offscreen-test <scene|drive|combat|wheels> --output <目录> [--model enemy]（仅 wheels）";
         if args.is_empty() {
             return Ok(None);
         }
@@ -111,8 +113,12 @@ impl Options {
                 scenario: Scenario::Scene,
                 output,
                 single_image: true,
+                enemy_wheels: false,
             }
-        } else if args.len() == 4 && args[0] == "--offscreen-test" && args[2] == "--output" {
+        } else if (args.len() == 4 || args.len() == 6)
+            && args[0] == "--offscreen-test"
+            && args[2] == "--output"
+        {
             let scenario = match args[1].to_str() {
                 Some("scene") => Scenario::Scene,
                 Some("drive") => Scenario::Drive,
@@ -120,10 +126,17 @@ impl Options {
                 Some("wheels") => Scenario::Wheels,
                 _ => return Err(usage.into()),
             };
+            let enemy_wheels = args.len() == 6;
+            if enemy_wheels
+                && (scenario != Scenario::Wheels || args[4] != "--model" || args[5] != "enemy")
+            {
+                return Err(usage.into());
+            }
             Self {
                 scenario,
                 output: PathBuf::from(&args[3]),
                 single_image: false,
+                enemy_wheels,
             }
         } else {
             return Err(usage.into());
@@ -180,7 +193,7 @@ impl Options {
         if !self.single_image {
             paths.push(self.output.join("report.txt"));
             if self.scenario == Scenario::Wheels {
-                for name in ["side", "front", "rear", "bounds"] {
+                for name in ["side", "front", "rear", "bounds", "comparison"] {
                     paths.push(self.output.join(format!("{name}.png")));
                 }
             }
@@ -196,6 +209,10 @@ struct Target(Handle<Image>);
 /// 下一次更新要注入的模拟帧；None 用于加载、预热和截图等待。
 #[derive(Resource)]
 struct InputFrame(Scenario, Option<u32>);
+
+/// wheels 测试显式驱动的敌人；正常游戏不创建，不改变玩家标记。
+#[derive(Resource)]
+struct WheelTarget(Entity);
 
 /// 每帧记录真实游戏事件与子弹轨迹，防止只看最终状态造成假通过。
 #[derive(Resource, Default)]
@@ -251,8 +268,22 @@ fn setup_target(
 }
 
 /// InputPlugin 清理本帧输入后再注入，FixedPostUpdate 驾驶和 PostUpdate 开火均能读到。
-fn inject_input(frame: Res<InputFrame>, mut keys: ResMut<ButtonInput<KeyCode>>) {
-    let desired = frame.1.map_or(&[][..], |index| frame.0.keys(index));
+fn inject_input(
+    frame: Res<InputFrame>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    target: Option<Res<WheelTarget>>,
+    mut inputs: Query<&mut crate::driving::DrivingInput>,
+) {
+    let mut desired = frame.1.map_or(&[][..], |index| frame.0.keys(index));
+    if let Some(target) = target {
+        if let Ok(mut input) = inputs.get_mut(target.0) {
+            input.throttle = i32::from(desired.contains(&KeyCode::ArrowUp)) as f32
+                - i32::from(desired.contains(&KeyCode::ArrowDown)) as f32;
+            input.turn = i32::from(desired.contains(&KeyCode::ArrowLeft)) as f32
+                - i32::from(desired.contains(&KeyCode::ArrowRight)) as f32;
+        }
+        desired = &[];
+    }
     let released: Vec<_> = keys
         .get_pressed()
         .filter(|key| !desired.contains(key))
@@ -476,20 +507,7 @@ fn wait_render(app: &mut App, require_scene: bool) -> Result<(), String> {
 
 /// 将真实敌人调整为战斗测试布局；仍保留原有动态刚体、碰撞体和资源层级。
 fn arrange_combat(world: &mut World) {
-    // 旧敌人仅高 1.4 米；显式垫高靶车以验证 2 米炮口的水平命中，不修改敌人规格。
-    let mesh = world
-        .resource_mut::<Assets<Mesh>>()
-        .add(Cuboid::new(4.0, 1.3, 3.4));
-    let material = world
-        .resource_mut::<Assets<StandardMaterial>>()
-        .add(Color::srgb(0.25, 0.27, 0.24));
-    world.spawn((
-        avian3d::prelude::RigidBody::Static,
-        avian3d::prelude::Collider::cuboid(4.0, 1.3, 3.4),
-        Mesh3d(mesh),
-        MeshMaterial3d(material),
-        Transform::from_xyz(-12.0, 0.65, 0.0),
-    ));
+    // 新敌人与玩家同高，在真实平地直接验证水平命中。
     let mut query = world.query_filtered::<Entity, With<crate::enemy::EnemyTank>>();
     let mut enemies: Vec<_> = query.iter(world).collect();
     enemies.sort_by_key(|entity| entity.to_bits());
@@ -497,7 +515,7 @@ fn arrange_combat(world: &mut World) {
         let position = if index == 0 {
             Vec3::new(-12.0, 3.0, 0.0)
         } else {
-            Vec3::new(30.0 + index as f32 * 6.0, 3.0, 30.0)
+            Vec3::new(30.0 + index as f32 * 10.0, 3.0, 30.0)
         };
         world.entity_mut(entity).insert((
             Transform::from_translation(position),
@@ -508,8 +526,16 @@ fn arrange_combat(world: &mut World) {
     }
 }
 
-/// 捕获用于断言的游戏状态；坐标为世界米制，履带值为两侧累计里程。
-fn player_state(world: &mut World) -> Result<(Transform, [f32; 2]), String> {
+/// 捕获当前验收对象状态；默认玩家，敌人 wheels 预设显式选择测试靶车。
+fn subject_state(world: &mut World) -> Result<(Transform, [f32; 2]), String> {
+    if let Some(target) = world.get_resource::<WheelTarget>() {
+        let entity = world.entity(target.0);
+        return entity
+            .get::<Transform>()
+            .zip(entity.get::<crate::track::TrackAnim>())
+            .map(|(transform, tracks)| (*transform, tracks.distances()))
+            .ok_or_else(|| "敌人轮组状态异常".into());
+    }
     let mut query =
         world.query_filtered::<(&Transform, &crate::track::TrackAnim), With<crate::firing::Tank>>();
     query
@@ -578,13 +604,34 @@ fn run_scenario(app: &mut App, options: &Options, report: &mut String) -> Result
     wait_render(app, true)?;
     if options.scenario == Scenario::Combat {
         arrange_combat(app.world_mut());
-        report.push_str("战斗布局：旧尺寸靶车放在 1.3 米实体台座上；平地掠过另由逻辑测试验证。\n");
+        report.push_str("战斗布局：与玩家同高的靶车在平地直接承受水平射击，无台座。\n");
     }
+    if options.enemy_wheels {
+        let world = app.world_mut();
+        let enemy = world
+            .query_filtered::<Entity, With<crate::enemy::EnemyTank>>()
+            .iter(world)
+            .min_by_key(|e| e.to_bits())
+            .ok_or("未找到敌人轮组目标")?;
+        let position = Vec3::new(0.0, 3.0, 9.0);
+        world.entity_mut(enemy).insert((
+            Transform::from_translation(position),
+            Position(position),
+            Rotation::default(),
+            LinearVelocity::ZERO,
+        ));
+        world.insert_resource(WheelTarget(enemy));
+    }
+    report.push_str(if options.enemy_wheels {
+        "轮组目标：敌人4+2\n"
+    } else {
+        "轮组目标：玩家5+2\n"
+    });
     for _ in 0..120 {
         update(app, STEP, None)?;
     }
     validate_scene(app.world_mut())?;
-    let (start, start_tracks) = player_state(app.world_mut())?;
+    let (start, start_tracks) = subject_state(app.world_mut())?;
     report.push_str(&format!(
         "预热：120 帧；断言通过：地形就绪、坦克位置、相机跟随\n起点：{:?}\n",
         start.translation
@@ -613,7 +660,7 @@ fn run_scenario(app: &mut App, options: &Options, report: &mut String) -> Result
         update(app, STEP, Some(frame))?;
         validate_scene(app.world_mut())?;
         if options.scenario == Scenario::Wheels && [30, 60, 90, 120, 240, 250].contains(&frame) {
-            let (_, tracks) = player_state(app.world_mut())?;
+            let (_, tracks) = subject_state(app.world_mut())?;
             let delta = [
                 tracks[0] - previous_tracks[0],
                 tracks[1] - previous_tracks[1],
@@ -635,7 +682,7 @@ fn run_scenario(app: &mut App, options: &Options, report: &mut String) -> Result
             previous_tracks = tracks;
         }
         if options.scenario == Scenario::Drive && frame == 60 {
-            let (state, tracks) = player_state(app.world_mut())?;
+            let (state, tracks) = subject_state(app.world_mut())?;
             report.push_str(&format!(
                 "直行检查：位置={:?}，履带={tracks:?}，游戏时间={:?}，固定时间={:?}\n",
                 state.translation,
@@ -661,7 +708,7 @@ fn run_scenario(app: &mut App, options: &Options, report: &mut String) -> Result
             );
         }
         if options.scenario == Scenario::Drive && frame == 180 {
-            let (state, _) = player_state(app.world_mut())?;
+            let (state, _) = subject_state(app.world_mut())?;
             record_check(
                 report,
                 &mut failures,
@@ -715,7 +762,7 @@ fn run_scenario(app: &mut App, options: &Options, report: &mut String) -> Result
             );
         }
         if options.scenario.frames().contains(&frame) {
-            let (state, tracks) = player_state(app.world_mut())?;
+            let (state, tracks) = subject_state(app.world_mut())?;
             report.push_str(&format!(
                 "模拟帧：{frame}；位置：{:?}；旋转：{:?}；履带里程：{tracks:?}\n",
                 state.translation, state.rotation
@@ -739,7 +786,7 @@ fn run_scenario(app: &mut App, options: &Options, report: &mut String) -> Result
 
 /// 临时取消跟随以拍摄固定的车体局部视点；截图等待仍不推进模拟。
 fn capture_view(app: &mut App, path: &Path, offset: Vec3) -> Result<(), String> {
-    let (player, _) = player_state(app.world_mut())?;
+    let (player, _) = subject_state(app.world_mut())?;
     let world = app.world_mut();
     let (camera, saved) = world
         .query_filtered::<(Entity, &Transform), With<crate::driving::FollowCamera>>()
@@ -771,7 +818,7 @@ fn capture_wheel_views(app: &mut App, output: &Path) -> Result<(), String> {
     capture_side(app, &output.join("side.png"))?;
     capture_view(app, &output.join("front.png"), Vec3::new(-9.0, 3.0, 9.0))?;
     capture_view(app, &output.join("rear.png"), Vec3::new(9.0, 3.0, 9.0))?;
-    let (player, _) = player_state(app.world_mut())?;
+    let (player, _) = subject_state(app.world_mut())?;
     let material = app
         .world_mut()
         .resource_mut::<Assets<StandardMaterial>>()
@@ -780,7 +827,16 @@ fn capture_wheel_views(app: &mut App, output: &Path) -> Result<(), String> {
             unlit: true,
             ..default()
         });
-    let half = crate::driving::TANK_SIZE / 2.0;
+    capture_view(
+        app,
+        &output.join("comparison.png"),
+        Vec3::new(13.0, 10.0, 18.0),
+    )?;
+    let half = if app.world().contains_resource::<WheelTarget>() {
+        crate::enemy::ENEMY_SIZE
+    } else {
+        crate::driving::TANK_SIZE
+    } / 2.0;
     let mut edges = Vec::new();
     for axis in 0..3 {
         for a in [-1.0, 1.0] {
@@ -952,6 +1008,17 @@ mod tests {
     fn command_line_keeps_normal_game_and_accepts_documented_commands() {
         assert_eq!(parse(&[]).unwrap(), None);
         let capture = parse(&["--capture", "截图.png"]).unwrap().unwrap();
+        let enemy = parse(&[
+            "--offscreen-test",
+            "wheels",
+            "--output",
+            "out",
+            "--model",
+            "enemy",
+        ])
+        .unwrap()
+        .unwrap();
+        assert!(enemy.enemy_wheels);
         assert!(capture.single_image);
         assert_eq!(capture.scenario, Scenario::Scene);
         for (name, scenario) in [
@@ -977,9 +1044,70 @@ mod tests {
             vec!["--offscreen-test", "unknown", "--output", "out"],
             vec!["--offscreen-test", "scene"],
             vec!["--unknown"],
+            vec![
+                "--offscreen-test",
+                "scene",
+                "--output",
+                "out",
+                "--model",
+                "enemy",
+            ],
+            vec![
+                "--offscreen-test",
+                "wheels",
+                "--output",
+                "out",
+                "--model",
+                "unknown",
+            ],
             vec!["--capture", "a.png", "extra"],
         ] {
             assert!(parse(&args).is_err(), "{args:?}");
+        }
+    }
+
+    /// 敌人 wheels 的脚本输入只驱动目标，不能让玩家或其它敌人一起移动。
+    #[test]
+    fn enemy_wheel_input_is_routed_only_to_selected_target() {
+        let mut app = App::new();
+        let target = app
+            .world_mut()
+            .spawn(crate::driving::DrivingInput::default())
+            .id();
+        let idle = app
+            .world_mut()
+            .spawn(crate::driving::DrivingInput::default())
+            .id();
+        app.insert_resource(WheelTarget(target))
+            .insert_resource(InputFrame(Scenario::Wheels, None))
+            .init_resource::<ButtonInput<KeyCode>>()
+            .add_systems(Update, inject_input);
+        for (frame, throttle, turn) in [
+            (1, 1.0, 0.0),
+            (31, -1.0, 0.0),
+            (61, 0.0, 1.0),
+            (91, 0.0, -1.0),
+            (121, 0.0, 0.0),
+        ] {
+            app.world_mut().resource_mut::<InputFrame>().1 = Some(frame);
+            app.update();
+            let input = app
+                .world()
+                .get::<crate::driving::DrivingInput>(target)
+                .unwrap();
+            assert_eq!((input.throttle, input.turn), (throttle, turn));
+            let input = app
+                .world()
+                .get::<crate::driving::DrivingInput>(idle)
+                .unwrap();
+            assert_eq!((input.throttle, input.turn), (0.0, 0.0));
+            assert_eq!(
+                app.world()
+                    .resource::<ButtonInput<KeyCode>>()
+                    .get_pressed()
+                    .count(),
+                0
+            );
         }
     }
 
@@ -1013,6 +1141,7 @@ mod tests {
             scenario: Scenario::Scene,
             output: path.clone(),
             single_image: true,
+            enemy_wheels: false,
         };
         options.prepare().unwrap();
         write_new(&path, b"existing evidence").unwrap();

@@ -16,6 +16,7 @@ use bevy_vox_scene::{VoxLoaderSettings, VoxScenePlugin};
 
 mod driving;
 mod enemy;
+mod enemy_model;
 mod explosion;
 mod firing;
 mod ground;

@@ -14,6 +14,8 @@ use std::time::Duration;
 const EXPLOSION_PATH: &str = "tank/enemy/default/default_explosion.vox";
 /// 单帧显示时长，单位：秒；12 帧 × 1/12 ≈ 1 秒，与 scripts/generate_explosion.py 对齐。
 const EXPLOSION_FRAME_RATE: f32 = 1.0 / 12.0;
+/// 原始动画直径4米，整体放大至8米以覆盖现有6.6米敌方车体；不改变播放时长。
+const EXPLOSION_SCALE: f32 = 2.0;
 
 /// 爆炸场景根标记；计时到期后整棵子树（含全部帧节点）随之销毁。
 #[derive(Component)]
@@ -102,7 +104,7 @@ fn spawn_explosions(
         // mesh 以模型几何中心为原点（加载器默认 CENTER），根位置即爆炸球心。
         commands.spawn((
             Explosion,
-            Transform::from_translation(event.position),
+            Transform::from_translation(event.position).with_scale(Vec3::splat(EXPLOSION_SCALE)),
             WorldAssetRoot(handle.clone()),
         ));
     }
@@ -371,15 +373,18 @@ mod tests {
         .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f64(
             0.0,
         )));
-        let asset = app.world().resource::<AssetServer>().load(EXPLOSION_PATH);
+        // 走真实击毁消息，验证生产生成路径的尺寸和位置，而不是测试中手动缩放。
+        let position = Vec3::new(5.0, crate::enemy::ENEMY_SIZE.y / 2.0, 2.0);
+        app.world_mut().write_message(EnemyDestroyed { position });
+        app.update();
         let root = app
             .world_mut()
-            .spawn((
-                Explosion,
-                WorldAssetRoot(asset),
-                Transform::from_xyz(5.0, 0.7, 2.0),
-            ))
-            .id();
+            .query_filtered::<Entity, With<Explosion>>()
+            .single(app.world())
+            .unwrap();
+        let transform = app.world().get::<Transform>(root).unwrap();
+        assert_eq!(transform.translation, position);
+        assert_eq!(transform.scale, Vec3::splat(2.0));
         // 真实资源异步加载；用现实时间限制等待，避免失败时测试无限循环。
         let mut players = app
             .world_mut()
