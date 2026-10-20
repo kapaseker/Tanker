@@ -17,8 +17,10 @@
 | 资源路径（相对 assets） | 节点 | 内容 |
 |---|---|---|
 | tank/player/default/body.vox | body | 车身、炮塔、炮盾、裙板、舱盖、格栅 |
-| tank/player/default/barrel.vox | barrel | 炮管根部、管身、抽烟器、炮口 |
+| tank/barrels/player/default.vox | barrel | 炮管根部、管身、抽烟器、炮口 |
 | tank/tracks/player/lugged/default.vox | track_l_0..2 / track_r_0..2，wheel_l_0..6 / wheel_r_0..6 | 六个履带相位、十四个独立轮 |
+
+炮管按履带的部件分类方式独立放在 `tank/barrels/player/`，默认包为 `default.vox`；生成器与运行时均使用此路径。
 
 三包共享调色板；车身、炮管和履带相位以全局画布零偏移挂载。轮子使用8×4×8（负重轮）或5×4×5（端轮）局部画布，按 `WHEELS` 的轴心安装。替换资源必须保持该契约；需要改变炮管长度或轴线时，先修改共享尺寸定义、生成器和相关测试，不通过运行时缩放掩盖不兼容。履带齿距三格、每行驶一格推进一相位，闭环168格。轮子按对应侧累计里程除以滚动半径绕游戏Z轴连续旋转，停车保留角度；每个节点必须完成加载和实例化，缺失节点会报错。
 

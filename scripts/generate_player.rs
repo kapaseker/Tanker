@@ -273,7 +273,7 @@ fn main() {
             vec![("body".into(), body())],
         ),
         (
-            "assets/tank/player/default/barrel.vox",
+            "assets/tank/barrels/player/default.vox",
             vec![("barrel".into(), barrel())],
         ),
         ("assets/tank/tracks/player/lugged/default.vox", tracks()),
@@ -397,7 +397,7 @@ mod tests {
                 vec![("body".into(), body())],
             ),
             (
-                "assets/tank/player/default/barrel.vox",
+                "assets/tank/barrels/player/default.vox",
                 vec![("barrel".into(), barrel())],
             ),
             ("assets/tank/tracks/player/lugged/default.vox", tracks()),

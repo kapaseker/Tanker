@@ -28,7 +28,7 @@ class PlayerTests(unittest.TestCase):
 
     def test_shared_canvas_and_palette(self):
         palettes = []
-        for path in ('player/default/body.vox', 'player/default/barrel.vox', 'tracks/player/lugged/default.vox'):
+        for path in ('player/default/body.vox', 'barrels/player/default.vox', 'tracks/player/lugged/default.vox'):
             data = (ASSETS / path).read_bytes()
             offset = 20
             sizes = []
@@ -52,7 +52,7 @@ class PlayerTests(unittest.TestCase):
 
     def test_refined_dimensions(self):
         body, = read_models(ASSETS / 'player/default/body.vox')
-        barrel, = read_models(ASSETS / 'player/default/barrel.vox')
+        barrel, = read_models(ASSETS / 'barrels/player/default.vox')
         # 三个炮塔层面的最大宽度分别为 2.6、2.4、2.0 米。
         for z, expected in [(18,26),(21,24),(24,20)]:
             ys = [y for (x,y,h) in body if h == z and 49 <= x < 90]
@@ -71,7 +71,7 @@ class PlayerTests(unittest.TestCase):
 
     def test_three_packages_and_dimensions(self):
         body, = read_models(ASSETS / 'player/default/body.vox')
-        barrel, = read_models(ASSETS / 'player/default/barrel.vox')
+        barrel, = read_models(ASSETS / 'barrels/player/default.vox')
         tracks = read_models(ASSETS / 'tracks/player/lugged/default.vox')
         self.assertEqual(len(tracks), 20)
         self.assertFalse(body.keys() & barrel.keys())

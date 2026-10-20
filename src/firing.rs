@@ -27,7 +27,7 @@ const MUZZLE_POSITION: Vec3 = Vec3::new(
     0.0,
 );
 
-/// 玩家独立炮管的场景根；随车身销毁，不拥有碰撞体。
+/// 玩家独立炮管的场景根；资源位于 tank/barrels/player/，随车身销毁，不拥有碰撞体。
 #[derive(Component)]
 struct PlayerBarrel;
 
@@ -41,7 +41,7 @@ fn spawn_barrels(
         let barrel = commands
             .spawn((
                 PlayerBarrel,
-                WorldAssetRoot(assets.load("tank/player/default/barrel.vox")),
+                WorldAssetRoot(assets.load("tank/barrels/player/default.vox")),
             ))
             .id();
         commands.entity(tank).add_child(barrel);
