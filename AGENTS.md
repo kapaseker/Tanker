@@ -5,8 +5,8 @@
 ## 工程概览
 
 - 语言/工具链：Rust（edition 2024）、Cargo
-- 引擎：Bevy **0.19**（`bevy = "0.19"`，crates.io），**仅从 crates.io 拉取依赖**（见下方 bevy 源码使用规则）
-- **为何使用 0.19**：当前接入的 `bevy_vox_scene` 0.22 依赖 Bevy 0.19。升级引擎前必须核对所用 voxel 插件的兼容表与依赖声明；版本不兼容可能引入多版本 Bevy，导致编译或集成失败
+- 引擎：Bevy **0.20**（`bevy = "0.20"`，crates.io），**仅从 crates.io 拉取依赖**（见下方 bevy 源码使用规则）
+- **为何使用 0.20**：当前接入的 `bevy_vox_scene` 0.23 依赖 Bevy 0.20。升级引擎前必须核对所用 voxel 插件的兼容表与依赖声明；版本不兼容可能引入多版本 Bevy，导致编译或集成失败
 - 平台：Linux x11（winit 走 dlopen），3D 渲染走 Vulkan
 - 构建命令：`cargo build`；运行：`cargo run`
 - Git：远端 `origin`（GitHub `kapaseker/Tanker`），默认分支 **master**（非 main）；`Cargo.lock` 纳入版本控制（可执行程序惯例）
@@ -63,7 +63,7 @@
 
 ## Voxel 技术栈
 
-- **`bevy_vox_scene` 0.22**：当前已接入，加载 MagicaVoxel `.vox` 文件并还原场景图及材质
+- **`bevy_vox_scene` 0.23**：当前已接入，加载 MagicaVoxel `.vox` 文件并还原场景图及材质
   - 用法：`add_plugins(VoxScenePlugin::default())`，再 `commands.spawn(WorldAssetRoot(assets.load("xx.vox#节点名")))`
   - 能力边界：材质走 16x16 图集按 UV 索引，**做不了 Minecraft 那种逐体素平铺贴图**；后者要用 `bevy_vox_mesh`
 - **`bevy_voxel_world`**：尚未引入；需要地形可挖放时再评估
@@ -71,7 +71,7 @@
 
 ## 代码约定
 
-- 使用 Bevy 0.19 API 习惯：`commands.spawn((...))` 直接传组件元组；
+- 使用 Bevy 0.20 API 习惯：`commands.spawn((...))` 直接传组件元组；
 - 系统（System）优先拆分为小函数，通过 `#[derive(Component)]` + Query 组合
 - 日志使用中文；标识符使用英文
 - 新增或修改代码时，必须在必要位置补充中文注释；中文难以准确表达时可使用英文。类、结构体、枚举、关键成员字段、常量和函数应说明职责或含义；关键参数、局部变量与复杂逻辑应解释单位、坐标系、生命周期、边界条件或设计原因。Rust 声明优先使用 `///` 文档注释，局部说明使用 `//`；注释应提供代码本身未清楚表达的信息，并随实现同步更新。

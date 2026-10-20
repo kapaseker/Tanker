@@ -1,7 +1,7 @@
 """生成 12 帧逐帧爆炸动画 explosion.vox；运行：python scripts/generate_explosion.py。
 
 一个 nSHP 列出 12 个 model（MagicaVoxel 动画格式），bevy_vox_scene 检测到
-多模型后自动挂 VoxelAnimationPlayer 逐帧播放。几何为逐帧外扩的空心球壳：
+多模型后自动挂 FlipbookPlayer 逐帧播放。几何为逐帧外扩的空心球壳：
 亮黄起爆 → 橙红 → 灰烟稀疏消散。
 """
 from pathlib import Path
@@ -11,7 +11,7 @@ from generate_ground import chunk, dictionary
 OUTPUT = Path(__file__).resolve().parents[1] / 'assets' / 'tank' / 'enemy' / 'default' / 'default_explosion.vox'
 
 # 帧数与单帧时长（1/12 秒）须与 src/explosion.rs 的 EXPLOSION_FRAME_RATE 对齐；
-# 实际帧率以加载后 VoxelAnimationPlayer 的帧数推导，避免两处漂移。
+# 实际存活时长以加载后 FlipbookFrame 的数量推导，避免两处漂移。
 FRAMES = 12
 # 单帧立方体边长（格）；40 格 × 0.1 米 = 4 米，覆盖敌人车体（3.4 米）。
 SIZE = 40

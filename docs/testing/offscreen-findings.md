@@ -2,6 +2,22 @@
 
 本文记录离屏工具发现的游戏运行问题，将工具是否正确执行与游戏行为是否通过分开判断。失败报告属于测试产物，不通过降低断言、跳过场景或替换实际地形来消除。
 
+## 2026-10-20：Bevy 0.20 依赖迁移回归
+
+当前锁定 Bevy 0.20.0、bevy_vox_scene 0.23.0、bevy_panorbit_camera 0.36.0、Avian 0.8.0 和 bevy_flipbook 0.1.0；均来自 crates.io，`cargo tree --locked -i bevy` 确认共用一套 Bevy。兼容关系已核对各插件随包发布的 README 与 Cargo.toml，API 变更对照 [Bevy 官方迁移指南](https://bevy.org/learn/migration-guides/0-19-to-0-20/)。
+
+- `MeshAabb::compute_aabb` 改为 `get_aabb`，同时迁移运行代码和真实资源测试；Avian 碰撞体 AABB 测试显式传入零边距，保持几何尺寸契约。
+- 爆炸改用 Flipbook，设置 12 fps、单次播放和按实际帧数计算的根实体清理计时；真实 VOX 测试验证速度、重复模式、可见帧推进及整棵子树清理。
+- VOX 新版对单色模型直接设置 `base_color`；子弹资源测试改为验证同样的褐色 RGBA，避免对不存在的纹理解包。
+
+Windows / NVIDIA GeForce RTX 4060 / Vulkan 验证：`cargo check --locked` 和 `cargo test --locked` 通过（41 项）。`scene`、`drive`、`combat` 全部退出 0，报告与关键帧位于 `.scratch/offscreen/upgrade-020-{scene,drive,combat}-01/`。已读取 scene 第 0 帧、drive 第 180 帧、combat 第 6/24/120 帧，确认模型、转弯和爆炸推进及清理。没有打开可见窗口，未验证 Linux 或其它 GPU。全仓 `cargo fmt --check` 仍报告原有代码格式差异；未进行无关格式重排。
+
+### 升级测试补强
+
+补充延迟挂载与只武装一次、错峰爆炸独立播放及清理两个测试；增强真实 VOX 测试，按 10ms 步长验证全部 12 帧依次且唯一可见、末帧不回闪、不到期不删除以及到期清理所有帧实体。真实坦克资源测试通过网格 UV 实际采样图集，验证三种预期装甲色，与单色子弹材质路径一起覆盖新版加载行为。
+
+`cargo test --locked` 全部 43 项通过；`cargo check --locked --all-targets` 通过。临时移除 `Without<ExplosionLifetime>` 后，延迟挂载测试按预期失败（500ms 时计时被重置成 100ms），恢复原实现后全套通过。再次执行离屏 combat，退出 0，读取第 24/120 帧确认爆炸显示与清理；产物位于 `.scratch/offscreen/upgrade-020-combat-tests-01/`。本次只增加测试覆盖，游戏逻辑未改动。
+
 ## 2026-10-19：高度场平地上的直行阻塞
 
 分类：游戏运行集成 / 地形碰撞 / 驾驶。状态：已修复并验证（2026-10-19 当日实施，见文末"修复实施与验收"）。

@@ -301,7 +301,8 @@ pub(super) fn run(mut app: App, options: Options) -> Result<(), String> {
         options.scenario
     );
     if let Some(adapter) = app.world().get_resource::<RenderAdapterInfo>() {
-        report.push_str(&format!("GPU/后端：{:?}\n", adapter.0));
+        // 0.20 起 RenderAdapterInfo 内部字段私有化，经 Deref<AdapterInfo> 取名称与后端。
+        report.push_str(&format!("GPU/后端：{} ({:?})\n", adapter.name, adapter.backend));
     }
     let result = run_scenario(&mut app, &options, &mut report);
     report.push_str(&match &result {

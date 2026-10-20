@@ -213,7 +213,8 @@ mod tests {
         ] {
             let rotation = Quat::from_rotation_y(yaw);
             let position = Vec3::new(2.0, 1.3, -3.0);
-            let actual = collider.aabb(position, rotation);
+            // 几何尺寸契约不包含物理宽相位额外扩张的边距。
+            let actual = collider.aabb(position, rotation, 0.0);
             let core = TANK_SIZE / 2.0 - Vec3::splat(STEP_CLIMB_RADIUS);
             let expected = (rotation * Vec3::X * core.x).abs()
                 + Vec3::Y * core.y

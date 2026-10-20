@@ -286,7 +286,7 @@ mod tests {
                     .resource::<Assets<Mesh>>()
                     .get(&mesh.0)
                     .unwrap()
-                    .compute_aabb()
+                    .get_aabb()
                     .unwrap();
                 let transform = world.get::<GlobalTransform>(entity).unwrap();
                 for x in [-1.0, 1.0] {
@@ -694,6 +694,65 @@ mod tests {
         assert!((MUZZLE_POSITION.x + BULLET_SIZE / 2.0 - tank_minimum.x).abs() < 1e-4);
         assert!(tank_minimum.x < -crate::driving::TANK_SIZE.x / 2.0);
 
+        // 多色车身仍须通过 UV 采样到生成器中的三种装甲色，不能退化成单色材质。
+        let armor_colors = [
+            [83, 99, 55, 255],
+            [108, 121, 72, 255],
+            [58, 70, 40, 255],
+        ];
+        let mut sampled_colors = std::collections::BTreeSet::new();
+        let mut pending = vec![tank];
+        while let Some(entity) = pending.pop() {
+            let world = app.world();
+            if let Some(children) = world.get::<Children>(entity) {
+                pending.extend(children.iter());
+            }
+            let Some(mesh) = world.get::<Mesh3d>(entity) else {
+                continue;
+            };
+            let material = world
+                .get::<MeshMaterial3d<StandardMaterial>>(entity)
+                .unwrap();
+            let material = world
+                .resource::<Assets<StandardMaterial>>()
+                .get(&material.0)
+                .unwrap();
+            let Some(texture) = &material.base_color_texture else {
+                continue;
+            };
+            assert_eq!(material.base_color, Color::WHITE);
+            let atlas = world.resource::<Assets<Image>>().get(texture).unwrap();
+            assert_eq!(
+                atlas.texture_descriptor.format,
+                bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb
+            );
+            let pixels = atlas.data.as_ref().expect("调色板像素必须可读");
+            let mesh = world.resource::<Assets<Mesh>>().get(&mesh.0).unwrap();
+            let Some(bevy::mesh::VertexAttributeValues::Float32x2(uvs)) =
+                mesh.attribute(Mesh::ATTRIBUTE_UV_0)
+            else {
+                panic!("多色网格必须提供二维 UV");
+            };
+            assert!(!uvs.is_empty());
+            let size = atlas.texture_descriptor.size;
+            for &[u, v] in uvs {
+                assert!(
+                    u.is_finite() && v.is_finite()
+                        && (0.0..=1.0).contains(&u) && (0.0..=1.0).contains(&v)
+                );
+                let x = ((u * size.width as f32) as u32).min(size.width - 1);
+                let y = ((v * size.height as f32) as u32).min(size.height - 1);
+                let offset = ((y * size.width + x) * 4) as usize;
+                sampled_colors.insert(<[u8; 4]>::try_from(&pixels[offset..offset + 4]).unwrap());
+            }
+        }
+        for color in armor_colors {
+            assert!(
+                sampled_colors.contains(&color),
+                "UV 未采样到装甲色 {color:?}：{sampled_colors:?}"
+            );
+        }
+
         // 地形已改为程序化编译：两张 1200×1200 字节图生成 10×10 块世界坐标网格与一个高度场碰撞体。
         assert!(
             terrain_surface.iter(app.world()).next().is_some(),
@@ -781,7 +840,7 @@ mod tests {
                     .resource::<Assets<Mesh>>()
                     .get(&mesh.0)
                     .unwrap()
-                    .compute_aabb()
+                    .get_aabb()
                     .is_some_and(|aabb| {
                         aabb.half_extents.abs_diff_eq(Vec3::splat(0.2).into(), 1e-5)
                     })
@@ -794,13 +853,12 @@ mod tests {
             .unwrap();
         assert!(material.perceptual_roughness >= 0.8);
         assert_eq!(material.metallic, 0.0);
-        // 材质颜色存于调色板图集，检查其像素以确认褐色确实进入加载后的资源。
-        let atlas = app
-            .world()
-            .resource::<Assets<Image>>()
-            .get(material.base_color_texture.as_ref().unwrap())
-            .unwrap();
-        assert_eq!(&atlas.data.as_ref().unwrap()[..4], &[139, 90, 43, 255]);
+        // 0.23 将单色模型直接存为材质颜色，不再生成调色板纹理。
+        assert!(material.base_color_texture.is_none());
+        assert_eq!(
+            material.base_color.to_srgba().to_u8_array(),
+            [139, 90, 43, 255]
+        );
 
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()

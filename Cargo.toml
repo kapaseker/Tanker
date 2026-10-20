@@ -4,12 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-# 基于 crates.io 的 bevy 0.19（不使用父目录源码）。
-# 锁 0.19 的原因：voxel 生态（bevy_vox_scene / bevy_voxel_world）目前最高只支持 0.19。
+# 基于 crates.io 的 bevy 0.20（不使用父目录源码）。
+# 与 bevy_vox_scene 0.23、轨道相机 0.36 和 Avian 0.8 同步升级。
 # 系统缺 alsa/udev/wayland 的开发包，故禁用默认特性，手工组装：
 #   - 禁 audio（需要 alsa）与 bevy_gilrs（需要 udev）
 #   - 禁 wayland，仅保留 x11（当前会话为 X11，winit 走 dlopen 无需头文件）
-bevy = { version = "0.19", default-features = false, features = [
+bevy = { version = "0.20", default-features = false, features = [
   # default_app
   "std",
   "async_executor",
@@ -29,14 +29,19 @@ bevy = { version = "0.19", default-features = false, features = [
   "3d_bevy_render",
 ] }
 
-# MagicaVoxel .vox 场景加载（场景图 + 材质/玻璃/云体素），兼容表：bevy 0.19 <-> 0.22
-bevy_vox_scene = "0.22"
+# MagicaVoxel .vox 场景加载（场景图 + 材质/玻璃/云体素），兼容表：bevy 0.20 <-> 0.23
+bevy_vox_scene = "0.23"
 
-# 轨道相机：左键旋转、滚轮缩放，位置由驾驶模块自动跟随，兼容 Bevy 0.19
-bevy_panorbit_camera = "0.35.1"
+# 爆炸逐帧动画的速度组件 FlipbookSpeed 只在此 crate 导出（vox_scene 未重导出）；
+# 该 crate 的 lib 名是 flipbook（非 bevy_flipbook），重命名对齐其真实 lib 名。
+flipbook = { version = "0.1", package = "bevy_flipbook" }
 
-# 简化坦克刚体与平面碰撞；0.7 对应 Bevy 0.19，仅启用 3D 单精度碰撞后端。
-avian3d = { version = "0.7", default-features = false, features = ["3d", "f32", "parry-f32"] }
+# 轨道相机：左键旋转、滚轮缩放，位置由驾驶模块自动跟随，兼容 Bevy 0.20
+bevy_panorbit_camera = "0.36"
+
+# 简化坦克刚体与平面碰撞；0.8 对应 Bevy 0.20，仅启用 3D 单精度碰撞后端。
+# 注意：0.8 移除了独立 f32 特性（f32 成为默认，仅 f64 需显式启用）。
+avian3d = { version = "0.8", default-features = false, features = ["3d", "parry-f32"] }
 
 # 开局随机摆放敌人；复用依赖树中已锁定的随机库。
 fastrand = "2"

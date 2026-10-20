@@ -129,7 +129,8 @@ fn first_mesh_aabb(
         }
         if let Ok(mesh) = meshes.get(entity) {
             return assets.get(&mesh.0).and_then(|m| {
-                m.compute_aabb().map(|a| {
+                // 0.20 将 MeshAabb 的方法由 compute_aabb 更名为 get_aabb。
+                m.get_aabb().map(|a| {
                     let center = Vec3::from(a.center);
                     let half = Vec3::from(a.half_extents);
                     (center - half, center + half)
