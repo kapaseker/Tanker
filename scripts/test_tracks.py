@@ -24,8 +24,8 @@ def read_models(path):
 
 
 class TrackLoopTests(unittest.TestCase):
-    def test_both_chassis_roll_around_the_rim_and_keep_wheels_stationary(self):
-        for chassis, end, top, bevel in (('player', 74, 8, True), ('enemy', 26, 4, False)):
+    def test_both_chassis_roll_around_the_rim(self):
+        for chassis, end, top, bevel in (('player', 74, 11, True), ('enemy', 26, 4, False)):
             with self.subTest(chassis=chassis):
                 # VOX +X 是车头：前进时上段向 +X、前端向下、下段向 −X、后端向上。
                 rim = ([(x, top) for x in range(end+1)]
@@ -37,7 +37,7 @@ class TrackLoopTests(unittest.TestCase):
                 self.assertEqual(len(rim), len(set(rim)))
                 self.assertEqual(len(rim) % 3, 0, '闭环接缝的齿距也必须连续')
                 models = read_models(ASSETS / 'tracks' / chassis / 'lugged' / 'default.vox')
-                self.assertEqual(len(models), 6)
+                self.assertEqual(len(models), 20 if chassis == 'player' else 6)
                 body, = read_models(ASSETS / chassis / 'default' / 'body.vox')
                 sides = ((0,0,1),(1,35,34)) if chassis == 'player' else ((0,0,1),(1,25,24))
                 for side, outer_y, face_y in sides:
@@ -48,13 +48,16 @@ class TrackLoopTests(unittest.TestCase):
                         outer = {(x, z) for x, y, z in cells if y == outer_y}
                         expected = {point for s, point in enumerate(rim) if (s-phase) % 3 == 0}
                         self.assertEqual(outer, expected, f'{chassis} 侧 {side} 相位 {phase} 必须沿轮廓滚动')
-                        # 轮组位于侧面轮廓以内，不随履带相位横向平移或变色。
+                        # 敌人烘焙轮组和玩家内侧连接结构不随履带相位平移或变色。
                         wheels = {(x, z): c for (x, y, z), c in cells.items()
                                   if y == face_y and (x, z) not in rim and z <= top}
                         if stationary is None:
                             stationary = wheels
                         self.assertEqual(wheels, stationary)
-                        self.assertTrue(any(c == 5 for c in wheels.values()), '必须露出原轮组')
+                        if chassis == 'enemy':
+                            self.assertTrue(any(c == 5 for c in wheels.values()), '敌人仍保留原轮组')
+                        else:
+                            self.assertFalse(any((x, face_y, 6) in cells for x in (50, 62, 74, 86)), '玩家轮间必须透空')
                         next_positions = {rim[(s+1) % len(rim)] for s, point in enumerate(rim)
                                           if point in outer}
                         next_cells = phases[(phase+1) % 3]

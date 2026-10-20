@@ -1,6 +1,6 @@
 //! 直接生成现代主战坦克的车身、炮管与六相位履带，纯标准库、确定性输出。
 //! rustc --edition 2024 -O scripts/generate_player.rs -o target/generate_player.exe
-//! 三包共享对称画布与调色板，无场景变换；加载后中心就是车体中心。
+//! 车体与履带共享画布；局部轮模型以轴心居中，运行时按共享契约安装。
 
 use std::{collections::BTreeMap, env, fs, path::PathBuf};
 #[path = "../src/player_model.rs"]
@@ -12,6 +12,8 @@ const PITCH: i32 = 3;
 /// 固定调色板索引：履带深灰和轮组浅灰。
 const C_DARK: u8 = 4;
 const C_LIGHT: u8 = 5;
+/// 独立浅色辐条，保留原履带灰色不变。
+const C_SPOKE: u8 = 6;
 /// 有序体素集合：后写的装甲细节覆盖底色，不输出重复体素。
 type Cells = BTreeMap<(i32, i32, i32), u8>;
 
@@ -24,13 +26,13 @@ struct Voxel {
     c: u8,
 }
 
-/// 沿车头 +X 闭环，削去底部两个角，周长 162 格。
+/// 沿车头 +X 闭环，削去底部两个角，周长 168 格。
 fn track_loop() -> Vec<(i32, i32)> {
     (30..105)
-        .map(|x| (x, 8))
-        .chain((1..8).rev().map(|z| (104, z)))
+        .map(|x| (x, 11))
+        .chain((1..11).rev().map(|z| (104, z)))
         .chain((31..104).rev().map(|x| (x, 0)))
-        .chain((1..8).map(|z| (30, z)))
+        .chain((1..11).map(|z| (30, z)))
         .collect()
 }
 
@@ -92,13 +94,13 @@ fn body() -> Vec<Voxel> {
     cells.retain(|&(x, _, z), _| x >= 34 || z < 14 + (x - 30) / 2);
     for y in [(1, 7), (29, 35)] {
         let beam = if y.0 == 1 { (6, 7) } else { (29, 30) };
-        box_cells(&mut cells, (30, 105), beam, (11, 12), 3, 0);
+        box_cells(&mut cells, (30, 105), beam, (14, 15), 3, 0);
         for x in (33..94).step_by(10) {
-            box_cells(&mut cells, (x, x + 9), y, (11, 13), 3, 1);
-            box_cells(&mut cells, (x, x + 9), y, (12, 13), 2, 1);
+            box_cells(&mut cells, (x, x + 9), y, (14, 16), 3, 1);
+            box_cells(&mut cells, (x, x + 9), y, (15, 16), 2, 1);
         }
-        box_cells(&mut cells, (30, 33), y, (11, 12), 3, 1);
-        box_cells(&mut cells, (102, 105), y, (11, 12), 3, 1);
+        box_cells(&mut cells, (30, 33), y, (14, 15), 3, 1);
+        box_cells(&mut cells, (102, 105), y, (14, 15), 3, 1);
     }
     // 尾舱 13 格、中部 15 格、前楔 13 格；高度和前壁接缝保持不变。
     for (z0, z1, half, color) in [(16, 20, 13, 3), (20, 23, 12, 1), (23, 25, 10, 2)] {
@@ -153,51 +155,24 @@ fn barrel() -> Vec<Voxel> {
     voxels(cells)
 }
 
-/// 独立履带：内部轮组各相位相同，只有外圈齿图案滚动。
+/// 履带只保留闭环；内侧连接条位于轮宽之外，不填实轮间空隙。
 fn tracks() -> Vec<(String, Vec<Voxel>)> {
     let rim = track_loop();
     let mut models = Vec::new();
-    for (side, y0, y1, outer) in [("l", 1, 7, 0), ("r", 29, 35, 35)] {
+    for (side, y0, y1, outer, inner) in [("l", 1, 7, 0, 6), ("r", 29, 35, 35, 29)] {
         for phase in 0..PITCH {
             let mut cells = Cells::new();
-            box_cells(&mut cells, (31, 104), (y0, y1), (1, 8), C_DARK, 0);
-            // 七个负重轮等距九格；前后小端轮抬高一格，与负重轮分开表达。
-            for (center, height, radius) in [
-                (33, 5, 2),
-                (40, 4, 3),
-                (49, 4, 3),
-                (58, 4, 3),
-                (67, 4, 3),
-                (76, 4, 3),
-                (85, 4, 3),
-                (94, 4, 3),
-                (101, 5, 2),
-            ] {
-                for x in center - radius..=center + radius {
-                    for z in height - radius..=height + radius {
-                        if (x - center) * (x - center) + (z - height) * (z - height)
-                            <= radius * radius + 1
-                        {
-                            for y in y0..y1 {
-                                cells.insert(
-                                    (x, y, z),
-                                    if x == center && z == height {
-                                        3
-                                    } else {
-                                        C_LIGHT
-                                    },
-                                );
-                            }
-                        }
-                    }
-                }
-            }
+            box_cells(&mut cells, (31, 104), (inner, inner + 1), (5, 7), C_DARK, 0);
             for (i, &(x, z)) in rim.iter().enumerate() {
                 let tooth = (i as i32 - phase).rem_euclid(PITCH) == 0;
                 for y in y0..y1 {
+                    // 上沿内侧一格让开车体斜装甲，外侧闭环保持完整。
+                    if z == 11 && y == inner {
+                        continue;
+                    }
                     cells.insert((x, y, z), if tooth { C_LIGHT } else { C_DARK });
-                    if tooth && z == 8 {
-                        cells.insert((x, y, 9), C_LIGHT);
+                    if tooth && z == 11 {
+                        cells.insert((x, y, 12), C_LIGHT);
                     }
                 }
                 if tooth {
@@ -207,14 +182,57 @@ fn tracks() -> Vec<(String, Vec<Voxel>)> {
             models.push((format!("track_{side}_{phase}"), voxels(cells)));
         }
     }
+    for spec in player_model::WHEELS.iter().flatten() {
+        models.push((spec.name.into(), wheel_model(spec)));
+    }
     models
+}
+
+/// 仅保留四角都在旋转包络内的体素；轴心等于局部 SIZE 中心。
+fn wheel_model(spec: &player_model::WheelSpec) -> Vec<Voxel> {
+    let mut cells = Cells::new();
+    let half = spec.size.0 as f32 / 2.0;
+    for x in 0..spec.size.0 as i32 {
+        for z in 0..spec.size.2 as i32 {
+            let far_x = (x as f32 - half).abs().max((x as f32 + 1.0 - half).abs());
+            let far_z = (z as f32 - half).abs().max((z as f32 + 1.0 - half).abs());
+            if far_x.hypot(far_z) > spec.envelope {
+                continue;
+            }
+            let dx = x as f32 + 0.5 - half;
+            let dz = z as f32 + 0.5 - half;
+            let r = dx.hypot(dz);
+            // 三条不对称辐条采用不同角度，避免三等分造成低速转动混淆。
+            let spoke = [0.0f32, 1.7, 4.0].iter().any(|angle| {
+                let along = dx * angle.cos() + dz * angle.sin();
+                let across = -dx * angle.sin() + dz * angle.cos();
+                along > 0.0 && across.abs() < 0.55
+            });
+            let color = if r > spec.radius - 1.2 {
+                C_DARK
+            } else if spoke {
+                C_SPOKE
+            } else {
+                1
+            };
+            for y in 0..spec.size.1 as i32 {
+                cells.insert((x, y, z), color);
+            }
+        }
+    }
+    voxels(cells)
 }
 
 /// 写出带自有调色板和哑光材质的场景包；节点序号沿用现有加载器契约。
 fn package(models: &[(String, Vec<Voxel>)]) -> Vec<u8> {
     let mut children = Vec::new();
-    for (_, m) in models {
-        push_model(&mut children, m);
+    for (name, m) in models {
+        let size = player_model::WHEELS
+            .iter()
+            .flatten()
+            .find(|wheel| wheel.name == name)
+            .map_or(SIZE, |wheel| wheel.size);
+        push_model(&mut children, m, size);
     }
     let colors = [
         [83, 99, 55, 255],
@@ -222,6 +240,7 @@ fn package(models: &[(String, Vec<Voxel>)]) -> Vec<u8> {
         [58, 70, 40, 255],
         [32, 35, 33, 255],
         [58, 62, 56, 255],
+        [174, 181, 151, 255],
     ];
     let mut palette = vec![0; 1024];
     for (i, color) in colors.iter().enumerate() {
@@ -267,13 +286,13 @@ fn main() {
     }
 }
 
-/// 写一个 model：SIZE + XYZI（统一 SIZE，体素全局坐标）
-fn push_model(out: &mut Vec<u8>, m: &[Voxel]) {
+/// 写一个 model：全局部件用统一画布，轮子使用以轴心居中的局部 SIZE。
+fn push_model(out: &mut Vec<u8>, m: &[Voxel], size: (u32, u32, u32)) {
     push_chunk(out, b"SIZE", &{
         let mut c = Vec::new();
-        c.extend_from_slice(&SIZE.0.to_le_bytes());
-        c.extend_from_slice(&SIZE.1.to_le_bytes());
-        c.extend_from_slice(&SIZE.2.to_le_bytes());
+        c.extend_from_slice(&size.0.to_le_bytes());
+        c.extend_from_slice(&size.1.to_le_bytes());
+        c.extend_from_slice(&size.2.to_le_bytes());
         c
     });
     push_chunk(out, b"XYZI", &{
@@ -391,7 +410,7 @@ mod tests {
     #[test]
     fn non_barrel_bounds_match_centered_collision_contract() {
         let mut geometry = body();
-        for (_, model) in tracks() {
+        for (_, model) in tracks().into_iter().take(6) {
             geometry.extend(model);
         }
         let mut low = [i32::MAX; 3];
@@ -413,6 +432,25 @@ mod tests {
             barrel().iter().any(|v| v.x >= high[0]),
             "炮管超出框但不参与边界并集"
         );
+    }
+
+    /// 轮子独立画布不能直接并入全局边界；按安装轴心核对整个旋转包络。
+    #[test]
+    fn wheel_envelopes_fit_collision_and_track_clearance() {
+        for spec in player_model::WHEELS.iter().flatten() {
+            for axis in 0..3 {
+                let extent = if axis == 1 {
+                    spec.size.1 as f32 / 2.0
+                } else {
+                    spec.envelope
+                };
+                assert!(spec.center[axis] - extent >= player_model::COLLISION_MIN[axis] as f32);
+                assert!(spec.center[axis] + extent <= player_model::COLLISION_MAX[axis] as f32);
+            }
+            assert!(spec.center[2] - spec.envelope > 1.0);
+            assert!(spec.center[2] + spec.envelope < 11.0);
+        }
+        assert_eq!(track_loop().len(), 168);
     }
 
     /// 闭环没有重复角点或断裂，周长是齿距整数倍，保证末相位回到首相位不跳齿。

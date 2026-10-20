@@ -49,6 +49,8 @@ enum Scenario {
     Scene,
     Drive,
     Combat,
+    /// 玩家轮组的侧面动画与三视点对照。
+    Wheels,
 }
 
 impl Scenario {
@@ -61,6 +63,9 @@ impl Scenario {
             // 平区外的台阶全部是可翻越的 1 档坎，不构成驾驶失效判据。
             Self::Drive => &[0, 60, 180],
             Self::Combat => &[0, 6, 24, 120],
+            Self::Wheels => &[
+                0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 75, 90, 105, 120, 130, 240, 250,
+            ],
         }
     }
 
@@ -70,6 +75,10 @@ impl Scenario {
             (Self::Drive, 1..=60) => &[KeyCode::ArrowUp],
             (Self::Drive, 61..=180) => &[KeyCode::ArrowUp, KeyCode::ArrowLeft],
             (Self::Combat, 1) => &[KeyCode::Space],
+            (Self::Wheels, 1..=30) => &[KeyCode::ArrowUp],
+            (Self::Wheels, 31..=60) => &[KeyCode::ArrowDown],
+            (Self::Wheels, 61..=90) => &[KeyCode::ArrowLeft],
+            (Self::Wheels, 91..=120) => &[KeyCode::ArrowRight],
             _ => &[],
         }
     }
@@ -86,8 +95,7 @@ pub(super) struct Options {
 impl Options {
     /// 无参数返回普通游戏；其余参数必须完整匹配已公布的接口。
     pub(super) fn parse(args: Vec<OsString>) -> Result<Option<Self>, String> {
-        let usage =
-            "用法：--capture <图片.png> 或 --offscreen-test <scene|drive|combat> --output <目录>";
+        let usage = "用法：--capture <图片.png> 或 --offscreen-test <scene|drive|combat|wheels> --output <目录>";
         if args.is_empty() {
             return Ok(None);
         }
@@ -109,6 +117,7 @@ impl Options {
                 Some("scene") => Scenario::Scene,
                 Some("drive") => Scenario::Drive,
                 Some("combat") => Scenario::Combat,
+                Some("wheels") => Scenario::Wheels,
                 _ => return Err(usage.into()),
             };
             Self {
@@ -170,6 +179,11 @@ impl Options {
             .collect();
         if !self.single_image {
             paths.push(self.output.join("report.txt"));
+            if self.scenario == Scenario::Wheels {
+                for name in ["side", "front", "rear", "bounds"] {
+                    paths.push(self.output.join(format!("{name}.png")));
+                }
+            }
         }
         paths
     }
@@ -302,7 +316,10 @@ pub(super) fn run(mut app: App, options: Options) -> Result<(), String> {
     );
     if let Some(adapter) = app.world().get_resource::<RenderAdapterInfo>() {
         // 0.20 起 RenderAdapterInfo 内部字段私有化，经 Deref<AdapterInfo> 取名称与后端。
-        report.push_str(&format!("GPU/后端：{} ({:?})\n", adapter.name, adapter.backend));
+        report.push_str(&format!(
+            "GPU/后端：{} ({:?})\n",
+            adapter.name, adapter.backend
+        ));
     }
     let result = run_scenario(&mut app, &options, &mut report);
     report.push_str(&match &result {
@@ -329,6 +346,14 @@ fn update(app: &mut App, duration: Duration, frame: Option<u32>) -> Result<(), S
             .is_none(),
         "离屏进程不应创建窗口实体",
     )?;
+    let world = app.world_mut();
+    if let Some(failure) = world
+        .query::<&crate::track::TracksFailed>()
+        .iter(world)
+        .next()
+    {
+        return Err(failure.0.clone());
+    }
     if let Some(error) = app.world().resource::<Evidence>().errors.first() {
         return Err(error.clone());
     }
@@ -349,12 +374,26 @@ fn update(app: &mut App, duration: Duration, frame: Option<u32>) -> Result<(), S
 fn pipelines_ready(app: &App) -> Result<bool, String> {
     let render = app.sub_app(RenderApp).world();
     let cache = render.resource::<PipelineCache>();
+    let mut pending = false;
     for pipeline in cache.pipelines() {
         if let CachedPipelineState::Err(error) = &pipeline.state {
+            if shader_pending(error) {
+                pending = true;
+                continue;
+            }
             return Err(format!("渲染管线失败：{error}"));
         }
     }
-    Ok(cache.waiting_pipelines().next().is_none())
+    Ok(!pending && cache.waiting_pipelines().next().is_none())
+}
+
+/// 与锁定版 PipelineCache 的重试规则一致；实际 shader 处理和模块创建错误仍失败。
+fn shader_pending(error: &bevy::shader::ShaderCacheError) -> bool {
+    matches!(
+        error,
+        bevy::shader::ShaderCacheError::ShaderNotLoaded(_)
+            | bevy::shader::ShaderCacheError::ShaderImportNotYetAvailable
+    )
 }
 
 /// 同时确认 CPU 场景、依赖、实例和 GPU 网格/纹理，避免仅凭加载日志提前截黑图。
@@ -559,7 +598,13 @@ fn run_scenario(app: &mut App, options: &Options, report: &mut String) -> Result
     enemies.sort_by(|a, b| a.x.total_cmp(&b.x).then(a.z.total_cmp(&b.z)));
     report.push_str(&format!("敌人布局：{enemies:?}\n"));
     let mut failures = Vec::new();
-    capture(app, &options.image_path(0))?;
+    let mut previous_tracks = start_tracks;
+    if options.scenario == Scenario::Wheels {
+        capture_wheel_views(app, &options.output)?;
+        capture_side(app, &options.image_path(0))?;
+    } else {
+        capture(app, &options.image_path(0))?;
+    }
     report.push_str(&format!(
         "模拟帧：0；图片：{}\n",
         options.image_path(0).display()
@@ -567,6 +612,28 @@ fn run_scenario(app: &mut App, options: &Options, report: &mut String) -> Result
     for frame in 1..=*options.scenario.frames().last().unwrap() {
         update(app, STEP, Some(frame))?;
         validate_scene(app.world_mut())?;
+        if options.scenario == Scenario::Wheels && [30, 60, 90, 120, 240, 250].contains(&frame) {
+            let (_, tracks) = player_state(app.world_mut())?;
+            let delta = [
+                tracks[0] - previous_tracks[0],
+                tracks[1] - previous_tracks[1],
+            ];
+            let passed = match frame {
+                30 => delta.iter().all(|d| *d > 2.9),
+                60 => delta.iter().all(|d| *d < -1.9),
+                90 => delta[0] > 0.5 && delta[1] < -0.5,
+                120 => delta[0] < -0.3 && delta[1] > 0.3,
+                250 => delta.iter().all(|d| d.abs() < 0.0001),
+                _ => true,
+            };
+            record_check(
+                report,
+                &mut failures,
+                passed,
+                &format!("轮组输入方向与停车：帧{frame}，左右里程变化{delta:?}"),
+            );
+            previous_tracks = tracks;
+        }
         if options.scenario == Scenario::Drive && frame == 60 {
             let (state, tracks) = player_state(app.world_mut())?;
             report.push_str(&format!(
@@ -653,7 +720,11 @@ fn run_scenario(app: &mut App, options: &Options, report: &mut String) -> Result
                 "模拟帧：{frame}；位置：{:?}；旋转：{:?}；履带里程：{tracks:?}\n",
                 state.translation, state.rotation
             ));
-            capture(app, &options.image_path(frame))?;
+            if options.scenario == Scenario::Wheels {
+                capture_side(app, &options.image_path(frame))?;
+            } else {
+                capture(app, &options.image_path(frame))?;
+            }
             report.push_str(&format!("图片：{}\n", options.image_path(frame).display()));
         }
     }
@@ -664,6 +735,85 @@ fn run_scenario(app: &mut App, options: &Options, report: &mut String) -> Result
         options.output.display()
     );
     Ok(())
+}
+
+/// 临时取消跟随以拍摄固定的车体局部视点；截图等待仍不推进模拟。
+fn capture_view(app: &mut App, path: &Path, offset: Vec3) -> Result<(), String> {
+    let (player, _) = player_state(app.world_mut())?;
+    let world = app.world_mut();
+    let (camera, saved) = world
+        .query_filtered::<(Entity, &Transform), With<crate::driving::FollowCamera>>()
+        .single(world)
+        .map(|(entity, transform)| (entity, *transform))
+        .map_err(|e| e.to_string())?;
+    let target = player.translation + Vec3::Y * -0.15;
+    world
+        .entity_mut(camera)
+        .remove::<crate::driving::FollowCamera>()
+        .insert(
+            Transform::from_translation(target + player.rotation * offset)
+                .looking_at(target, Vec3::Y),
+        );
+    let result = capture(app, path);
+    app.world_mut()
+        .entity_mut(camera)
+        .insert((crate::driving::FollowCamera, saved));
+    result
+}
+
+/// 侧面与车体一起移动旋转，使逐帧比较只显示轮组自身动画。
+fn capture_side(app: &mut App, path: &Path) -> Result<(), String> {
+    capture_view(app, path, Vec3::new(0.0, 0.5, 10.0))
+}
+
+/// 相同侧面、前侧和后侧视点，并用细红线标示碰撞框外包围边界（不含炮管）。
+fn capture_wheel_views(app: &mut App, output: &Path) -> Result<(), String> {
+    capture_side(app, &output.join("side.png"))?;
+    capture_view(app, &output.join("front.png"), Vec3::new(-9.0, 3.0, 9.0))?;
+    capture_view(app, &output.join("rear.png"), Vec3::new(9.0, 3.0, 9.0))?;
+    let (player, _) = player_state(app.world_mut())?;
+    let material = app
+        .world_mut()
+        .resource_mut::<Assets<StandardMaterial>>()
+        .add(StandardMaterial {
+            base_color: Color::srgb(1.0, 0.05, 0.02),
+            unlit: true,
+            ..default()
+        });
+    let half = crate::driving::TANK_SIZE / 2.0;
+    let mut edges = Vec::new();
+    for axis in 0..3 {
+        for a in [-1.0, 1.0] {
+            for b in [-1.0, 1.0] {
+                let mut size = Vec3::splat(0.025);
+                size[axis] = half[axis] * 2.0;
+                let mut center = Vec3::ZERO;
+                center[(axis + 1) % 3] = half[(axis + 1) % 3] * a;
+                center[(axis + 2) % 3] = half[(axis + 2) % 3] * b;
+                let mesh = app
+                    .world_mut()
+                    .resource_mut::<Assets<Mesh>>()
+                    .add(Cuboid::from_size(size));
+                edges.push(
+                    app.world_mut()
+                        .spawn((
+                            Mesh3d(mesh),
+                            MeshMaterial3d(material.clone()),
+                            Transform::from_translation(
+                                player.translation + player.rotation * center,
+                            )
+                            .with_rotation(player.rotation),
+                        ))
+                        .id(),
+                );
+            }
+        }
+    }
+    let result = capture_view(app, &output.join("bounds.png"), Vec3::new(-9.0, 3.0, 9.0));
+    for edge in edges {
+        app.world_mut().despawn(edge);
+    }
+    result
 }
 
 /// 请求一次截图并等待 observer 完成保存，绝不以请求已提交作为成功判据。
@@ -783,6 +933,21 @@ mod tests {
         Options::parse(args.iter().map(Into::into).collect())
     }
 
+    /// Bevy 0.20 会重试尚未到达渲染世界的 shader，不能将等待判为致命错误。
+    #[test]
+    fn shader_loading_waits_but_compilation_failure_still_fails() {
+        use bevy::shader::ShaderCacheError;
+        assert!(shader_pending(&ShaderCacheError::ShaderNotLoaded(
+            Handle::<Shader>::default().id()
+        )));
+        assert!(shader_pending(
+            &ShaderCacheError::ShaderImportNotYetAvailable
+        ));
+        assert!(!shader_pending(&ShaderCacheError::CreateShaderModule(
+            "编译失败".into()
+        )));
+    }
+
     #[test]
     fn command_line_keeps_normal_game_and_accepts_documented_commands() {
         assert_eq!(parse(&[]).unwrap(), None);
@@ -793,6 +958,7 @@ mod tests {
             ("scene", Scenario::Scene),
             ("drive", Scenario::Drive),
             ("combat", Scenario::Combat),
+            ("wheels", Scenario::Wheels),
         ] {
             let options = parse(&["--offscreen-test", name, "--output", "out"])
                 .unwrap()

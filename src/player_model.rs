@@ -13,3 +13,51 @@ pub const BORE_HEIGHT: f32 = 20.0;
 pub const COLLISION_MIN: [i32; 3] = [HULL_X.0, 0, 0];
 /// 碰撞框上界；区别于含大量空白和炮管的统一画布尺寸。
 pub const COLLISION_MAX: [i32; 3] = [HULL_X.1, 36, 26];
+
+/// 单轮安装契约；VOX 坐标用体素格，允许半格轴心。
+#[derive(Clone, Copy)]
+pub struct WheelSpec {
+    /// 包内命名节点，左右侧顺序与履带里程一致。
+    pub name: &'static str,
+    /// VOX 全局轴心（长、宽、高），加载时映射为（−X、Z、Y）。
+    pub center: [f32; 3],
+    /// 局部画布：静止外包络直径、轮宽、直径。
+    pub size: (u32, u32, u32),
+    /// 名义滚动半径，单位为体素格。
+    pub radius: f32,
+    /// 全部体素顶点旋转后的最大半径，单位为体素格。
+    pub envelope: f32,
+}
+
+/// 左右各五个负重轮和两个端轮；生成器和运行时共享节点名及安装位置。
+pub const WHEELS: [[WheelSpec; 7]; 2] = [
+    [
+        wheel("wheel_l_0", 43.5, 4.0, false),
+        wheel("wheel_l_1", 55.5, 4.0, false),
+        wheel("wheel_l_2", 67.5, 4.0, false),
+        wheel("wheel_l_3", 79.5, 4.0, false),
+        wheel("wheel_l_4", 91.5, 4.0, false),
+        wheel("wheel_l_5", 34.0, 4.0, true),
+        wheel("wheel_l_6", 101.0, 4.0, true),
+    ],
+    [
+        wheel("wheel_r_0", 43.5, 32.0, false),
+        wheel("wheel_r_1", 55.5, 32.0, false),
+        wheel("wheel_r_2", 67.5, 32.0, false),
+        wheel("wheel_r_3", 79.5, 32.0, false),
+        wheel("wheel_r_4", 91.5, 32.0, false),
+        wheel("wheel_r_5", 34.0, 32.0, true),
+        wheel("wheel_r_6", 101.0, 32.0, true),
+    ],
+];
+
+/// 区分负重轮与端轮的名义半径和连续旋转净空。
+const fn wheel(name: &'static str, x: f32, y: f32, end: bool) -> WheelSpec {
+    WheelSpec {
+        name,
+        center: [x, y, if end { 6.5 } else { 6.0 }],
+        size: if end { (5, 4, 5) } else { (8, 4, 8) },
+        radius: if end { 2.5 } else { 4.0 },
+        envelope: if end { 2.8 } else { 4.3 },
+    }
+}
