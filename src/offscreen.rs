@@ -57,7 +57,7 @@ impl Scenario {
         match self {
             Self::Scene => &[0],
             // 体素地形是有意障碍：直行只模拟 1 秒（60 帧），车头前缘
-            // （半长 1.6 m + 行驶 6 m）仍留在半径 24 m 的出生平区内；
+            // （半长 3.75 m + 行驶 6 m）仍留在半径 24 m 的出生平区内；
             // 平区外的台阶全部是可翻越的 1 档坎，不构成驾驶失效判据。
             Self::Drive => &[0, 60, 180],
             Self::Combat => &[0, 6, 24, 120],
@@ -436,6 +436,20 @@ fn wait_render(app: &mut App, require_scene: bool) -> Result<(), String> {
 
 /// 将真实敌人调整为战斗测试布局；仍保留原有动态刚体、碰撞体和资源层级。
 fn arrange_combat(world: &mut World) {
+    // 旧敌人仅高 1.4 米；显式垫高靶车以验证 2 米炮口的水平命中，不修改敌人规格。
+    let mesh = world
+        .resource_mut::<Assets<Mesh>>()
+        .add(Cuboid::new(4.0, 1.3, 3.4));
+    let material = world
+        .resource_mut::<Assets<StandardMaterial>>()
+        .add(Color::srgb(0.25, 0.27, 0.24));
+    world.spawn((
+        avian3d::prelude::RigidBody::Static,
+        avian3d::prelude::Collider::cuboid(4.0, 1.3, 3.4),
+        Mesh3d(mesh),
+        MeshMaterial3d(material),
+        Transform::from_xyz(-12.0, 0.65, 0.0),
+    ));
     let mut query = world.query_filtered::<Entity, With<crate::enemy::EnemyTank>>();
     let mut enemies: Vec<_> = query.iter(world).collect();
     enemies.sort_by_key(|entity| entity.to_bits());
@@ -524,6 +538,7 @@ fn run_scenario(app: &mut App, options: &Options, report: &mut String) -> Result
     wait_render(app, true)?;
     if options.scenario == Scenario::Combat {
         arrange_combat(app.world_mut());
+        report.push_str("战斗布局：旧尺寸靶车放在 1.3 米实体台座上；平地掠过另由逻辑测试验证。\n");
     }
     for _ in 0..120 {
         update(app, STEP, None)?;

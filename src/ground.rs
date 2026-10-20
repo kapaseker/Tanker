@@ -820,7 +820,7 @@ mod tests {
             app.update();
         }
         let settled = app.world().get::<Transform>(tank).unwrap().translation;
-        assert!((settled.y - 0.75).abs() < 0.05, "落地高度异常：{settled:?}");
+        assert!((settled.y - crate::driving::TANK_SIZE.y / 2.0).abs() < 0.05, "落地高度异常：{settled:?}");
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::ArrowUp);
@@ -927,9 +927,9 @@ mod tests {
             "坦克应翻过一档坎并继续行驶：{moved:?}"
         );
         assert!(
-            (moved.y - (0.75 + TERRAIN_STEP)).abs() < 0.05,
+            (moved.y - (crate::driving::TANK_SIZE.y / 2.0 + TERRAIN_STEP)).abs() < 0.05,
             "坦克应停在坎顶高度 {}：{moved:?}",
-            0.75 + TERRAIN_STEP
+            crate::driving::TANK_SIZE.y / 2.0 + TERRAIN_STEP
         );
     }
 

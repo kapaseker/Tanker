@@ -20,13 +20,14 @@ mod explosion;
 mod firing;
 mod ground;
 mod offscreen;
+mod player_model;
 mod track;
 
 /// MagicaVoxel 单格边长，单位：米；运行时和真实资源测试共用。
 const VOXEL_SIZE: f32 = 0.1;
 
 /// 当前加载的 MagicaVoxel 场景资源路径（相对 `assets/`）。
-/// 车体与履带分离：履带包由 `track::spawn_tracks` 按底盘 ID 加载。
+/// 车身、炮管、履带三包共用画布；炮管与履带挂载到玩家根实体。
 const VOX_SCENE_PATH: &str = "tank/player/default/body.vox";
 
 /// 全局灯光的亮度（cd/m²）。场景不使用 `DirectionalLight`，全部光照由全局环境光

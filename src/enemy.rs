@@ -198,7 +198,10 @@ mod tests {
         }
         let stopped = app.world().get::<Transform>(player).unwrap().translation;
         assert!(
-            (stopped.x + 4.7).abs() < 0.05,
+            (stopped.x
+                - (obstacle_transform.translation.x + (driving::TANK_SIZE.x + ENEMY_SIZE.x) / 2.0))
+                .abs()
+                < 0.05,
             "应在敌人前停车：{stopped:?}"
         );
         assert_eq!(
@@ -209,7 +212,7 @@ mod tests {
         for _ in 0..64 {
             app.update();
         }
-        assert!(app.world().get::<Transform>(player).unwrap().translation.x < -10.0);
+        assert!(app.world().get::<Transform>(player).unwrap().translation.x < stopped.x - 5.0);
     }
 
     /// 多个固定种子验证完整数量、安全距离及旋转后每个角都在地图内。

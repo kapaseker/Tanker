@@ -4,10 +4,15 @@ use crate::firing::Tank;
 use avian3d::prelude::*;
 use bevy::{prelude::*, transform::TransformSystems};
 
-/// 玩家车体与履带组合的包围盒尺寸（X 长、Y 高、Z 宽），单位：米。
-// shortcut: 按现有模型标定；更换模型时同步更新包围盒与炮口。
-// Z 宽 2.6 = 履带外扩凸齿后模型宽 26 格 × 0.1。
-pub(super) const TANK_SIZE: Vec3 = Vec3::new(3.2, 1.5, 2.6);
+/// 玩家车身与履带的单一碰撞框（X 长、Y 高、Z 宽），不包含伸出的炮管，单位米。
+pub(super) const TANK_SIZE: Vec3 = Vec3::new(
+    (crate::player_model::COLLISION_MAX[0] - crate::player_model::COLLISION_MIN[0]) as f32
+        * crate::VOXEL_SIZE,
+    (crate::player_model::COLLISION_MAX[2] - crate::player_model::COLLISION_MIN[2]) as f32
+        * crate::VOXEL_SIZE,
+    (crate::player_model::COLLISION_MAX[1] - crate::player_model::COLLISION_MIN[1]) as f32
+        * crate::VOXEL_SIZE,
+);
 /// 前进与后退速度，单位：米/秒。
 const FORWARD_SPEED: f32 = 6.0;
 const REVERSE_SPEED: f32 = 4.0;
@@ -18,10 +23,10 @@ const TURN_SPEED: f32 = std::f32::consts::FRAC_PI_2;
 const TURN_SMOOTH_TIME: f32 = 0.15;
 
 /// 相机距车身中心的水平后退距离与世界竖直高度，单位：米。
-const CAMERA_DISTANCE: f32 = 12.0;
-const CAMERA_HEIGHT: f32 = 6.0;
+const CAMERA_DISTANCE: f32 = 16.0;
+const CAMERA_HEIGHT: f32 = 9.0;
 /// 相对于看向车身中心的方向向上抬起的角度，单位：度。
-const CAMERA_PITCH_UP_DEGREES: f32 = 15.0;
+const CAMERA_PITCH_UP_DEGREES: f32 = 8.0;
 
 /// 标记固定在车尾上方的游戏相机，不接受鼠标控制。
 #[derive(Component)]
@@ -194,6 +199,31 @@ fn follow_tank(
 mod tests {
     use super::*;
 
+    /// 真实圆角碰撞体尺寸与偏航包围盒；炮管不得扩展刚体。
+    #[test]
+    fn player_collider_matches_geometry_contract_when_rotated() {
+        let mut world = World::new();
+        let tank = world.spawn(tank_body()).id();
+        let collider = world.get::<Collider>(tank).unwrap();
+        assert!(TANK_SIZE.abs_diff_eq(Vec3::new(7.5, 2.6, 3.6), 1e-5));
+        for yaw in [
+            0.0,
+            std::f32::consts::FRAC_PI_4,
+            std::f32::consts::FRAC_PI_2,
+        ] {
+            let rotation = Quat::from_rotation_y(yaw);
+            let position = Vec3::new(2.0, 1.3, -3.0);
+            let actual = collider.aabb(position, rotation);
+            let core = TANK_SIZE / 2.0 - Vec3::splat(STEP_CLIMB_RADIUS);
+            let expected = (rotation * Vec3::X * core.x).abs()
+                + Vec3::Y * core.y
+                + (rotation * Vec3::Z * core.z).abs()
+                + Vec3::splat(STEP_CLIMB_RADIUS);
+            assert!(actual.min.abs_diff_eq(position - expected, 1e-5));
+            assert!(actual.max.abs_diff_eq(position + expected, 1e-5));
+        }
+    }
+
     /// 玩家键盘只写玩家意图；敌人显式输入复用同一驾驶算法，零输入靶车独立静止。
     #[test]
     fn player_and_enemies_share_driving_without_sharing_input_or_turn_state() {
@@ -296,21 +326,21 @@ mod tests {
             .spawn((FollowCamera, Transform::default()))
             .id();
         for (position, heading, expected_offset) in [
-            (Vec3::ZERO, Quat::IDENTITY, Vec3::new(12.0, 6.0, 0.0)),
+            (Vec3::ZERO, Quat::IDENTITY, Vec3::new(16.0, 9.0, 0.0)),
             (
                 Vec3::new(-6.0, 0.75, 4.0),
                 Quat::IDENTITY,
-                Vec3::new(12.0, 6.0, 0.0),
+                Vec3::new(16.0, 9.0, 0.0),
             ),
             (
                 Vec3::new(-6.0, 0.75, 4.0),
                 Quat::from_rotation_y(std::f32::consts::FRAC_PI_2),
-                Vec3::new(0.0, 6.0, -12.0),
+                Vec3::new(0.0, 9.0, -16.0),
             ),
             (
                 Vec3::new(-6.0, 0.75, 0.0),
                 Quat::from_rotation_y(std::f32::consts::FRAC_PI_2),
-                Vec3::new(0.0, 6.0, -12.0),
+                Vec3::new(0.0, 9.0, -16.0),
             ),
         ] {
             *app.world_mut().get_mut::<Transform>(tank).unwrap() =
@@ -323,7 +353,7 @@ mod tests {
             );
             let forward = view.forward().as_vec3();
             let original_pitch = -expected_offset.y.atan2(expected_offset.xz().length());
-            assert!((forward.y.asin() - original_pitch - 15.0_f32.to_radians()).abs() < 1e-5);
+            assert!((forward.y.asin() - original_pitch - 8.0_f32.to_radians()).abs() < 1e-5);
             assert!(
                 forward
                     .xz()
@@ -536,10 +566,7 @@ mod tests {
         let extent_z = forward.z.abs() * TANK_SIZE.x / 2.0 + side.z.abs() * TANK_SIZE.z / 2.0;
         let wall = crate::ground::FIELD_SIDE / 2.0;
         let stop = transform.translation.z + extent_z;
-        assert!(
-            transform.translation.z > wall - 2.0,
-            "未到达墙：{transform:?}"
-        );
+        assert!((stop - wall).abs() < 0.03, "未到达墙：{transform:?}");
         assert!(stop <= wall + 0.03, "穿墙：stop={stop} wall={wall}");
         assert!((transform.rotation * Vec3::Y).abs_diff_eq(Vec3::Y, 1e-4));
     }

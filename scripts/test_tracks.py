@@ -25,19 +25,22 @@ def read_models(path):
 
 class TrackLoopTests(unittest.TestCase):
     def test_both_chassis_roll_around_the_rim_and_keep_wheels_stationary(self):
-        for chassis, end, top, bevel in (('player', 29, 5, True), ('enemy', 26, 4, False)):
+        for chassis, end, top, bevel in (('player', 74, 8, True), ('enemy', 26, 4, False)):
             with self.subTest(chassis=chassis):
                 # VOX +X 是车头：前进时上段向 +X、前端向下、下段向 −X、后端向上。
                 rim = ([(x, top) for x in range(end+1)]
                        + [(end, z) for z in range(top-1, 0, -1)]
                        + [(x, 0) for x in range(end-int(bevel), int(bevel)-1, -1)]
                        + [(0, z) for z in range(1, top)])
+                if chassis == 'player':
+                    rim = [(x+30, z) for x,z in rim]
                 self.assertEqual(len(rim), len(set(rim)))
                 self.assertEqual(len(rim) % 3, 0, '闭环接缝的齿距也必须连续')
                 models = read_models(ASSETS / 'tracks' / chassis / 'lugged' / 'default.vox')
                 self.assertEqual(len(models), 6)
                 body, = read_models(ASSETS / chassis / 'default' / 'body.vox')
-                for side, outer_y, face_y in ((0, 0, 1), (1, 25, 24)):
+                sides = ((0,0,1),(1,35,34)) if chassis == 'player' else ((0,0,1),(1,25,24))
+                for side, outer_y, face_y in sides:
                     phases = models[side*3:side*3+3]
                     stationary = None
                     for phase, cells in enumerate(phases):

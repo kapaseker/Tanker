@@ -17,10 +17,36 @@ const BULLET_SPEED: f32 = 40.0;
 const BULLET_SIZE: f32 = 0.4;
 /// 从出生点累计计算的最大飞行距离，单位：世界单位。
 const BULLET_RANGE: f32 = 2000.0;
-/// 子弹出生中心在坦克根节点下的局部坐标；炮口前方为局部 −X。
-/// 炮口端面为 4×4 格；子弹中心向外偏移半个边长，避免与炮管重叠。
-// shortcut: 坐标按当前 tank.vox 标定，修改模型或独立转动炮塔时改用炮口节点。
-const MUZZLE_POSITION: Vec3 = Vec3::new(-1.8, 0.45, -0.1);
+/// 炮口与作者化炮管共用格坐标；子弹中心前移半边长，避免与炮口重叠。
+const MUZZLE_POSITION: Vec3 = Vec3::new(
+    -(crate::player_model::BARREL_X.1 as f32 - crate::player_model::CANVAS.0 as f32 / 2.0)
+        * crate::VOXEL_SIZE
+        - BULLET_SIZE / 2.0,
+    (crate::player_model::BORE_HEIGHT - crate::player_model::CANVAS.2 as f32 / 2.0)
+        * crate::VOXEL_SIZE,
+    0.0,
+);
+
+/// 玩家独立炮管的场景根；随车身销毁，不拥有碰撞体。
+#[derive(Component)]
+struct PlayerBarrel;
+
+/// 玩家根出现时挂载一次炮管，三包按共同画布中心零偏移组合。
+fn spawn_barrels(
+    mut commands: Commands,
+    assets: Res<AssetServer>,
+    tanks: Query<Entity, Added<Tank>>,
+) {
+    for tank in &tanks {
+        let barrel = commands
+            .spawn((
+                PlayerBarrel,
+                WorldAssetRoot(assets.load("tank/player/default/barrel.vox")),
+            ))
+            .id();
+        commands.entity(tank).add_child(barrel);
+    }
+}
 
 /// 标记坦克场景根节点，供发射系统定位炮口的世界变换。
 #[derive(Component)]
@@ -47,7 +73,9 @@ struct Gun {
 /// 离屏运行须在开始计帧前确认弹体及其依赖已加载，避免首次输入被吞掉。
 pub(super) fn assets_ready(world: &World) -> bool {
     world.get_resource::<Gun>().is_some_and(|gun| {
-        world.resource::<AssetServer>().is_loaded_with_dependencies(&gun.bullet_scene)
+        world
+            .resource::<AssetServer>()
+            .is_loaded_with_dependencies(&gun.bullet_scene)
     })
 }
 
@@ -58,7 +86,7 @@ impl Plugin for FiringPlugin {
     /// 在变换传播完成后发射，确保读取到坦克本帧的世界位置和方向。
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, load_bullet)
-            .add_systems(Update, (move_bullets, report_bullet))
+            .add_systems(Update, (spawn_barrels, move_bullets, report_bullet))
             .add_systems(PostUpdate, fire_bullets.after(TransformSystems::Propagate));
     }
 }
@@ -127,10 +155,15 @@ fn fire_bullets(
     assets: Res<AssetServer>,
     instances: Res<WorldInstanceSpawner>,
     tanks: Query<(&GlobalTransform, &WorldInstance, &WorldAssetRoot), With<Tank>>,
+    barrels: Query<(&WorldAssetRoot, &WorldInstance), With<PlayerBarrel>>,
 ) {
     // 场景资源加载完成不等于实体已实例化，两者都就绪后才能确定发射位置。
+    let barrel_ready = barrels.single().ok().is_some_and(|(root, instance)| {
+        instances.instance_is_ready(**instance) && assets.is_loaded_with_dependencies(&root.0)
+    });
     let tank = tanks.single().ok().filter(|&(_, instance, root)| {
-        instances.instance_is_ready(**instance)
+        barrel_ready
+            && instances.instance_is_ready(**instance)
             && assets.is_loaded_with_dependencies(&root.0)
             && assets.is_loaded_with_dependencies(&gun.bullet_scene)
     });
@@ -180,8 +213,7 @@ fn move_bullets(
     let enemy_count = enemies.iter().count();
     for (entity, mut transform, mut bullet) in &mut bullets {
         // 先判越界再移动：出生点在场地内，不会误删刚生成的子弹。
-        if transform.translation.x.abs() > half_field
-            || transform.translation.z.abs() > half_field
+        if transform.translation.x.abs() > half_field || transform.translation.z.abs() > half_field
         {
             debug!("子弹飞出场地，销毁：{entity}");
             commands.entity(entity).despawn();
@@ -328,7 +360,7 @@ mod tests {
                 .with_rotation(Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)),
         );
         let (position, direction) = muzzle_pose(&tank);
-        assert!(position.abs_diff_eq(Vec3::new(2.9, 2.45, 2.8), 1e-5));
+        assert!(position.abs_diff_eq(Vec3::new(3.0, 2.7, 7.95), 1e-5));
         assert!(direction.abs_diff_eq(Vec3::Z, 1e-5));
     }
 
@@ -385,6 +417,19 @@ mod tests {
                     .with_rotation(Quat::from_rotation_arc(Vec3::NEG_X, direction)),
             ))
             .id()
+    }
+
+    /// 真实尺度炮口水平射击会掠过旧矮目标，垫高后才命中；不偷偷改变弹道。
+    #[test]
+    fn modern_muzzle_passes_above_old_enemy_but_hits_elevated_target() {
+        let origin = MUZZLE_POSITION + Vec3::Y * crate::driving::TANK_SIZE.y / 2.0;
+        for (height, should_hit) in [(0.7, false), (2.0, true)] {
+            let (mut app, enemies) = hit_test_app(&[(Vec3::new(-12.0, height, 0.0), 0.0)]);
+            let bullet = test_bullet(&mut app, origin, Vec3::NEG_X, 0.0);
+            advance_test_bullets(&mut app, 0.5);
+            assert_eq!(app.world().get_entity(enemies[0]).is_err(), should_hit);
+            assert_eq!(app.world().get_entity(bullet).is_err(), should_hit);
+        }
     }
 
     /// 一帧跨过两个目标时只击毁最近目标，同时清理双方场景后代。
@@ -558,13 +603,22 @@ mod tests {
         app.world_mut()
             .resource_mut::<Time<Virtual>>()
             .set_max_delta(Duration::from_secs(60));
-        let tank_asset = app.world().resource::<AssetServer>().load("tank/player/default/body.vox");
+        let tank_asset = app
+            .world()
+            .resource::<AssetServer>()
+            .load("tank/player/default/body.vox");
         let tank = app
             .world_mut()
-            .spawn((Tank, WorldAssetRoot(tank_asset)))
+            .spawn((
+                Tank,
+                crate::track::PLAYER_TRACKS,
+                WorldAssetRoot(tank_asset),
+            ))
             .id();
-        let enemy_asset: Handle<WorldAsset> =
-            app.world().resource::<AssetServer>().load("tank/enemy/default/body.vox");
+        let enemy_asset: Handle<WorldAsset> = app
+            .world()
+            .resource::<AssetServer>()
+            .load("tank/enemy/default/body.vox");
         let enemy = app
             .world_mut()
             .spawn((
@@ -590,7 +644,19 @@ mod tests {
                     .resource::<WorldInstanceSpawner>()
                     .instance_is_ready(**instance)
             });
+            let barrel_ready = world
+                .iter_entities()
+                .filter(|e| e.contains::<PlayerBarrel>())
+                .all(|e| {
+                    e.get::<WorldInstance>().is_some_and(|i| {
+                        world
+                            .resource::<WorldInstanceSpawner>()
+                            .instance_is_ready(**i)
+                    })
+                });
             if ready
+                && barrel_ready
+                && world.get::<crate::track::TracksValidated>(tank).is_some()
                 && assets.is_loaded_with_dependencies(&world.resource::<Gun>().bullet_scene)
                 && assets.is_loaded_with_dependencies(&enemy_asset)
                 && world.get::<crate::track::TracksValidated>(enemy).is_some()
@@ -620,34 +686,31 @@ mod tests {
         );
 
         let (_, tank_minimum, tank_maximum) = scene_bounds(app.world(), tank);
-        // 车体与履带已拆分：此处仅锁定车体 mesh 尺寸；物理碰撞体仍为整车
-        // TANK_SIZE（含履带），两侧与底部由履带包子实体补足视觉外形。
-        let body_size = Vec3::new(3.1, 1.2, 1.6);
+        // 三包组合必须覆盖真实尺寸；底部与两侧由履带补全；炮管超出碰撞框是预期行为。
         assert!(
-            (tank_maximum - tank_minimum).abs_diff_eq(body_size, 1e-5),
-            "车体尺寸应与拆分后模型一致：{tank_minimum:?}～{tank_maximum:?}"
+            (tank_maximum - tank_minimum).abs_diff_eq(Vec3::new(10.5, 2.6, 3.6), 1e-4),
+            "车身与炮管组合尺寸：{tank_minimum:?}～{tank_maximum:?}"
         );
-        let half = crate::driving::TANK_SIZE / 2.0;
-        assert!(
-            tank_minimum.cmpge(-half - Vec3::splat(1e-5)).all(),
-            "车体不应超出整车碰撞盒下界：{tank_minimum:?}"
-        );
-        assert!(
-            tank_maximum.cmple(half + Vec3::splat(1e-5)).all(),
-            "车体不应超出整车碰撞盒上界：{tank_maximum:?}"
-        );
-        // 当前炮管端面在 X=-1.6，弹体半长为 0.2 米，出生时恰好位于炮口外侧。
-        assert!((MUZZLE_POSITION.x + 0.2 - tank_minimum.x).abs() < 1e-5);
+        assert!((MUZZLE_POSITION.x + BULLET_SIZE / 2.0 - tank_minimum.x).abs() < 1e-4);
+        assert!(tank_minimum.x < -crate::driving::TANK_SIZE.x / 2.0);
 
         // 地形已改为程序化编译：两张 1200×1200 字节图生成 10×10 块世界坐标网格与一个高度场碰撞体。
         assert!(
             terrain_surface.iter(app.world()).next().is_some(),
             "高度场物理表面应已铺设"
         );
-        let mut merged = (0usize, Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY));
+        let mut merged = (
+            0usize,
+            Vec3::splat(f32::INFINITY),
+            Vec3::splat(f32::NEG_INFINITY),
+        );
         for chunk in terrain_chunks.iter(app.world()) {
             let (count, minimum, maximum) = scene_bounds(app.world(), chunk);
-            merged = (merged.0 + count, merged.1.min(minimum), merged.2.max(maximum));
+            merged = (
+                merged.0 + count,
+                merged.1.min(minimum),
+                merged.2.max(maximum),
+            );
         }
         let (mesh_count, minimum, maximum) = merged;
         assert_eq!(mesh_count, 100, "地形应分成 10×10 块网格");
@@ -775,5 +838,13 @@ mod tests {
                 .resource::<WorldInstanceSpawner>()
                 .instance_is_ready(instance)
         );
+        // 玩家销毁后，车身、炮管和六个履带实例都必须注销。
+        let mut scene_roots = app.world_mut().query::<&WorldInstance>();
+        let player_instances: Vec<_> = scene_roots.iter(app.world()).map(|i| **i).collect();
+        assert_eq!(player_instances.len(), 8);
+        app.world_mut().despawn(tank);
+        app.update();
+        assert!(player_instances.into_iter().all(|i| !app.world().resource::<WorldInstanceSpawner>().instance_is_ready(i)));
+        assert_eq!(app.world_mut().query::<&PlayerBarrel>().iter(app.world()).count(), 0);
     }
 }

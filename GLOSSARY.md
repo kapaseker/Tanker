@@ -16,7 +16,7 @@
 
 | 部件 | 网格尺寸（VOX X×Y×Z，格） | X 长 | Y 高 | Z 宽 | 权威定义 | 备注 |
 |---|---|---|---|---|---|---|
-| 玩家坦克 | 32×26×15 | 3.2 | 1.5 | 2.6 | `TANK_SIZE` / `STEP_CLIMB_RADIUS`（`src/driving.rs`） | 整车圆角箱形碰撞体（圆角 0.2 m，能翻 1 档 0.1 m 台阶，总尺寸不变）；`assets/tank/player/default/body.vox` + `assets/tank/tracks/player/lugged/default.vox` |
+| 玩家坦克（碰撞框） | 三包统一画布 135×36×26 | 7.5 | 2.6 | 3.6 | `COLLISION_MIN/MAX`（`src/player_model.rs`）→ `TANK_SIZE` / `STEP_CLIMB_RADIUS`（`src/driving.rs`） | 整车圆角箱形碰撞体（圆角 0.2 m，能翻 1 档 0.1 m 台阶，总尺寸不变）；`body.vox`（含炮塔）+ `barrel.vox` + 玩家履带包；含炮管视觉全长 10.5 m，炮管不碰撞，见 `docs/player-model.md` |
 | 敌人坦克 | 34×26×14 | 3.4 | 1.4 | 2.6 | `ENEMY_SIZE` / `STEP_CLIMB_RADIUS`（`src/enemy.rs` 经 `body_for_size`） | 圆角箱形碰撞体包含炮管旁空隙（圆角 0.2 m）；`assets/tank/enemy/default/body.vox` + `assets/tank/tracks/enemy/lugged/default.vox` |
 | 子弹 | 4×4×4 | 0.4 | 0.4 | 0.4 | `BULLET_SIZE`（`src/firing.rs`） | 立方体；子弹性 `assets/bullet.vox` |
 
@@ -30,7 +30,7 @@
 - `TrackSpec` 指定每辆车的履带包与整车尺寸，新增组件时挂载一次。`TrackAnim` 独立保存左右累计里程与相位；直行、倒车及原地转向均使用共享动画逻辑，半履带距取各车宽度的一半。
 - lugged 包含 `track_l_0..2` / `track_r_0..2` 六个节点，齿距 3 格，每行驶 1 格（0.1 米）切换一个相位；不在资源内部设置 `_hidden`。车体和对应履带采用相同模型尺寸与全局坐标，运行时零偏移对齐。
 - 凸齿只沿侧面外圈闭环移动，中间保留静止轮组。VOX +X 是车头：前进时上段向 +X、前端向下、下段向 −X、后端向上，倒车反向；外圈长度为齿距整数倍，保证三相位回绕无接缝跳齿。
-- 敌人生成器 `scripts/generate_enemy.py` 保留原红色车体和挡泥板；凸齿占用原宽度最外侧一格，履带高度低于 VOX z=5 的挡泥板。整车宽度不外扩，击毁时履带随敌人子树清理。
+- 敌人生成器 `scripts/generate_enemy.py` 保留原红色车体和挡泥板；凸齿占用原宽度最外侧一格，履带高度低于 VOX z=7 的挡泥板（z=5、6 留空隙以露出履带上沿）。整车宽度不外扩，击毁时履带随敌人子树清理。
 
 ## 场地与竞技场
 
@@ -54,8 +54,8 @@
 | 玩家坦克出生中心 Y | 0.75（= `TANK_SIZE.y / 2`） | `src/main.rs` `setup_scene` |
 | 敌人坦克出生中心 Y | 3.0（落地后平地中心约 0.7） | `SPAWN_DROP_Y`（`src/enemy.rs`） |
 | 炮口局部坐标（车体根节点下，车头为 −X） | (−1.8, 0.45, −0.1) | `MUZZLE_POSITION`（`src/firing.rs`） |
-| 相机水平后退距离 / 竖直高度 | 10 / 6 | `CAMERA_DISTANCE` / `CAMERA_HEIGHT`（`src/driving.rs`） |
-| 相机视线相对车身的上抬角 | 15° | `CAMERA_PITCH_UP_DEGREES`（`src/driving.rs`） |
+| 相机水平后退距离 / 竖直高度 | 16 / 9 | `CAMERA_DISTANCE` / `CAMERA_HEIGHT`（`src/driving.rs`） |
+| 相机视线相对车身的上抬角 | 8° | `CAMERA_PITCH_UP_DEGREES`（`src/driving.rs`） |
 | 敌人数量 / 出生中心半径、与玩家净空、彼此净空 | 10 / ±120 / 10 / 6 | `ENEMY_COUNT` / `SPAWN_LIMIT` / `PLAYER_CLEARANCE` / `ENEMY_CLEARANCE`（`src/enemy.rs`） |
 | 场地面积、子弹射程 | 360000 m² / 2000 m | `AREA`（`src/ground.rs`）/ `BULLET_RANGE`（`src/firing.rs`） |
 

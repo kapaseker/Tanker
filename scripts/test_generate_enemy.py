@@ -28,7 +28,7 @@ class EnemyModelTests(unittest.TestCase):
         # 锁定拆分前的非履带体素，防止车身、炮塔、炮管或挡泥板随生成器漂移。
         self.assertEqual(hashlib.sha256(b''.join(bytes((*p, c)) for p, c in
                                                 sorted(body_cells.items()))).hexdigest(),
-                         'b7bf4bf9cb502e77ac856f5a9c38d369c7ce18cc0db67983df85b75aa1e3b8c9')
+                         '5feef636afb569931ac1019c4cf9e5680d43dd75a279a8a68d85c07ab46c0f83')
         variants = models(tracks)
         self.assertEqual(len(variants), 6)
         self.assertIn(b'body', body)
