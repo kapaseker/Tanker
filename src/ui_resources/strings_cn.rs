@@ -11,6 +11,6 @@ pub(crate) mod menu {
     pub(crate) const HINT_SELECT: &str = "选择 ·";
     /// 回车键提示后的动作说明。
     pub(crate) const HINT_CONFIRM: &str = "确认";
-    /// 保留设计稿中的固定版本文案，不随 Cargo 包版本自动变化。
-    pub(crate) const BUILD: &str = "版本 0.1.0";
+    /// 版本文案分两部分：前缀为固定文字，版本号由 Cargo 从包配置注入，避免在此重复维护。
+    pub(crate) const BUILD: &str = concat!("版本 ", env!("CARGO_PKG_VERSION"));
 }
