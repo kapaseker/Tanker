@@ -79,6 +79,13 @@ pub(super) fn assets_ready(world: &World) -> bool {
     })
 }
 
+/// 新对局从首发可用开始，不继承上一局射击冷却。
+pub(crate) fn reset_session(world: &mut World) {
+    if let Some(mut gun) = world.get_resource_mut::<Gun>() {
+        gun.cadence = FireCadence::default();
+    }
+}
+
 /// 注册子弹资源加载、空格发射与飞行清理系统。
 pub(super) struct FiringPlugin;
 
@@ -156,6 +163,7 @@ fn fire_bullets(
     instances: Res<WorldInstanceSpawner>,
     tanks: Query<(&GlobalTransform, &WorldInstance, &WorldAssetRoot), With<Tank>>,
     barrels: Query<(&WorldAssetRoot, &WorldInstance), With<PlayerBarrel>>,
+    fade: Option<Res<crate::transition::Fade>>,
 ) {
     // 场景资源加载完成不等于实体已实例化，两者都就绪后才能确定发射位置。
     let barrel_ready = barrels.single().ok().is_some_and(|(root, instance)| {
@@ -168,7 +176,9 @@ fn fire_bullets(
             && assets.is_loaded_with_dependencies(&gun.bullet_scene)
     });
     if !gun.cadence.tick(
-        keys.pressed(KeyCode::Space) && tank.is_some(),
+        keys.pressed(KeyCode::Space)
+            && tank.is_some()
+            && fade.as_ref().is_none_or(|fade| fade.accepts_input()),
         time.delta_secs(),
     ) {
         return;
@@ -180,6 +190,7 @@ fn fire_bullets(
     debug!("发射子弹：位置={position:?}，方向={direction:?}");
     let transform = Transform::from_translation(position).with_rotation(tank.rotation());
     commands.spawn((
+        crate::transition::SessionEntity,
         Bullet {
             direction,
             distance: 0.0,
@@ -601,6 +612,7 @@ mod tests {
         .init_resource::<ButtonInput<KeyCode>>()
         .add_message::<EnemyDestroyed>()
         .add_systems(Update, crate::enemy::spawn_enemy_barrels)
+        .add_systems(Startup, crate::ground::load_ground)
         .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f32(
             0.25,
         )));

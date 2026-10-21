@@ -105,19 +105,23 @@ fn enemy_body() -> impl Bundle {
     crate::driving::body_for_size(ENEMY_SIZE)
 }
 
+/// 清除本局生成标志；共享资产缓存仍由 AssetServer 复用。
+pub(crate) fn reset_session(world: &mut World) {
+    world.remove_resource::<EnemyAsset>();
+}
+
 /// 等地形铺设完成后随机放置敌人；玩家在地图中心出生。
 fn spawn_enemies(
     mut commands: Commands,
-    mut spawned: Local<bool>,
+    spawned: Option<Res<EnemyAsset>>,
     ready: Option<Res<crate::ground::TerrainReady>>,
     assets: Res<AssetServer>,
     offscreen: Option<Res<crate::offscreen::Options>>,
 ) {
     // 地形图异步加载，高度场碰撞体就绪前下落会穿透场地，故等待就绪信号。
-    if *spawned || ready.is_none() {
+    if spawned.is_some() || ready.is_none() {
         return;
     }
-    *spawned = true;
     let mut rng = if offscreen.is_some() {
         fastrand::Rng::with_seed(crate::offscreen::SEED)
     } else {
@@ -134,6 +138,7 @@ fn spawn_enemies(
     for transform in transforms {
         commands.spawn((
             EnemyTank,
+            crate::transition::SessionEntity,
             crate::track::ENEMY_TRACKS,
             WorldAssetRoot(scene.clone()),
             enemy_body(),

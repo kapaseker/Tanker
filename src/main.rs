@@ -19,10 +19,30 @@ mod enemy;
 mod enemy_model;
 mod explosion;
 mod firing;
+mod font;
 mod ground;
+mod menu;
 mod offscreen;
 mod player_model;
 mod track;
+mod transition;
+
+/// 页面状态：菜单与对局经各自的淡出状态双向切换，揭幕阶段由 transition 管理。
+///
+/// 场景生成（相机/地形/坦克）从 Startup 移到 `OnEnter(InGame)`，
+/// 菜单期不加载 3D 战斗场景；离屏测试直接把状态置为 InGame 跳过菜单。
+#[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub(crate) enum GameState {
+    /// 主菜单首页（web/index.html 设计还原）。
+    #[default]
+    Menu,
+    /// Start Game 确认后：黑幕淡出，淡至全黑时生成场景并切 InGame。
+    ToGame,
+    /// Esc 返回首页，先保持当前场景并渐出。
+    ToMenu,
+    /// 游戏内：黑幕淡入完成后的正常 gameplay。
+    InGame,
+}
 
 /// MagicaVoxel 单格边长，单位：米；运行时和真实资源测试共用。
 const VOXEL_SIZE: f32 = 0.1;
@@ -86,12 +106,19 @@ fn run_game(options: Option<offscreen::Options>) -> Result<(), String> {
         explosion::ExplosionPlugin,
         driving::DrivingPlugin,
         track::TrackAnimationPlugin,
+        font::UiFontPlugin,
+        transition::TransitionPlugin,
+        menu::MenuPlugin,
     ))
     .insert_resource(GlobalAmbientLight {
         brightness: GLOBAL_AMBIENT_BRIGHTNESS,
         ..default()
     })
-    .add_systems(Startup, setup_scene)
+    .init_state::<GameState>()
+    .add_systems(
+        OnEnter(GameState::InGame),
+        (setup_scene, ground::load_ground),
+    )
     .add_systems(Update, report_vox_scene);
     if let Some(options) = options {
         offscreen::run(app, options)
@@ -104,11 +131,21 @@ fn run_game(options: Option<offscreen::Options>) -> Result<(), String> {
 /// 搭建 voxel 场景：相机（环境贴图 + 玻璃透射）与场景图根节点。
 /// 场景不放任何 `DirectionalLight`/点光/聚光灯，照明只靠 `GLOBAL_AMBIENT_BRIGHTNESS`
 /// 的全局环境光（`GlobalAmbientLight`）与相机上的 `EnvironmentMapLight`。
-fn setup_scene(mut commands: Commands, assets: Res<AssetServer>) {
+fn setup_scene(
+    mut commands: Commands,
+    assets: Res<AssetServer>,
+    target: Res<transition::SceneTarget>,
+) {
     let tank_transform = Transform::from_xyz(0.0, driving::TANK_SIZE.y / 2.0, 0.0);
     commands.spawn((
         Camera3d::default(),
         driving::FollowCamera,
+        transition::SessionEntity,
+        Camera {
+            order: -1,
+            ..default()
+        },
+        bevy::camera::RenderTarget::Image(target.0.clone().into()),
         // SSAO 要求关闭 MSAA，两者必须成对配置
         Msaa::Off,
         // 让场景中的玻璃体素能折射其他物体
@@ -135,6 +172,7 @@ fn setup_scene(mut commands: Commands, assets: Res<AssetServer>) {
     let scene = assets.load(VOX_SCENE_PATH);
     commands.spawn((
         firing::Tank,
+        transition::SessionEntity,
         track::PLAYER_TRACKS,
         WorldAssetRoot(scene.clone()),
         driving::tank_body(),
@@ -144,11 +182,15 @@ fn setup_scene(mut commands: Commands, assets: Res<AssetServer>) {
 }
 
 /// 加载状态汇报：成功与失败各打一行中文日志，作为无人值守验证的判据。
+/// 主菜单期场景尚未生成，资源不存在时静默跳过。
 fn report_vox_scene(
-    scene: Res<VoxScene>,
+    scene: Option<Res<VoxScene>>,
     asset_server: Res<AssetServer>,
     mut reported: Local<bool>,
 ) {
+    let Some(scene) = scene else {
+        return;
+    };
     if *reported {
         return;
     }

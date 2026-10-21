@@ -101,6 +101,12 @@ struct GroundAssets {
     colors: Handle<GroundMap>,
 }
 
+/// 返回首页时清除本局资源与生成完成标志，允许下一局重新铺设。
+pub(crate) fn reset_session(world: &mut World) {
+    world.remove_resource::<GroundAssets>();
+    world.remove_resource::<TerrainReady>();
+}
+
 /// 注册地形图资产、编译地形网格并铺设物理表面。
 pub(super) struct GroundPlugin;
 
@@ -108,13 +114,13 @@ impl Plugin for GroundPlugin {
     fn build(&self, app: &mut App) {
         app.init_asset::<GroundMap>()
             .init_asset_loader::<GroundMapLoader>()
-            .add_systems(Startup, load_ground)
+            // 地形是战斗场景的一部分：进入 InGame 才铺设，主菜单期保持暗底。
             .add_systems(Update, (spawn_terrain, report_ground));
     }
 }
 
-/// 启动时只登记两张地形图，实际铺设等资源就绪后由 [`spawn_terrain`] 完成。
-fn load_ground(mut commands: Commands, assets: Res<AssetServer>) {
+/// 进入 InGame 时登记两张地形图，实际铺设等资源就绪后由 [`spawn_terrain`] 完成。
+pub(crate) fn load_ground(mut commands: Commands, assets: Res<AssetServer>) {
     // 路径形如 "terrain/ground/ground.ht"；Bevy 资产路径固定用正斜杠。
     commands.insert_resource(GroundAssets {
         heights: assets.load(format!("{TERRAIN_ROOT}/{TERRAIN_NAME}/ground.ht")),
@@ -126,16 +132,18 @@ fn load_ground(mut commands: Commands, assets: Res<AssetServer>) {
 /// 并在同一实体上挂高度场碰撞体。
 fn spawn_terrain(
     mut commands: Commands,
-    ground: Res<GroundAssets>,
-    mut built: Local<bool>,
+    // 主菜单期地形图尚未登记，资源缺失时静默等待。
+    ground: Option<Res<GroundAssets>>,
+    built: Option<Res<TerrainReady>>,
     maps: Res<Assets<GroundMap>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut images: ResMut<Assets<Image>>,
 ) {
-    if *built {
+    if built.is_some() {
         return;
     }
+    let Some(ground) = ground else { return; };
     let (Some(heights), Some(colors)) = (maps.get(&ground.heights), maps.get(&ground.colors)) else {
         return;
     };
@@ -184,6 +192,7 @@ fn spawn_terrain(
             });
             commands.spawn((
                 TerrainChunk,
+                crate::transition::SessionEntity,
                 Mesh3d(meshes.add(chunk)),
                 MeshMaterial3d(material.clone()),
             ));
@@ -192,6 +201,7 @@ fn spawn_terrain(
             cuboid_count += cuboids.len();
             commands.spawn((
                 TerrainSurface,
+                crate::transition::SessionEntity,
                 RigidBody::Static,
                 Collider::compound(
                     cuboids
@@ -207,7 +217,6 @@ fn spawn_terrain(
     // 铺设完成后发就绪信号，敌人等依赖地形的生成逻辑据此确定时机。
     commands.insert_resource(TerrainReady);
     info!("地形体素碰撞体铺设完成：{CHUNK_COUNT}×{CHUNK_COUNT} 块共 {cuboid_count} 个 cuboid");
-    *built = true;
 }
 
 /// 由量化档位编译一块的体素台阶复合碰撞体 cuboid 集合。
@@ -354,6 +363,7 @@ pub(super) fn spawn_walls(commands: &mut Commands) {
             ),
         ] {
             commands.spawn((
+                crate::transition::SessionEntity,
                 RigidBody::Static,
                 Collider::cuboid(size.x, size.y, size.z),
                 Transform::from_translation(position),
@@ -378,10 +388,12 @@ pub(super) fn spawn_arena(commands: &mut Commands) {
 
 /// 加载失败与完成各汇报一次，避免只检查主资产掩盖另一张图的问题。
 fn report_ground(
-    ground: Res<GroundAssets>,
+    // 主菜单期地形图尚未登记，资源缺失时静默等待。
+    ground: Option<Res<GroundAssets>>,
     assets: Res<AssetServer>,
     mut reported: Local<bool>,
 ) {
+    let Some(ground) = ground else { return; };
     if *reported {
         return;
     }
@@ -897,6 +909,7 @@ mod tests {
             let size_y = top - COLLIDER_BASE_Y;
             app.world_mut().spawn((
                 TerrainSurface,
+                crate::transition::SessionEntity,
                 RigidBody::Static,
                 Collider::cuboid(x1 - x0, size_y, 20.0),
                 Transform::from_xyz((x0 + x1) / 2.0, (top + COLLIDER_BASE_Y) / 2.0, 0.0),

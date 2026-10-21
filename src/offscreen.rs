@@ -36,8 +36,8 @@ use bevy::{
 /// 所有离屏场景共用的随机种子，仅改变验证进程的敌人布局。
 pub(super) const SEED: u64 = 42;
 /// 图片尺寸固定，避免窗口大小和桌面缩放参与画面对比。
-const WIDTH: u32 = 1280;
-const HEIGHT: u32 = 720;
+pub(crate) const WIDTH: u32 = 1280;
+pub(crate) const HEIGHT: u32 = 720;
 /// 精确的同一 Duration 同时用于可变步长时钟与固定物理时钟。
 const STEP: Duration = Duration::from_nanos(16_666_667);
 /// 使用墙钟限制加载、GPU 等待与模拟总耗时，防止无人值守进程残留。
@@ -51,6 +51,8 @@ enum Scenario {
     Combat,
     /// 所选车型轮组的侧面动画与三视点对照。
     Wheels,
+    /// 主菜单首页：验证 UI 结构、键盘流转与到真实场景的过渡。
+    Menu,
 }
 
 impl Scenario {
@@ -66,6 +68,8 @@ impl Scenario {
             Self::Wheels => &[
                 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 75, 90, 105, 120, 130, 240, 250,
             ],
+            // 菜单关键帧按真实阶段动态计帧，固定列表只声明基准图。
+            Self::Menu => &[0],
         }
     }
 
@@ -79,6 +83,11 @@ impl Scenario {
             (Self::Wheels, 31..=60) => &[KeyCode::ArrowDown],
             (Self::Wheels, 61..=90) => &[KeyCode::ArrowLeft],
             (Self::Wheels, 91..=120) => &[KeyCode::ArrowRight],
+            (Self::Menu, 1) => &[KeyCode::ArrowDown],
+            (Self::Menu, 3) => &[KeyCode::Enter],
+            (Self::Menu, 5) => &[KeyCode::Escape],
+            (Self::Menu, 7) => &[KeyCode::Tab],
+            (Self::Menu, 8) => &[KeyCode::Tab, KeyCode::ShiftLeft],
             _ => &[],
         }
     }
@@ -97,7 +106,7 @@ pub(super) struct Options {
 impl Options {
     /// 无参数返回普通游戏；其余参数必须完整匹配已公布的接口。
     pub(super) fn parse(args: Vec<OsString>) -> Result<Option<Self>, String> {
-        let usage = "用法：--capture <图片.png> 或 --offscreen-test <scene|drive|combat|wheels> --output <目录> [--model enemy]（仅 wheels）";
+        let usage = "用法：--capture <图片.png> 或 --offscreen-test <scene|drive|combat|wheels|menu> --output <目录> [--model enemy]（仅 wheels）";
         if args.is_empty() {
             return Ok(None);
         }
@@ -124,6 +133,7 @@ impl Options {
                 Some("drive") => Scenario::Drive,
                 Some("combat") => Scenario::Combat,
                 Some("wheels") => Scenario::Wheels,
+                Some("menu") => Scenario::Menu,
                 _ => return Err(usage.into()),
             };
             let enemy_wheels = args.len() == 6;
@@ -202,13 +212,17 @@ impl Options {
     }
 }
 
-/// 相机共用的离屏目标；Screenshot 直接从该纹理读回最终后处理画面。
+/// 最终合成相机的离屏目标；内容纹理与此输出纹理始终分离。
 #[derive(Resource)]
-struct Target(Handle<Image>);
+pub(crate) struct Target(pub(crate) Handle<Image>);
 
 /// 下一次更新要注入的模拟帧；None 用于加载、预热和截图等待。
 #[derive(Resource)]
 struct InputFrame(Scenario, Option<u32>);
+
+/// 下一帧菜单鼠标按下状态，与窗口输入清理时序一致。
+#[derive(Resource, Default)]
+struct MenuMouse(bool);
 
 /// wheels 测试显式驱动的敌人；正常游戏不创建，不改变玩家标记。
 #[derive(Resource)]
@@ -247,24 +261,35 @@ pub(super) fn configure(app: &mut App) {
     );
 }
 
-/// 场景搭建后只替换相机输出目标，原有渲染组件完全保留。
+/// 幂等把游戏相机挂到离屏图像目标；相机可能随状态进入（菜单相机在首个
+/// StateTransition 生成、跟随相机在进入 InGame 时生成），因此常驻 PreUpdate，
+/// 只补挂尚未指向离屏图像的相机，已挂载的相机不重复插入。
 fn setup_target(
     mut commands: Commands,
+    target: Option<Res<Target>>,
     mut images: ResMut<Assets<Image>>,
-    cameras: Query<Entity, With<crate::driving::FollowCamera>>,
+    cameras: Query<(Entity, &RenderTarget), With<crate::transition::OutputCamera>>,
 ) {
-    let image = images.add(Image::new_target_texture(
-        WIDTH,
-        HEIGHT,
-        TextureFormat::Rgba8UnormSrgb,
-        None,
-    ));
-    for camera in &cameras {
-        commands
-            .entity(camera)
-            .insert(RenderTarget::Image(image.clone().into()));
+    let image = match target {
+        Some(target) => target.0.clone(),
+        None => {
+            let image = images.add(Image::new_target_texture(
+                WIDTH,
+                HEIGHT,
+                TextureFormat::Rgba8UnormSrgb,
+                None,
+            ));
+            commands.insert_resource(Target(image.clone()));
+            image
+        }
+    };
+    for (camera, render_target) in &cameras {
+        if render_target.as_image() != Some(&image) {
+            commands
+                .entity(camera)
+                .insert(RenderTarget::Image(image.clone().into()));
+        }
     }
-    commands.insert_resource(Target(image));
 }
 
 /// InputPlugin 清理本帧输入后再注入，FixedPostUpdate 驾驶和 PostUpdate 开火均能读到。
@@ -273,7 +298,16 @@ fn inject_input(
     mut keys: ResMut<ButtonInput<KeyCode>>,
     target: Option<Res<WheelTarget>>,
     mut inputs: Query<&mut crate::driving::DrivingInput>,
+    mouse_script: Option<Res<MenuMouse>>,
+    mouse: Option<ResMut<ButtonInput<MouseButton>>>,
 ) {
+    if let (Some(script), Some(mut mouse)) = (mouse_script, mouse) {
+        if script.0 {
+            mouse.press(MouseButton::Left);
+        } else {
+            mouse.release(MouseButton::Left);
+        }
+    }
     let mut desired = frame.1.map_or(&[][..], |index| frame.0.keys(index));
     if let Some(target) = target {
         if let Ok(mut input) = inputs.get_mut(target.0) {
@@ -332,9 +366,17 @@ pub(super) fn run(mut app: App, options: Options) -> Result<(), String> {
         .insert_resource(Time::<Fixed>::from_duration(STEP))
         .init_resource::<Evidence>()
         .init_resource::<CaptureResult>()
-        .add_systems(PostStartup, setup_target)
-        .add_systems(PreUpdate, inject_input.after(InputSystems))
+        .init_resource::<MenuMouse>()
+        .add_systems(PreUpdate, (setup_target, inject_input.after(InputSystems)))
         .add_systems(Last, collect_evidence);
+    if options.scenario != Scenario::Menu {
+        // 旧场景在首个 StateTransition 前直接请求 InGame 跳过菜单：
+        // 启动期 StateTransition 应用 InGame 并运行 OnEnter(setup_scene)，
+        // 引导消息与 Pending 取 .last() 后以 InGame 为准，不会落入菜单。
+        app.world_mut()
+            .resource_mut::<NextState<crate::GameState>>()
+            .set(crate::GameState::InGame);
+    }
     while app.plugins_state() == PluginsState::Adding {
         bevy::tasks::tick_global_task_pools_on_main_thread();
         std::thread::sleep(Duration::from_millis(1));
@@ -433,6 +475,7 @@ fn scene_ready(app: &mut App) -> bool {
     if !world.contains_resource::<crate::ground::TerrainReady>()
         || !crate::firing::assets_ready(world)
         || !crate::explosion::assets_ready(world)
+        || !crate::font::assets_ready(world)
     {
         return false;
     }
@@ -601,6 +644,9 @@ fn validate_scene_state(
 
 /// 执行固定预热、模拟、状态断言及关键帧输出；截图等待不推进游戏时间。
 fn run_scenario(app: &mut App, options: &Options, report: &mut String) -> Result<(), String> {
+    if options.scenario == Scenario::Menu {
+        return run_menu_scenario(app, options, report);
+    }
     wait_render(app, true)?;
     if options.scenario == Scenario::Combat {
         arrange_combat(app.world_mut());
@@ -784,6 +830,288 @@ fn run_scenario(app: &mut App, options: &Options, report: &mut String) -> Result
     Ok(())
 }
 
+/// 菜单回归共用真实输入和渲染链路；全黑交接帧单独验收。
+fn run_menu_scenario(app: &mut App, options: &Options, report: &mut String) -> Result<(), String> {
+    use crate::transition::{Fade, Phase};
+    wait_render(app, false)?;
+    while !crate::transition::content_ready(app.world_mut()) {
+        update(app, Duration::ZERO, None)?;
+    }
+    ensure(
+        app.world()
+            .resource::<crate::menu::MenuInput>()
+            .focus
+            .is_none(),
+        "初始首页不应选中菜单项",
+    )?;
+    let orders: Vec<_> = app
+        .world_mut()
+        .query::<&crate::menu::MenuItem>()
+        .iter(app.world())
+        .map(|item| item.order)
+        .collect();
+    ensure(
+        orders.len() == 2 && orders.contains(&0) && orders.contains(&1),
+        "首页必须含两项可交互菜单",
+    )?;
+    capture(app, &options.image_path(0))?;
+    report.push_str("初始首页：无焦点；两项菜单；已保存 frame-000000.png\n");
+    // 保留两个相隔四分之一周期的漂浮关键帧，便于检查实际运动幅度。
+    for frame in 1..=210 {
+        update(app, STEP, None)?;
+        if frame == 105 || frame == 210 {
+            capture(app, &options.output.join(format!("drift-{frame:03}.png")))?;
+        }
+    }
+    // UI 遮罩受控对照：移除后必须恢复，不能据历史失败认定引擎永久黑屏。
+    let camera = app
+        .world_mut()
+        .query_filtered::<Entity, With<crate::menu::MenuCamera>>()
+        .single(app.world())
+        .map_err(|e| e.to_string())?;
+    let overlay = app
+        .world_mut()
+        .spawn((
+            Node {
+                width: percent(100),
+                height: percent(100),
+                position_type: PositionType::Absolute,
+                ..default()
+            },
+            UiTargetCamera(camera),
+            GlobalZIndex(100),
+            BackgroundColor(Color::BLACK.with_alpha(0.5)),
+        ))
+        .id();
+    capture(app, &options.output.join("control-ui-overlay.png"))?;
+    app.world_mut().despawn(overlay);
+    capture(app, &options.output.join("control-ui-removed.png"))?;
+    report.push_str("受控对照：全屏 UI 遮罩添加与移除均正常渲染；无永久黑屏\n");
+    for i in 0..2 {
+        let l = *app.world().resource::<crate::menu::Layout>();
+        app.world_mut()
+            .resource_mut::<crate::menu::MenuInput>()
+            .pointer = Some(Vec2::new(
+            l.hero.x + 50.0,
+            l.menu_y + 20.0 + l.row_height * i as f32,
+        ));
+        for _ in 0..20 {
+            update(app, STEP, None)?;
+        }
+        ensure(
+            app.world().resource::<crate::menu::MenuInput>().hover == Some(i),
+            "鼠标未命中菜单项",
+        )?;
+        capture(app, &options.output.join(format!("hover-{}.png", i + 1)))?;
+        if i == 1 {
+            app.world_mut().resource_mut::<MenuMouse>().0 = true;
+            update(app, STEP, None)?;
+            app.world_mut().resource_mut::<MenuMouse>().0 = false;
+            update(app, STEP, None)?;
+            ensure(
+                app.world().resource::<Fade>().phase == Phase::Idle,
+                "Gallery 点击不得发起切换",
+            )?;
+        }
+    }
+    app.world_mut()
+        .resource_mut::<crate::menu::MenuInput>()
+        .pointer = None;
+    for _ in 0..20 {
+        update(app, STEP, None)?;
+    }
+    // Tab 到第一项、再到 Gallery，Enter 不触发业务；Shift+Tab 返回第一项。
+    for key_frame in [7, 7, 3] {
+        update(app, STEP, Some(key_frame))?;
+        update(app, STEP, None)?;
+    }
+    ensure(
+        app.world().resource::<Fade>().phase == Phase::Idle,
+        "Gallery Enter 不得发起切换",
+    )?;
+    update(app, STEP, Some(8))?;
+    update(app, STEP, None)?;
+    ensure(
+        app.world().resource::<crate::menu::MenuInput>().focus == Some(0),
+        "Shift+Tab 应返回第一项",
+    )?;
+    for _ in 0..20 {
+        update(app, STEP, None)?;
+    }
+    capture(app, &options.output.join("keyboard-focus.png"))?;
+    for (width, height) in [
+        (1920, 1080),
+        (901, 720),
+        (900, 720),
+        (641, 720),
+        (640, 720),
+        (480, 800),
+        (1280, 720),
+    ] {
+        let size = bevy::render::render_resource::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
+        let handles = [
+            app.world().resource::<Target>().0.clone(),
+            app.world()
+                .resource::<crate::transition::SceneTarget>()
+                .0
+                .clone(),
+        ];
+        for handle in handles {
+            app.world_mut()
+                .resource_mut::<Assets<Image>>()
+                .get_mut(&handle)
+                .unwrap()
+                .resize(size);
+        }
+        capture(
+            app,
+            &options.output.join(format!("layout-{width}x{height}.png")),
+        )?;
+        report.push_str(&format!("响应式布局：{width}×{height}\n"));
+    }
+    let mut frame = 0u32;
+    let mut session_instances = Vec::new();
+    for cycle in 1..=3 {
+        if cycle > 1 {
+            update(app, STEP, Some(1))?;
+            update(app, STEP, None)?;
+        }
+        for (direction, key_frame, target) in [
+            ("enter", 3, crate::GameState::InGame),
+            ("return", 5, crate::GameState::Menu),
+        ] {
+            update(app, STEP, Some(key_frame))?;
+            let mut saved = [false; 3];
+            let mut iterations = 0;
+            loop {
+                let phase = app.world().resource::<Fade>().phase;
+                let alpha = app.world().resource::<Fade>().alpha;
+                // 加载期间也推进正常墙钟步长，验证游戏自身冻结物理，而非靠测试停钟。
+                update(app, STEP, None)?;
+                frame += 1;
+                let new_phase = app.world().resource::<Fade>().phase;
+                let new_alpha = app.world().resource::<Fade>().alpha;
+                let slot = if phase == Phase::Out && (0.45..=0.55).contains(&alpha) {
+                    Some(0)
+                } else if alpha == 1.0 && phase == Phase::Waiting {
+                    Some(1)
+                } else if phase == Phase::In && (0.45..=0.55).contains(&alpha) {
+                    Some(2)
+                } else {
+                    None
+                };
+                if cycle == 1 {
+                    if let Some(slot) = slot.filter(|&slot| !saved[slot]) {
+                        saved[slot] = true;
+                        let path = options.image_path(frame);
+                        capture_checked(app, &path, slot == 1)?;
+                        report.push_str(&format!(
+                            "{}\n",
+                            crate::transition::diagnostics(app.world_mut())
+                        ));
+                        report.push_str(&format!("第{cycle}轮 {direction}：阶段={phase:?} alpha={new_alpha:.4} frame={frame} 图片={}\n",path.display()));
+                    }
+                }
+                iterations += 1;
+                ensure(iterations < 20000, "页面过渡未能完成")?;
+                if new_phase == Phase::Idle && new_alpha == 0.0 {
+                    break;
+                }
+            }
+            ensure(
+                *app.world().resource::<State<crate::GameState>>().get() == target,
+                "过渡未到达目标页面",
+            )?;
+            if cycle == 1 {
+                ensure(saved.iter().all(|saved| *saved), "缺少双向过渡关键阶段截图")?;
+            }
+            for _ in 0..120 {
+                update(app, STEP, None)?;
+                frame += 1;
+            }
+            ensure(
+                app.world().resource::<Fade>().phase == Phase::Idle
+                    && app.world().resource::<Fade>().alpha == 0.0,
+                "过渡结束后黑幕重新出现",
+            )?;
+            if target == crate::GameState::InGame {
+                validate_scene(app.world_mut())?;
+                session_instances = app
+                    .world_mut()
+                    .query::<&WorldInstance>()
+                    .iter(app.world())
+                    .map(|instance| **instance)
+                    .collect();
+                ensure(
+                    app.world_mut()
+                        .query_filtered::<(), With<crate::menu::MenuRoot>>()
+                        .iter(app.world())
+                        .count()
+                        == 0,
+                    "游戏中残留首页",
+                )?;
+                let follows = app
+                    .world_mut()
+                    .query_filtered::<(), With<crate::driving::FollowCamera>>()
+                    .iter(app.world())
+                    .count();
+                ensure(follows == 1, "游戏相机重复生成")?;
+                report.push_str(&format!(
+                    "第{cycle}轮进入：资源、实例与 GPU 就绪；玩家、敌人、地形与相机断言通过\n"
+                ));
+            } else {
+                let world = app.world_mut();
+                ensure(
+                    world
+                        .query_filtered::<(), With<crate::transition::SessionEntity>>()
+                        .iter(world)
+                        .count()
+                        == 0,
+                    "返回首页后残留对局实体",
+                )?;
+                ensure(
+                    world.query::<&WorldAssetRoot>().iter(world).count() == 0,
+                    "返回首页后残留场景实例根",
+                )?;
+                ensure(
+                    world
+                        .query_filtered::<(), With<crate::menu::MenuCamera>>()
+                        .iter(world)
+                        .count()
+                        == 1,
+                    "首页相机重复生成",
+                )?;
+                ensure(
+                    session_instances.iter().all(|&instance| {
+                        !world
+                            .resource::<WorldInstanceSpawner>()
+                            .instance_is_ready(instance)
+                    }),
+                    "返回首页后场景实例未注销",
+                )?;
+                ensure(
+                    !world.contains_resource::<crate::ground::TerrainReady>(),
+                    "地形生成标志未清除",
+                )?;
+                report.push_str(&format!(
+                    "第{cycle}轮返回：实体与场景根清零；首页相机唯一；生成标志已重置\n"
+                ));
+            }
+            capture(app, &options.image_path(frame))?;
+            report.push_str(&format!(
+                "{}\n",
+                crate::transition::diagnostics(app.world_mut())
+            ));
+        }
+    }
+    report.push_str("三轮双向过渡全部完成，持续120帧未重建黑幕\n");
+    Ok(())
+}
+
 /// 临时取消跟随以拍摄固定的车体局部视点；截图等待仍不推进模拟。
 fn capture_view(app: &mut App, path: &Path, offset: Vec3) -> Result<(), String> {
     let (player, _) = subject_state(app.world_mut())?;
@@ -874,13 +1202,24 @@ fn capture_wheel_views(app: &mut App, output: &Path) -> Result<(), String> {
 
 /// 请求一次截图并等待 observer 完成保存，绝不以请求已提交作为成功判据。
 fn capture(app: &mut App, path: &Path) -> Result<(), String> {
+    capture_checked(app, path, false)
+}
+
+/// 全黑交接专用像素断言，其余帧仍拒收空画面。
+fn capture_checked(app: &mut App, path: &Path, black: bool) -> Result<(), String> {
     wait_render(app, false)?;
     app.world_mut().resource_mut::<CaptureResult>().0 = None;
     let target = app.world().resource::<Target>().0.clone();
+    let size = app
+        .world()
+        .resource::<Assets<Image>>()
+        .get(&target)
+        .unwrap()
+        .size();
     let path = path.to_owned();
     app.world_mut().spawn(Screenshot::image(target)).observe(
         move |event: On<ScreenshotCaptured>, mut result: ResMut<CaptureResult>| {
-            result.0 = Some(save_image(&event.image, &path));
+            result.0 = Some(save_image(&event.image, &path, size, black));
         },
     );
     loop {
@@ -892,17 +1231,30 @@ fn capture(app: &mut App, path: &Path) -> Result<(), String> {
 }
 
 /// RGB 编码会丢弃 HDR 输出中用于亮度的 alpha，与 Bevy 官方截图行为一致。
-fn save_image(image: &Image, path: &Path) -> Result<(), String> {
+fn save_image(image: &Image, path: &Path, size: UVec2, black: bool) -> Result<(), String> {
     let rgb = image
         .clone()
         .try_into_dynamic()
         .map_err(|error| format!("截图转换失败：{error}"))?
         .to_rgb8();
     ensure(
-        rgb.width() == WIDTH && rgb.height() == HEIGHT,
+        rgb.width() == size.x && rgb.height() == size.y,
         "截图尺寸不符",
     )?;
-    validate_pixels(rgb.as_raw())?;
+    // 临时诊断：像素校验失败也落盘 reject 文件，便于人工检查（验证后删除）。
+    if let Err(message) = validate_capture_pixels(rgb.as_raw(), size, black) {
+        let reject = path.with_extension("reject.png");
+        let mut file = create_new(&reject)?;
+        rgb.write_to(
+            &mut file,
+            ImageFormat::Png
+                .as_image_crate_format()
+                .ok_or("未启用 PNG 编码")?,
+        )
+        .map_err(|error| format!("PNG 编码或写入失败：{error}"))?;
+        drop(file);
+        return Err(format!("{message}；已保存诊断图：{}", reject.display()));
+    }
     let mut file = create_new(path)?;
     rgb.write_to(
         &mut file,
@@ -917,15 +1269,27 @@ fn save_image(image: &Image, path: &Path) -> Result<(), String> {
 }
 
 /// 排除纯色/黑色等明显空图；具体模型和材质效果仍需读取关键帧人工检查。
+#[cfg(test)]
 fn validate_pixels(rgb: &[u8]) -> Result<(), String> {
+    validate_capture_pixels(rgb, UVec2::new(WIDTH, HEIGHT), false)
+}
+
+/// 验证目标尺寸与阶段预期，避免把正常黑场与异常黑屏混为一谈。
+fn validate_capture_pixels(rgb: &[u8], size: UVec2, black: bool) -> Result<(), String> {
     ensure(
-        rgb.len() == (WIDTH * HEIGHT * 3) as usize,
+        rgb.len() == (size.x * size.y * 3) as usize && !rgb.is_empty(),
         "截图像素长度不符",
     )?;
+    if black {
+        return ensure(
+            rgb.iter().all(|&value| value <= 3),
+            "全黑交接帧仍有可见内容",
+        );
+    }
     let first = &rgb[..3];
     ensure(
         rgb.chunks_exact(3).filter(|pixel| *pixel != first).count()
-            > (WIDTH * HEIGHT / 100) as usize,
+            > (size.x * size.y / 100) as usize,
         "截图缺少实际场景内容（接近纯色）",
     )
 }
@@ -1026,6 +1390,7 @@ mod tests {
             ("drive", Scenario::Drive),
             ("combat", Scenario::Combat),
             ("wheels", Scenario::Wheels),
+            ("menu", Scenario::Menu),
         ] {
             let options = parse(&["--offscreen-test", name, "--output", "out"])
                 .unwrap()
@@ -1124,6 +1489,10 @@ mod tests {
         assert!(Scenario::Combat.keys(2).is_empty());
         assert!(Scenario::Combat.keys(120).is_empty());
         assert!(Scenario::Scene.keys(1).is_empty());
+        assert_eq!(Scenario::Menu.keys(1), &[KeyCode::ArrowDown]);
+        assert_eq!(Scenario::Menu.keys(3), &[KeyCode::Enter]);
+        assert_eq!(Scenario::Menu.keys(5), &[KeyCode::Escape]);
+        assert!(Scenario::Menu.keys(2).is_empty());
     }
 
     #[test]

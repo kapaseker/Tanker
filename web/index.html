@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>V-Tank</title>
+<meta name="description" content="V-Tank — 体素装甲战场。驾驶履带战车穿越荒原，瞄准、开火、击毁目标。">
+<meta name="theme-color" content="#0f0e0c">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230f0e0c'/%3E%3Cpath d='M16 5l11 6-11 6-11-6z' fill='%23e2edcf'/%3E%3Cpath d='M5 11v9l11 6v-9z' fill='%23b7cb9f'/%3E%3Cpath d='M27 11v9l-11 6v-9z' fill='%2391a97a'/%3E%3C/svg%3E">
+<style>
+  /* 工程自带的 MiSans 可变字体，权重 100–900，页面所有文字统一使用 */
+  @font-face {
+    font-family: "MiSans";
+    src: url("../assets/fonts/misans/MiSansVF.ttf") format("truetype");
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  :root {
+    --bg: #0f0e0c;
+    --ink: #ebe8df;
+    --muted: #a49d90;
+    --line: rgba(235, 232, 223, 0.15);
+    --mint: #c8dbb1;
+    --mint-bright: #eaf4da;
+    --mint-deep: #9db67e;
+    --dark: #12110d;
+    --font-display: "MiSans", "Microsoft YaHei", sans-serif;
+    --font-body: "MiSans", "Microsoft YaHei", system-ui, sans-serif;
+    --font-mono: "MiSans", "Cascadia Code", Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { height: 100%; }
+
+  body {
+    margin:0;
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- 背景层：沙色余光、地面网格、体素块 ---------- */
+  .bg {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .bg__glow {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(90% 70% at 82% 108%, rgba(150, 116, 82, 0.42), transparent 62%),
+      radial-gradient(55% 45% at 88% 2%, rgba(200, 219, 177, 0.10), transparent 70%);
+  }
+
+  .bg__floor {
+    position: absolute;
+    left: -22%;
+    right: -22%;
+    bottom: -14%;
+    height: 56%;
+    background-image:
+      linear-gradient(rgba(200, 219, 177, 0.10) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(200, 219, 177, 0.10) 1px, transparent 1px);
+    background-size: 62px 62px;
+    transform: perspective(520px) rotateX(66deg);
+    transform-origin: 50% 100%;
+    -webkit-mask-image: linear-gradient(to top, #000 12%, transparent 82%);
+    mask-image: linear-gradient(to top, #000 12%, transparent 82%);
+    opacity: 0.6;
+  }
+
+  .voxels {
+    flex: 0 0 auto;
+    width: clamp(260px, 30vw, 420px);
+    height: auto;
+    opacity: 0.95;
+    pointer-events: none;
+    filter: drop-shadow(0 30px 40px rgba(0, 0, 0, 0.45));
+  }
+
+  .drift {
+    animation: drift 7s ease-in-out infinite;
+  }
+
+  @keyframes drift {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-18px); }
+  }
+
+  .bg__vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(120% 90% at 50% 45%, transparent 45%, rgba(0, 0, 0, 0.62));
+  }
+
+  .bg__scan {
+    position: absolute;
+    inset: 0;
+    background-image: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.16) 0 1px, transparent 1px 3px);
+    opacity: 0.22;
+  }
+
+  /* ---------- 页面四角标记 ---------- */
+  .frame {
+    position: fixed;
+    inset: 18px;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  .frame::before,
+  .frame::after {
+    content: "";
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    border: 1px solid rgba(200, 219, 177, 0.38);
+  }
+
+  .frame::before {
+    top: 0;
+    left: 0;
+    border-right: 0;
+    border-bottom: 0;
+  }
+
+  .frame::after {
+    right: 0;
+    bottom: 0;
+    border-left: 0;
+    border-top: 0;
+  }
+
+  /* ---------- 顶部 / 底部 HUD ---------- */
+  .hud {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    padding: 1.9rem clamp(1.4rem, 4.5vw, 3.4rem);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .hud__tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.65rem;
+    color: var(--ink);
+  }
+
+  .hud__tag::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    background: var(--mint);
+    box-shadow: 0 0 0 1px rgba(200, 219, 177, 0.25), 0 0 12px rgba(200, 219, 177, 0.5);
+  }
+
+  .hud__meta { white-space: nowrap; }
+
+  .hud--bottom {
+    flex-wrap: wrap;
+    gap: 0.9rem 1.6rem;
+    color: var(--muted);
+  }
+
+  .hud__hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+  }
+
+  kbd {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.1em;
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 0.28em 0.5em;
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .hud__build { margin-left: auto; }
+
+  /* ---------- 主舞台 ---------- */
+  .stage {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem clamp(1.4rem, 5vw, 5rem) 2.5rem;
+  }
+
+  /* 标题菜单与体素方块作为一组整体居中，避免宽屏下内容分散到两侧 */
+  .layout {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(2rem, 6vw, 6rem);
+    width: 100%;
+    max-width: 1280px;
+  }
+
+  .hero {
+    min-width: 0;
+  }
+
+  .eyebrow {
+    margin: 0 0 0.9rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.7rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.26em;
+    text-transform: uppercase;
+    color: var(--mint);
+  }
+
+  .eyebrow::before {
+    content: "";
+    width: 26px;
+    height: 1px;
+    background: var(--mint);
+  }
+
+  .title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: clamp(4rem, 12vw, 11rem);
+    line-height: 0.84;
+    letter-spacing: 0.015em;
+    color: var(--mint-bright);
+    background: linear-gradient(178deg, #f6fbf0 8%, var(--mint) 62%, var(--mint-deep) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-transform: uppercase;
+    /* 用 filter 绘制立体挤出，text-shadow 会把文字填色压暗 */
+    filter:
+      drop-shadow(2px 2px 0 #1b1913)
+      drop-shadow(2px 2px 0 #15140f)
+      drop-shadow(2px 2px 0 #100f0b)
+      drop-shadow(0 16px 28px rgba(0, 0, 0, 0.5));
+  }
+
+  .lede {
+    margin: 1.55rem 0 0;
+    max-width: 30rem;
+    text-wrap: pretty;
+    font-size: clamp(0.95rem, 1.15vw, 1.05rem);
+    line-height: 1.75;
+    color: #c6c0b4;
+  }
+
+  /* ---------- 菜单 ---------- */
+  .menu {
+    margin-top: clamp(2rem, 4.5vh, 3.2rem);
+    width: min(100%, 480px);
+    border-top: 1px solid var(--line);
+  }
+
+  .menu__item {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.05rem 0.35rem;
+    border-bottom: 1px solid var(--line);
+    color: var(--ink);
+    text-decoration: none;
+    overflow: hidden;
+    transition: color 0.22s ease, padding-left 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  /* 悬停时从左侧铺开的薄荷色填充 */
+  .menu__item::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background: linear-gradient(90deg, var(--mint) 0%, var(--mint-deep) 100%);
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .menu__item > * { position: relative; z-index: 1; }
+
+  .menu__index {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    color: var(--mint-deep);
+    transition: color 0.22s ease;
+  }
+
+  .menu__label {
+    font-family: var(--font-display);
+    font-size: clamp(1.15rem, 2.1vw, 1.5rem);
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .menu__arrow {
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    /* 右侧留出边距，悬停右移后不贴边 */
+    padding-right: 0.75rem;
+    color: var(--mint);
+    transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), color 0.22s ease;
+  }
+
+  .menu__item:hover,
+  .menu__item:focus-visible {
+    color: var(--dark);
+    padding-left: 0.85rem;
+    /* 键盘焦点与鼠标悬停共用高亮，不额外绘制焦点外框。 */
+    outline: none;
+  }
+
+  .menu__item:hover::after,
+  .menu__item:focus-visible::after { transform: scaleX(1); }
+
+  .menu__item:hover .menu__index,
+  .menu__item:focus-visible .menu__index,
+  .menu__item:hover .menu__arrow,
+  .menu__item:focus-visible .menu__arrow {
+    color: var(--dark);
+  }
+
+  .menu__item:hover .menu__arrow,
+  .menu__item:focus-visible .menu__arrow { transform: translateX(5px); }
+
+  .status {
+    margin: 1.35rem 0 0;
+    min-height: 1.2em;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+  }
+
+  /* ---------- 响应式 ---------- */
+  @media (max-width: 900px) {
+    .layout { gap: 0; }
+    .voxels { display: none; }
+  }
+
+  @media (max-width: 640px) {
+    .hud { padding: 1.3rem 1.2rem; font-size: 0.6rem; }
+    .hud__meta { display: none; }
+    .stage { padding: 1.5rem 1.4rem 2rem; }
+    .title { font-size: clamp(3.4rem, 20vw, 5rem); }
+    .lede { margin-top: 1.1rem; font-size: 0.92rem; }
+    .menu { margin-top: 1.8rem; }
+    .menu__item { padding: 0.95rem 0.2rem; }
+    .menu__label { font-size: 1.1rem; }
+    .hud--bottom { padding-bottom: 1.6rem; }
+    .hud__build { margin-left: 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .drift { animation: none; }
+    .menu__item,
+    .menu__item::after,
+    .menu__item .menu__arrow { transition: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="bg" aria-hidden="true">
+    <div class="bg__glow"></div>
+    <div class="bg__floor"></div>
+    <div class="bg__scan"></div>
+    <div class="bg__vignette"></div>
+  </div>
+
+  <div class="frame" aria-hidden="true"></div>
+
+  <header class="hud hud--top">
+
+
+  </header>
+
+  <main class="stage">
+    <div class="layout">
+      <section class="hero">
+
+      <h1 class="title">V-Tank</h1>
+
+
+      <nav class="menu" aria-label="主菜单">
+        <a class="menu__item" href="#start">
+          <span class="menu__index">01</span>
+          <span class="menu__label">Start Game</span>
+          <span class="menu__arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="menu__item" href="#gallery">
+          <span class="menu__index">02</span>
+          <span class="menu__label">Model Gallery</span>
+          <span class="menu__arrow" aria-hidden="true">→</span>
+        </a>
+      </nav>
+
+      <p class="status" role="status" aria-live="polite">↑ ↓ 选择 · ENTER 确认</p>
+      </section>
+
+      <svg class="voxels" viewBox="90 95 470 320" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <defs>
+          <g id="cube-mint">
+            <polygon points="0,0 34,17 0,34 -34,17" fill="#e2edcf"></polygon>
+            <polygon points="-34,17 0,34 0,72 -34,55" fill="#b7cb9f"></polygon>
+            <polygon points="0,34 34,17 34,55 0,72" fill="#91a97a"></polygon>
+          </g>
+          <g id="cube-gray">
+            <polygon points="0,0 34,17 0,34 -34,17" fill="#d8dbd8"></polygon>
+            <polygon points="-34,17 0,34 0,72 -34,55" fill="#b0b5b2"></polygon>
+            <polygon points="0,34 34,17 34,55 0,72" fill="#868c89"></polygon>
+          </g>
+          <g id="cube-sand">
+            <polygon points="0,0 34,17 0,34 -34,17" fill="#8b7660"></polygon>
+            <polygon points="-34,17 0,34 0,72 -34,55" fill="#6d5b49"></polygon>
+            <polygon points="0,34 34,17 34,55 0,72" fill="#524437"></polygon>
+          </g>
+          <g id="cube-dark">
+            <polygon points="0,0 34,17 0,34 -34,17" fill="#3a3830"></polygon>
+            <polygon points="-34,17 0,34 0,72 -34,55" fill="#2c2a24"></polygon>
+            <polygon points="0,34 34,17 34,55 0,72" fill="#211f1a"></polygon>
+          </g>
+        </defs>
+
+        <g transform="translate(330 210) scale(1.15)">
+          <g class="drift" style="animation-delay: -2.4s"><use href="#cube-mint"></use></g>
+        </g>
+        <g transform="translate(440 300) scale(0.75)">
+          <g class="drift" style="animation-delay: -4.1s"><use href="#cube-gray"></use></g>
+        </g>
+        <g transform="translate(250 330) scale(0.9)">
+          <g class="drift" style="animation-delay: -0.8s"><use href="#cube-sand"></use></g>
+        </g>
+        <g transform="translate(160 220) scale(0.45)" opacity="0.55">
+          <g class="drift" style="animation-delay: -5.3s"><use href="#cube-gray"></use></g>
+        </g>
+        <g transform="translate(400 150) scale(0.4)" opacity="0.6">
+          <g class="drift" style="animation-delay: -3.2s"><use href="#cube-mint"></use></g>
+        </g>
+        <g transform="translate(486 190) scale(0.5)" opacity="0.5">
+          <g class="drift" style="animation-delay: -1.6s"><use href="#cube-dark"></use></g>
+        </g>
+        <g transform="translate(530 330) scale(0.3)" opacity="0.35">
+          <g class="drift" style="animation-delay: -6s"><use href="#cube-mint"></use></g>
+        </g>
+        <g transform="translate(120 330) scale(0.35)" opacity="0.4">
+          <g class="drift" style="animation-delay: -2s"><use href="#cube-sand"></use></g>
+        </g>
+        <g transform="translate(300 118) scale(0.3)" opacity="0.4">
+          <g class="drift" style="animation-delay: -4.7s"><use href="#cube-gray"></use></g>
+        </g>
+      </svg>
+    </div>
+  </main>
+
+  <footer class="hud hud--bottom">
+    <span class="hud__hint"></span>
+    <span class="hud__hint"></span>
+    <span class="hud__build">Build 0.1.0</span>
+  </footer>
+
+  <script>
+    (() => {
+      const items = [...document.querySelectorAll('.menu__item')];
+
+      // 方向键在主菜单内循环移动焦点，符合手柄/键盘操作习惯
+      document.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+        event.preventDefault();
+        const activeIndex = items.indexOf(document.activeElement);
+        if (activeIndex === -1) {
+          items[0].focus();
+          return;
+        }
+        const step = event.key === 'ArrowDown' ? 1 : -1;
+        items[(activeIndex + step + items.length) % items.length].focus();
+      });
+    })();
+  </script>
+
+
+</body></html>

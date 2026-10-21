@@ -104,6 +104,7 @@ fn spawn_explosions(
         // mesh 以模型几何中心为原点（加载器默认 CENTER），根位置即爆炸球心。
         commands.spawn((
             Explosion,
+            crate::transition::SessionEntity,
             Transform::from_translation(event.position).with_scale(Vec3::splat(EXPLOSION_SCALE)),
             WorldAssetRoot(handle.clone()),
         ));

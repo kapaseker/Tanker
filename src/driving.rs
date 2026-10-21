@@ -146,9 +146,14 @@ fn apply_input(
 fn read_player_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut players: Query<&mut DrivingInput, With<Tank>>,
+    fade: Option<Res<crate::transition::Fade>>,
 ) {
     for mut input in &mut players {
-        *input = DrivingInput::from_keys(&keys);
+        *input = if fade.as_ref().is_none_or(|fade| fade.accepts_input()) {
+            DrivingInput::from_keys(&keys)
+        } else {
+            DrivingInput::default()
+        };
     }
 }
 
