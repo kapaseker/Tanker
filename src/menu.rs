@@ -5,7 +5,9 @@ use crate::{
     font::UiFont,
     transition::{Fade, SceneTarget},
     ui_resources::{colors, dimens},
-    ui_resources::{colors::menu as palette, dimens::menu as dims, strings::menu as labels},
+    ui_resources::{
+        colors::menu as palette, dimens::menu as dims, strings, strings_cn::menu as labels,
+    },
 };
 use bevy::{
     camera::RenderTarget,
@@ -402,6 +404,8 @@ fn spawn_menu(
                         },
                         BackgroundGradient::from(LinearGradient {
                             angle: std::f32::consts::FRAC_PI_2,
+                            // 与网页 CSS 一致，在 sRGB 分量间插值，不在 OKLAB 混色。
+                            color_space: InterpolationColorSpace::Srgba,
                             stops: vec![
                                 ColorStop::new(colors::PRIMARY, percent(0)),
                                 ColorStop::new(colors::PRIMARY_DEEP, percent(100)),
@@ -426,7 +430,7 @@ fn spawn_menu(
                         ),
                         (
                             Part::Arrow(i),
-                            labels::ARROW.into(),
+                            strings::ARROW.into(),
                             dims::ARROW_SIZE,
                             400,
                             0.0,
@@ -452,37 +456,84 @@ fn spawn_menu(
                     }
                 });
             }
-            for (part, label, size, spacing) in [
-                (
-                    Part::Hint,
-                    labels::KEYBOARD_HINT,
-                    dims::HINT_SIZE,
-                    dims::HINT_SPACING,
-                ),
-                (
-                    Part::Build,
-                    labels::BUILD,
-                    dims::BUILD_SIZE,
-                    dims::BUILD_SPACING,
-                ),
-            ] {
-                root.spawn((
-                    part,
-                    Text::new(label),
+            root.spawn((
+                Part::Build,
+                Text::new(labels::BUILD),
+                TextFont {
+                    font: font.0.clone().into(),
+                    font_size: FontSize::Px(dims::BUILD_SIZE),
+                    ..default()
+                },
+                LetterSpacing::Px(dims::BUILD_SPACING),
+                LineHeight::RelativeToFont(dimens::LINE_HEIGHT),
+                TextColor(colors::ON_SURFACE_MUTED),
+                Node {
+                    position_type: PositionType::Absolute,
+                    ..default()
+                },
+            ));
+            // 提示行复刻网页的 inline 键帽：子项按基线对齐，键帽尺寸固定。
+            root.spawn((
+                Part::Hint,
+                Node {
+                    position_type: PositionType::Absolute,
+                    display: Display::Flex,
+                    align_items: AlignItems::Baseline,
+                    column_gap: px(dims::HINT_ITEM_GAP),
+                    ..default()
+                },
+            ))
+            .with_children(|hint| {
+                for (index, key) in strings::KEYCAPS.into_iter().enumerate() {
+                    hint.spawn((
+                        Text::new(key),
+                        TextFont {
+                            font: font.0.clone().into(),
+                            font_size: FontSize::Px(dims::KBD_SIZE),
+                            ..default()
+                        },
+                        LetterSpacing::Px(dims::KBD_SPACING),
+                        LineHeight::RelativeToFont(dimens::LINE_HEIGHT),
+                        TextColor(colors::ON_SURFACE),
+                        Node {
+                            border: UiRect::all(px(dimens::BORDER_WIDTH)),
+                            border_radius: BorderRadius::all(px(dims::KBD_RADIUS)),
+                            padding: UiRect::axes(
+                                px(dims::KBD_PADDING_X),
+                                px(dims::KBD_PADDING_Y),
+                            ),
+                            ..default()
+                        },
+                        BorderColor::all(palette::SEPARATOR),
+                        BackgroundColor(palette::KBD_BACKGROUND),
+                    ));
+                    // 方向键后接“选择 ·”，与网页的提示顺序一致。
+                    if index == 1 {
+                        hint.spawn((
+                            Text::new(labels::HINT_SELECT),
+                            TextFont {
+                                font: font.0.clone().into(),
+                                font_size: FontSize::Px(dims::HINT_SIZE),
+                                ..default()
+                            },
+                            LetterSpacing::Px(dims::HINT_SPACING),
+                            LineHeight::RelativeToFont(dimens::LINE_HEIGHT),
+                            TextColor(colors::ON_SURFACE_MUTED),
+                        ));
+                    }
+                }
+                hint.spawn((
+                    Text::new(labels::HINT_CONFIRM),
                     TextFont {
                         font: font.0.clone().into(),
-                        font_size: FontSize::Px(size),
+                        font_size: FontSize::Px(dims::HINT_SIZE),
                         ..default()
                     },
-                    LetterSpacing::Px(spacing),
+                    LetterSpacing::Px(dims::HINT_SPACING),
                     LineHeight::RelativeToFont(dimens::LINE_HEIGHT),
                     TextColor(colors::ON_SURFACE_MUTED),
-                    Node {
-                        position_type: PositionType::Absolute,
-                        ..default()
-                    },
                 ));
-            }
+            });
             for upper in [true, false] {
                 root.spawn((
                     Part::Corner(upper),
@@ -682,10 +733,16 @@ fn update_visual(
                 node.top =
                     px((l.row_height - dimens::BORDER_WIDTH - fs * dimens::LINE_HEIGHT) * 0.5);
                 if let Some(mut font) = font {
-                    font.font_size = FontSize::Px(fs);
+                    // 值未变时不写入组件，避免每帧重新塑形中文文本。
+                    if !matches!(font.font_size, FontSize::Px(value) if value == fs) {
+                        font.font_size = FontSize::Px(fs);
+                    }
                 }
                 if let Some(mut spacing) = spacing {
-                    *spacing = LetterSpacing::Px(letter);
+                    let next = LetterSpacing::Px(letter);
+                    if *spacing != next {
+                        *spacing = next;
+                    }
                 }
                 if let Some(mut color) = color {
                     // 与原稿一致，在 sRGB 分量间插值，不在线性空间混色。

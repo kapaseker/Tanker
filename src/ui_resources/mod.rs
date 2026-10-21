@@ -6,3 +6,4 @@
 pub(crate) mod colors;
 pub(crate) mod dimens;
 pub(crate) mod strings;
+pub(crate) mod strings_cn;

@@ -86,7 +86,7 @@ fn run_game(options: Option<offscreen::Options>) -> Result<(), String> {
     } else {
         app.add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
-                title: ui_resources::strings::WINDOW_TITLE.into(),
+                title: ui_resources::strings_cn::WINDOW_TITLE.into(),
                 ..default()
             }),
             ..default()

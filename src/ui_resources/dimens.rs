@@ -97,8 +97,8 @@ pub(crate) mod menu {
     pub(crate) const TOP: f32 = 60.8;
     /// 窄屏顶部保留区高度。
     pub(crate) const TOP_NARROW: f32 = 41.6;
-    /// 底部保留区高度。
-    pub(crate) const BOTTOM: f32 = 74.78;
+    /// 底部保留区高度；页脚只有上下 1.9rem 内边距，版本号已固定定位，空内容不产生行高。
+    pub(crate) const BOTTOM: f32 = 60.8;
     /// 窄屏底部保留区高度。
     pub(crate) const BOTTOM_NARROW: f32 = 59.2;
     /// 内容区顶部内边距。
@@ -133,6 +133,18 @@ pub(crate) mod menu {
     pub(crate) const HINT_SIZE: f32 = 11.2;
     /// 键盘提示字距。
     pub(crate) const HINT_SPACING: f32 = 1.344;
+    /// 键盘提示行内各项间距。
+    pub(crate) const HINT_ITEM_GAP: f32 = 4.0;
+    /// 键帽字号，对应原稿的 0.62rem。
+    pub(crate) const KBD_SIZE: f32 = 9.92;
+    /// 键帽字距，对应原稿的 0.1em。
+    pub(crate) const KBD_SPACING: f32 = 0.992;
+    /// 键帽水平内边距，对应原稿的 0.5em。
+    pub(crate) const KBD_PADDING_X: f32 = 4.96;
+    /// 键帽垂直内边距，对应原稿的 0.28em。
+    pub(crate) const KBD_PADDING_Y: f32 = 2.7776;
+    /// 键帽圆角。
+    pub(crate) const KBD_RADIUS: f32 = 3.0;
     /// 版本文字字号。
     pub(crate) const BUILD_SIZE: f32 = 10.88;
     /// 版本文字字距。

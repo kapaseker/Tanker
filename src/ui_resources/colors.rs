@@ -59,6 +59,8 @@ pub(crate) mod menu {
     pub(crate) const SEPARATOR: Color = with_alpha(ON_SURFACE, 0.028);
     /// 角标边框。
     pub(crate) const CORNER: Color = with_alpha(PRIMARY, 0.14);
+    /// 键帽底色：原稿的 rgba(255,255,255,0.03) 换算到线性合成后的等效 alpha。
+    pub(crate) const KBD_BACKGROUND: Color = with_alpha(Color::srgb(1.0, 1.0, 1.0), 0.0034);
 }
 
 /// Bevy 的 Alpha trait 不能用于常量求值；本文件的颜色均明确使用 sRGB。

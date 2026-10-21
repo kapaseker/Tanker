@@ -199,7 +199,14 @@
     background: rgba(255, 255, 255, 0.03);
   }
 
-  .hud__build { margin-left: auto; }
+  /* 版本号固定在窗口右下角，不随画廊/详情页内容滚动；偏移量对齐 .hud 内边距 */
+  .hud__build {
+    position: fixed;
+    right: clamp(1.4rem, 4.5vw, 3.4rem);
+    bottom: 1.9rem;
+    z-index: 2;
+    pointer-events: none;
+  }
 
   /* ---------- 主舞台 ---------- */
   .stage {
@@ -732,7 +739,7 @@
     .menu__item { padding: 0.95rem 0.2rem; }
     .menu__label { font-size: 1.1rem; }
     .hud--bottom { padding-bottom: 1.6rem; }
-    .hud__build { margin-left: 0; }
+    .hud__build { right: 1.2rem; bottom: 1.6rem; }
     .backbar { padding: 14px 1.2rem; }
     .back { padding: 12px 14px; }
     .gallery { padding-top: 74px; }

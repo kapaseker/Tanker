@@ -73,6 +73,13 @@ menu:
     font-weight: 400
     line-height: 1.3333
     letter-spacing: 0.12em
+  keycap:
+    font-size: 9.92px
+    font-weight: 400
+    line-height: 1.3333
+    letter-spacing: 0.1em
+    padding: '0.28em 0.5em'
+    radius: 3px
   motion:
     active-fill: '300ms cubic-bezier(0.2, 0.8, 0.2, 1)'
     active-move: '280ms cubic-bezier(0.2, 0.8, 0.2, 1)'
@@ -125,7 +132,8 @@ hud:
 
 | 模块 | 职责与用法 |
 | --- | --- |
-| `strings` | 固定界面文案；例如 `strings::menu::KEYBOARD_HINT`。动态编号与拼接保留在界面代码，不收纳日志、CLI 报告或实体名称。 |
+| `strings` | 与语言无关的通用符号，例如 `strings::ARROW`、`strings::KEYCAPS`，不随语言翻译。 |
+| `strings_cn` | 中文固定界面文案；例如 `strings_cn::menu::ACTIONS`。动态编号与拼接保留在界面代码，不收纳日志、CLI 报告或实体名称。 |
 | `colors` | 通用语义色及 `colors::menu` 首页配色，使用 Bevy `Color`。背景着色器通过材质 uniform 接收相同来源的 sRGB 颜色，混色后才转为线性输出。 |
 | `dimens` | 逻辑像素尺寸及明确标注的比例，调用处转为 `px()`、`FontSize` 等；`dimens::menu` 收纳首页断点、尺寸范围、间距与动画位移距离。 |
 
@@ -149,7 +157,7 @@ hud:
 ### 配色与语义
 
 - `background` 承载页面，`surface` 与 `surface-raised` 区分面板层级；`on-surface` 承载主要文字，弱色用于次要说明。
-- `primary` 表达可操作性与交互强调，薄荷填充配深色 `on-primary` 文字。标题渐变用于品牌字标，交互渐变用于菜单和按钮高亮。
+- `primary` 表达可操作性与交互强调，薄荷填充配深色 `on-primary` 文字。标题渐变用于品牌字标，交互渐变用于菜单和按钮高亮，并在 sRGB 分量间插值，与网页 CSS 的渐变行为一致。
 - 环境暖光、薄荷余光、扫描线和暗角保持低对比，放在阅读焦点以外。
 - 品牌色与语义色分开使用。语义色是暂行配对方案，需在实际游戏背景中检查识别效果。
 
@@ -173,6 +181,7 @@ hud:
 - 英文品牌标题与短操作标签可使用大写及适量正字距；中文自然书写。HUD数值与短标签使用正常字距，避免扩大快速扫读距离。
 - 字号基于逻辑尺寸定义，界面缩放独立于3D渲染分辨率。分辨率或窗口变化时，优先重排与缩放整个 UI，不持续压小关键文字。
 - 按实际观看距离检查正文、数字、中文和按键提示。需要更大文字时允许扩大 UI，容器同步适配，不能让文字截断或覆盖相邻信息。
+- 键帽提示使用 `menu.keycap` 字号、内边距和 3px 圆角，与相邻说明文字按基线对齐。
 
 ### 语言与单位
 

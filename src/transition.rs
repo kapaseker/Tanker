@@ -142,7 +142,10 @@ impl Plugin for TransitionPlugin {
             .init_resource::<RenderReadiness>()
             .add_plugins(ExtractResourcePlugin::<RenderReadiness>::default())
             .add_systems(Startup, setup_output)
-            .add_systems(PreUpdate, (resize_target, sync_physics))
+            .add_systems(PreUpdate, sync_physics)
+            // 相机在 StateTransition 生成，必须在其后写入纹理缩放：Bevy 只在图像资产
+            // 变更或相机新增的那一帧重算 target_info，错过这一帧缩放就会一直缺失。
+            .add_systems(Update, resize_target)
             .add_systems(
                 Update,
                 (report_asset_failure, return_to_menu, advance).chain(),
