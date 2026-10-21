@@ -4,12 +4,14 @@ use crate::{
     GameState,
     font::UiFont,
     transition::{Fade, SceneTarget},
+    ui_resources::{colors, dimens},
+    ui_resources::{colors::menu as palette, dimens::menu as dims, strings::menu as labels},
 };
 use bevy::{
     camera::RenderTarget,
     core_pipeline::tonemapping::{DebandDither, Tonemapping},
     prelude::*,
-    render::render_resource::AsBindGroup,
+    render::render_resource::{AsBindGroup, ShaderType},
     shader::ShaderRef,
     text::{LetterSpacing, LineHeight},
     ui_render::{
@@ -119,62 +121,90 @@ pub(crate) struct Layout {
 }
 impl Layout {
     fn new(size: Vec2) -> Self {
-        let narrow = size.x <= 640.0;
+        let narrow = size.x <= dims::NARROW_BREAKPOINT;
         let title_size = if narrow {
-            (size.x * 0.20).clamp(54.4, 80.0)
+            (size.x * dims::TITLE_SCALE_NARROW)
+                .clamp(dims::TITLE_MIN_NARROW, dims::TITLE_MAX_NARROW)
         } else {
-            (size.x * 0.12).clamp(64.0, 176.0)
+            (size.x * dims::TITLE_SCALE).clamp(dims::TITLE_MIN, dims::TITLE_MAX)
         };
         // MiSans 的真实浏览器字宽（含 .015em 字距），由 export_menu_title.cjs 输出。
-        let hero_width = (title_size * (736.046875 / 176.0)).min(
+        let hero_width = (title_size * (dims::TITLE_TEXT_WIDTH / dims::TITLE_REFERENCE_SIZE)).min(
             size.x
                 - if narrow {
-                    44.8
+                    dims::NARROW_GUTTERS
                 } else {
-                    2.0 * (size.x * 0.05).clamp(22.4, 80.0)
+                    2.0 * (size.x * dims::GUTTER_SCALE).clamp(dims::GUTTER_MIN, dims::GUTTER_MAX)
                 },
         );
-        let cube_width = if size.x <= 900.0 {
+        let cube_width = if size.x <= dims::COMPACT_BREAKPOINT {
             0.0
         } else {
-            (size.x * 0.30).clamp(260.0, 420.0)
+            (size.x * dims::CUBE_SCALE).clamp(dims::CUBE_MIN, dims::CUBE_MAX)
         };
         let gap = if cube_width == 0.0 {
             0.0
         } else {
-            (size.x * 0.06).clamp(32.0, 96.0)
+            (size.x * dims::HERO_GAP_SCALE).clamp(dims::HERO_GAP_MIN, dims::HERO_GAP_MAX)
         };
-        let hero_width = hero_width
-            .min((size.x - 2.0 * (size.x * 0.05).clamp(22.4, 80.0) - cube_width - gap).max(1.0));
+        let hero_width = hero_width.min(
+            (size.x
+                - 2.0 * (size.x * dims::GUTTER_SCALE).clamp(dims::GUTTER_MIN, dims::GUTTER_MAX)
+                - cube_width
+                - gap)
+                .max(1.0),
+        );
         let label_size = if narrow {
-            17.6
+            dims::LABEL_NARROW
         } else {
-            (size.x * 0.021).clamp(18.4, 24.0)
+            (size.x * dims::LABEL_SCALE).clamp(dims::LABEL_MIN, dims::LABEL_MAX)
         };
         // MiSans 的 normal 行高为字号的 4/3，浏览器基准 24px -> 32px。
-        let row_height = label_size * 4.0 / 3.0 + (if narrow { 30.4 } else { 33.6 }) + 1.0;
+        let row_height = label_size * dimens::LINE_HEIGHT
+            + (if narrow {
+                dims::ROW_PADDING_NARROW
+            } else {
+                dims::ROW_PADDING
+            })
+            + dimens::BORDER_WIDTH;
         let menu_margin = if narrow {
-            28.8
+            dims::MENU_MARGIN_NARROW
         } else {
-            (size.y * 0.045).clamp(32.0, 51.2)
+            (size.y * dims::MENU_MARGIN_SCALE).clamp(dims::MENU_MARGIN_MIN, dims::MENU_MARGIN_MAX)
         };
-        let menu_y_offset = title_size * 0.84 + menu_margin;
-        let hero_height = menu_y_offset + 1.0 + row_height * 2.0 + 21.6 + 15.0;
-        let top = if narrow { 41.6 } else { 60.8 };
-        let bottom = if narrow { 59.2 } else { 74.78 };
-        let pad_top = if narrow { 24.0 } else { 16.0 };
-        let pad_bottom = if narrow { 32.0 } else { 40.0 };
+        let menu_y_offset = title_size * dims::TITLE_LINE_HEIGHT + menu_margin;
+        let hero_height = menu_y_offset
+            + dimens::BORDER_WIDTH
+            + row_height * 2.0
+            + dims::HINT_GAP
+            + dims::HINT_HEIGHT;
+        let top = if narrow { dims::TOP_NARROW } else { dims::TOP };
+        let bottom = if narrow {
+            dims::BOTTOM_NARROW
+        } else {
+            dims::BOTTOM
+        };
+        let pad_top = if narrow {
+            dims::PADDING_TOP_NARROW
+        } else {
+            dims::PADDING_TOP
+        };
+        let pad_bottom = if narrow {
+            dims::PADDING_BOTTOM_NARROW
+        } else {
+            dims::PADDING_BOTTOM
+        };
         let content_height = (size.y - top - bottom - pad_top - pad_bottom).max(hero_height);
         let hero = Vec2::new(
             (size.x - hero_width - gap - cube_width) * 0.5,
             top + pad_top + (content_height - hero_height) * 0.5,
         );
-        let cube_height = cube_width * 320.0 / 470.0;
+        let cube_height = cube_width * dims::CUBE_VIEWBOX_HEIGHT / dims::CUBE_VIEWBOX_WIDTH;
         Self {
             hero,
             title_size,
             menu_y: hero.y + menu_y_offset,
-            menu_width: hero_width.min(480.0),
+            menu_width: hero_width.min(dims::MENU_MAX_WIDTH),
             row_height,
             cube_rect: Vec4::new(
                 hero.x + hero_width + gap,
@@ -188,10 +218,13 @@ impl Layout {
     fn hit(&self, point: Vec2) -> Option<usize> {
         (0..2).find(|&i| {
             Rect::from_corners(
-                Vec2::new(self.hero.x, self.menu_y + 1.0 + i as f32 * self.row_height),
+                Vec2::new(
+                    self.hero.x,
+                    self.menu_y + dimens::BORDER_WIDTH + i as f32 * self.row_height,
+                ),
                 Vec2::new(
                     self.hero.x + self.menu_width,
-                    self.menu_y + 1.0 + (i + 1) as f32 * self.row_height,
+                    self.menu_y + dimens::BORDER_WIDTH + (i + 1) as f32 * self.row_height,
                 ),
             )
             .contains(point)
@@ -199,13 +232,59 @@ impl Layout {
     }
 }
 
+/// 与 menu.wesl 的 MenuPalette 同布局；Vec4 的 RGB 为 sRGB，W 为合成强度。
+#[derive(ShaderType, Clone, Debug)]
+struct MenuPalette {
+    /// 页面底色。
+    background: Vec4,
+    /// 暖色与薄荷环境光。
+    warm: Vec4,
+    mint: Vec4,
+    /// 网格、扫描线、暗角与方块阴影。
+    grid: Vec4,
+    scan: Vec4,
+    vignette: Vec4,
+    shadow: Vec4,
+    /// 四种方块的三面配色；顶面 W 额外携带所有面的不透明度。
+    tops: [Vec4; 4],
+    lefts: [Vec4; 4],
+    rights: [Vec4; 4],
+}
+
+impl Default for MenuPalette {
+    fn default() -> Self {
+        Self {
+            // 不用 LinearRgba：着色器在混色结束后统一转线性空间。
+            background: palette::BACKGROUND.to_srgba().to_vec4(),
+            warm: palette::ATMOSPHERE_WARM.to_srgba().to_vec4(),
+            mint: palette::ATMOSPHERE_MINT.to_srgba().to_vec4(),
+            grid: palette::GRID.to_srgba().to_vec4(),
+            scan: palette::SCAN.to_srgba().to_vec4(),
+            vignette: palette::VIGNETTE.to_srgba().to_vec4(),
+            shadow: palette::BLOCK_SHADOW.to_srgba().to_vec4(),
+            tops: palette::BLOCK_TOPS.map(|color| {
+                color
+                    .with_alpha(palette::BLOCK_OPACITY)
+                    .to_srgba()
+                    .to_vec4()
+            }),
+            lefts: palette::BLOCK_LEFTS.map(|color| color.to_srgba().to_vec4()),
+            rights: palette::BLOCK_RIGHTS.map(|color| color.to_srgba().to_vec4()),
+        }
+    }
+}
+
 /// 背景材质包含实际可见的 glow/floor/scan/vignette 和九个 SVG 方块。
 #[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
 struct MenuBackground {
+    /// XY 为逻辑视口尺寸，Z 为秒数，W 为装饰漂浮距离（逻辑像素）。
     #[uniform(0)]
     viewport: Vec4,
     #[uniform(1)]
     cubes: Vec4,
+    /// 静态配色只在创建材质时由 UI 常量构建。
+    #[uniform(2)]
+    palette: MenuPalette,
 }
 impl UiMaterial for MenuBackground {
     fn fragment_shader() -> ShaderRef {
@@ -218,7 +297,10 @@ pub(crate) struct MenuPlugin;
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MenuInput>()
-            .insert_resource(Layout::new(Vec2::new(1280.0, 720.0)))
+            .insert_resource(Layout::new(Vec2::new(
+                dimens::REFERENCE_WIDTH,
+                dimens::REFERENCE_HEIGHT,
+            )))
             .add_plugins(UiMaterialPlugin::<MenuBackground>::default())
             .add_systems(OnEnter(GameState::Menu), spawn_menu)
             .add_systems(OnEnter(GameState::InGame), despawn_menu)
@@ -258,8 +340,14 @@ fn spawn_menu(
         ))
         .id();
     let background = materials.add(MenuBackground {
-        viewport: Vec4::new(1280.0, 720.0, 0.0, 0.0),
+        viewport: Vec4::new(
+            dimens::REFERENCE_WIDTH,
+            dimens::REFERENCE_HEIGHT,
+            0.0,
+            dims::AMBIENT_TRAVEL,
+        ),
         cubes: Vec4::ZERO,
+        palette: MenuPalette::default(),
     });
     commands
         .spawn((
@@ -298,7 +386,7 @@ fn spawn_menu(
                     Part::Row(i),
                     Node {
                         position_type: PositionType::Absolute,
-                        border: UiRect::bottom(px(1)),
+                        border: UiRect::bottom(px(dimens::BORDER_WIDTH)),
                         overflow: Overflow::clip(),
                         ..default()
                     },
@@ -315,22 +403,34 @@ fn spawn_menu(
                         BackgroundGradient::from(LinearGradient {
                             angle: std::f32::consts::FRAC_PI_2,
                             stops: vec![
-                                ColorStop::new(Color::srgb_u8(200, 219, 177), percent(0)),
-                                ColorStop::new(Color::srgb_u8(157, 182, 126), percent(100)),
+                                ColorStop::new(colors::PRIMARY, percent(0)),
+                                ColorStop::new(colors::PRIMARY_DEEP, percent(100)),
                             ],
                             ..default()
                         }),
                     ));
                     for (part, label, size, weight, spacing) in [
-                        (Part::Index(i), format!("{:02}", i + 1), 11.52, 400, 1.3824),
+                        (
+                            Part::Index(i),
+                            format!("{:02}", i + 1),
+                            dims::INDEX_SIZE,
+                            400,
+                            dims::INDEX_SPACING,
+                        ),
                         (
                             Part::Label(i),
-                            ["START GAME", "MODEL GALLERY"][i].into(),
-                            24.0,
+                            labels::ACTIONS[i].into(),
+                            dims::LABEL_MAX,
                             700,
-                            1.44,
+                            dims::LABEL_MAX * dims::LABEL_TRACKING,
                         ),
-                        (Part::Arrow(i), "→".into(), 16.0, 400, 0.0),
+                        (
+                            Part::Arrow(i),
+                            labels::ARROW.into(),
+                            dims::ARROW_SIZE,
+                            400,
+                            0.0,
+                        ),
                     ] {
                         row.spawn((
                             part,
@@ -342,8 +442,8 @@ fn spawn_menu(
                                 ..default()
                             },
                             LetterSpacing::Px(spacing),
-                            LineHeight::RelativeToFont(4.0 / 3.0),
-                            TextColor(Color::srgb_u8(235, 232, 223)),
+                            LineHeight::RelativeToFont(dimens::LINE_HEIGHT),
+                            TextColor(colors::ON_SURFACE),
                             Node {
                                 position_type: PositionType::Absolute,
                                 ..default()
@@ -353,8 +453,18 @@ fn spawn_menu(
                 });
             }
             for (part, label, size, spacing) in [
-                (Part::Hint, "↑ ↓ 选择 · ENTER 确认", 11.2, 1.344),
-                (Part::Build, "BUILD 0.1.0", 10.88, 1.9584),
+                (
+                    Part::Hint,
+                    labels::KEYBOARD_HINT,
+                    dims::HINT_SIZE,
+                    dims::HINT_SPACING,
+                ),
+                (
+                    Part::Build,
+                    labels::BUILD,
+                    dims::BUILD_SIZE,
+                    dims::BUILD_SPACING,
+                ),
             ] {
                 root.spawn((
                     part,
@@ -365,8 +475,8 @@ fn spawn_menu(
                         ..default()
                     },
                     LetterSpacing::Px(spacing),
-                    LineHeight::RelativeToFont(4.0 / 3.0),
-                    TextColor(Color::srgb_u8(164, 157, 144)),
+                    LineHeight::RelativeToFont(dimens::LINE_HEIGHT),
+                    TextColor(colors::ON_SURFACE_MUTED),
                     Node {
                         position_type: PositionType::Absolute,
                         ..default()
@@ -378,29 +488,24 @@ fn spawn_menu(
                     Part::Corner(upper),
                     Node {
                         position_type: PositionType::Absolute,
-                        width: px(22),
-                        height: px(22),
+                        width: px(dims::CORNER_SIZE),
+                        height: px(dims::CORNER_SIZE),
                         border: if upper {
                             UiRect {
-                                top: px(1),
-                                left: px(1),
+                                top: px(dimens::BORDER_WIDTH),
+                                left: px(dimens::BORDER_WIDTH),
                                 ..default()
                             }
                         } else {
                             UiRect {
-                                bottom: px(1),
-                                right: px(1),
+                                bottom: px(dimens::BORDER_WIDTH),
+                                right: px(dimens::BORDER_WIDTH),
                                 ..default()
                             }
                         },
                         ..default()
                     },
-                    BorderColor::all(Color::srgba(
-                        200.0 / 255.0,
-                        219.0 / 255.0,
-                        177.0 / 255.0,
-                        0.14,
-                    )),
+                    BorderColor::all(palette::CORNER),
                 ));
             }
         });
@@ -495,32 +600,36 @@ fn update_visual(
         input.animation[i].tick(active, time.delta_secs());
     }
     for (_, material) in materials.iter_mut() {
-        material.viewport = Vec4::new(size.x, size.y, time.elapsed_secs(), 0.0);
+        material.viewport = Vec4::new(size.x, size.y, time.elapsed_secs(), dims::AMBIENT_TRAVEL);
         material.cubes = l.cube_rect;
     }
     // CSS 在 sRGB 中做透明合成；线性渲染器需降低 alpha 才得到相同的细线亮度。
-    let line = Color::srgba(235.0 / 255.0, 232.0 / 255.0, 223.0 / 255.0, 0.028);
+    let line = palette::SEPARATOR;
     for (part, mut node, color, font, spacing, border) in &mut nodes {
         let mut rect = None;
         match *part {
             Part::Background => {}
             Part::Title => {
-                let s = l.title_size / 176.0;
+                let s = l.title_size / dims::TITLE_REFERENCE_SIZE;
                 rect = Some((
-                    l.hero.x - 80.0 * s,
-                    l.hero.y - 40.0 * s,
-                    897.0 * s,
-                    278.0 * s,
+                    l.hero.x - dims::TITLE_OVERHANG_X * s,
+                    l.hero.y - dims::TITLE_OVERHANG_Y * s,
+                    dims::TITLE_IMAGE_WIDTH * s,
+                    dims::TITLE_IMAGE_HEIGHT * s,
                 ));
             }
             Part::Row(i) => {
                 rect = Some((
                     l.hero.x,
-                    l.menu_y + 1.0 + i as f32 * l.row_height,
+                    l.menu_y + dimens::BORDER_WIDTH + i as f32 * l.row_height,
                     l.menu_width,
                     l.row_height,
                 ));
-                node.border.top = if i == 0 { px(1) } else { px(0) };
+                node.border.top = if i == 0 {
+                    px(dimens::BORDER_WIDTH)
+                } else {
+                    px(0)
+                };
                 if let Some(mut border) = border {
                     *border = BorderColor::all(line);
                 }
@@ -535,25 +644,43 @@ fn update_visual(
             }
             Part::Index(i) | Part::Label(i) | Part::Arrow(i) => {
                 let p = input.animation[i].value;
-                let narrow = size.x <= 640.0;
-                let left = (if narrow { 3.2 } else { 5.6 }) + 8.0 * p[1];
+                let narrow = size.x <= dims::NARROW_BREAKPOINT;
+                let left = (if narrow {
+                    dims::ROW_INSET_NARROW
+                } else {
+                    dims::ROW_INSET
+                }) + dims::ACTION_TRAVEL * p[1];
                 let (x, fs, letter, normal) = match *part {
-                    Part::Index(_) => (left, 11.52, 1.3824, [157.0, 182.0, 126.0]),
+                    Part::Index(_) => (
+                        left,
+                        dims::INDEX_SIZE,
+                        dims::INDEX_SPACING,
+                        colors::PRIMARY_DEEP,
+                    ),
                     Part::Label(_) => (
-                        left + 30.72,
+                        left + dims::LABEL_OFFSET,
                         l.label_size,
-                        l.label_size * 0.06,
-                        [235.0, 232.0, 223.0],
+                        l.label_size * dims::LABEL_TRACKING,
+                        colors::ON_SURFACE,
                     ),
                     _ => (
-                        l.menu_width - (if narrow { 3.2 } else { 5.6 }) - 12.0 - 16.0 + 5.0 * p[1],
-                        16.0,
+                        l.menu_width
+                            - (if narrow {
+                                dims::ROW_INSET_NARROW
+                            } else {
+                                dims::ROW_INSET
+                            })
+                            - dims::ARROW_INSET
+                            - dims::ARROW_SIZE
+                            + dims::ARROW_TRAVEL * p[1],
+                        dims::ARROW_SIZE,
                         0.0,
-                        [200.0, 219.0, 177.0],
+                        colors::PRIMARY,
                     ),
                 };
                 node.left = px(x);
-                node.top = px((l.row_height - 1.0 - fs * 4.0 / 3.0) * 0.5);
+                node.top =
+                    px((l.row_height - dimens::BORDER_WIDTH - fs * dimens::LINE_HEIGHT) * 0.5);
                 if let Some(mut font) = font {
                     font.font_size = FontSize::Px(fs);
                 }
@@ -561,34 +688,40 @@ fn update_visual(
                     *spacing = LetterSpacing::Px(letter);
                 }
                 if let Some(mut color) = color {
-                    color.0 = Color::srgb(
-                        (normal[0] + (18.0 - normal[0]) * p[2]) / 255.0,
-                        (normal[1] + (17.0 - normal[1]) * p[2]) / 255.0,
-                        (normal[2] + (13.0 - normal[2]) * p[2]) / 255.0,
-                    );
+                    // 与原稿一致，在 sRGB 分量间插值，不在线性空间混色。
+                    color.0 = normal
+                        .to_srgba()
+                        .mix(&colors::ON_PRIMARY.to_srgba(), p[2])
+                        .into();
                 }
             }
             Part::Hint => {
                 node.left = px(l.hero.x);
-                node.top = px(l.menu_y + 1.0 + l.row_height * 2.0 + 21.6);
+                node.top =
+                    px(l.menu_y + dimens::BORDER_WIDTH + l.row_height * 2.0 + dims::HINT_GAP);
             }
             Part::Build => {
-                node.bottom = px(if size.x <= 640.0 { 25.6 } else { 30.4 });
-                if size.x <= 640.0 {
-                    node.left = px(19.2);
+                node.bottom = px(if size.x <= dims::NARROW_BREAKPOINT {
+                    dims::BUILD_BOTTOM_NARROW
+                } else {
+                    dims::BUILD_BOTTOM
+                });
+                if size.x <= dims::NARROW_BREAKPOINT {
+                    node.left = px(dims::BUILD_LEFT_NARROW);
                     node.right = Val::Auto;
                 } else {
-                    node.right = px((size.x * 0.045).clamp(22.4, 54.4));
+                    node.right = px((size.x * dims::BUILD_RIGHT_SCALE)
+                        .clamp(dims::BUILD_RIGHT_MIN, dims::BUILD_RIGHT_MAX));
                     node.left = Val::Auto;
                 }
             }
             Part::Corner(upper) => {
                 if upper {
-                    node.top = px(18);
-                    node.left = px(18);
+                    node.top = px(dims::CORNER_INSET);
+                    node.left = px(dims::CORNER_INSET);
                 } else {
-                    node.bottom = px(18);
-                    node.right = px(18);
+                    node.bottom = px(dims::CORNER_INSET);
+                    node.right = px(dims::CORNER_INSET);
                 }
             }
         }
@@ -630,6 +763,20 @@ pub(crate) fn assets_ready(world: &mut World) -> bool {
 mod tests {
     use super::*;
     use bevy::ecs::system::RunSystemOnce;
+
+    /// 材质必须传原始 sRGB 而非线性值，且保留网格与阴影的合成强度。
+    #[test]
+    fn shader_palette_preserves_srgb_and_alpha() {
+        let palette = MenuPalette::default();
+        assert!((palette.background.x - 15.0 / 255.0).abs() < 1e-7);
+        assert!((palette.warm.w - 0.42).abs() < 1e-7);
+        assert!((palette.grid.w - 0.06).abs() < 1e-7);
+        assert!((palette.shadow.w - 0.1575).abs() < 1e-7);
+        assert!((palette.tops[0].x - 226.0 / 255.0).abs() < 1e-7);
+        assert!((palette.tops[0].w - 0.95).abs() < 1e-7);
+        assert!((palette.lefts[3].y - 42.0 / 255.0).abs() < 1e-7);
+        assert!((palette.rights[2].z - 55.0 / 255.0).abs() < 1e-7);
+    }
 
     /// 使用同一输入系统验证首次聚焦、循环、Tab、Gallery 和过渡输入锁。
     #[test]

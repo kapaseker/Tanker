@@ -26,6 +26,7 @@ mod offscreen;
 mod player_model;
 mod track;
 mod transition;
+mod ui_resources;
 
 /// 页面状态：菜单与对局经各自的淡出状态双向切换，揭幕阶段由 transition 管理。
 ///
@@ -85,7 +86,7 @@ fn run_game(options: Option<offscreen::Options>) -> Result<(), String> {
     } else {
         app.add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
-                title: "Tanker".into(),
+                title: ui_resources::strings::WINDOW_TITLE.into(),
                 ..default()
             }),
             ..default()

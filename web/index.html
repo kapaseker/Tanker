@@ -364,6 +364,358 @@
     color: var(--muted);
   }
 
+  /* ---------- 页面切换：主菜单 / 模型画廊 / 模型详情 ---------- */
+  /* 非当前页面整体隐藏；激活页面播放统一淡入，节奏对齐 menu.motion */
+  .screen:not(.is-active) { display: none; }
+
+  .screen.is-active {
+    animation: screen-in 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  /* 入场只动透明度：带 transform 的祖先会接管 fixed 子元素的定位参照，
+     导致固定标题栏在动画期间相对 .screen 定位、结束后跳回窗口，产生位移抖动 */
+  @keyframes screen-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  /* ---------- 返回栏：返回按钮 + 操作提示 ---------- */
+  /* 固定在窗口顶部，不随内容滚动；背景与分隔线遮住下方穿过的文字 */
+  .backbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 20px clamp(1.4rem, 5vw, 5rem);
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .back {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink);
+    background: var(--dark);
+    border: 1px solid var(--line);
+    cursor: pointer;
+    transition: color 220ms ease, background 220ms ease, border-color 220ms ease;
+  }
+
+  .back:hover,
+  .back:focus-visible {
+    color: var(--dark);
+    background: var(--mint);
+    border-color: var(--mint);
+    outline: none;
+  }
+
+  .back__arrow {
+    font-size: 0.95rem;
+    line-height: 1;
+  }
+
+  /* 悬停填充变亮后，kbd 描边与文字同步换深色，保持可读 */
+  .back:hover kbd,
+  .back:focus-visible kbd {
+    color: var(--dark);
+    border-color: rgba(18, 17, 13, 0.4);
+  }
+
+  /* ---------- 模型画廊 ---------- */
+  .gallery {
+    width: 100%;
+    max-width: 1280px;
+    margin: 0 auto;
+    /* 预留固定标题栏高度，避免内容被遮挡 */
+    padding-top: 88px;
+  }
+
+  .gallery__head {
+    margin-bottom: 48px;
+  }
+
+  .gallery__title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(2.25rem, 4.5vw, 3.25rem);
+    line-height: 1.05;
+    letter-spacing: 0.02em;
+    background: linear-gradient(178deg, #f6fbf0 8%, var(--mint) 62%, var(--mint-deep) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .gallery__lede {
+    margin: 16px 0 0;
+    max-width: 42rem;
+    font-size: 1.125rem;
+    line-height: 1.6;
+    color: #c6c0b4;
+    text-wrap: pretty;
+  }
+
+  .gallery__section {
+    margin-top: 56px;
+  }
+
+  .gallery__section-head {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    margin-bottom: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+  }
+
+  .gallery__index {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    color: var(--mint-deep);
+  }
+
+  .gallery__name {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  .gallery__count {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(224px, 1fr));
+    gap: 24px;
+  }
+
+  /* ---------- 模型卡片 ---------- */
+  .card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 20px 20px 18px;
+    text-align: left;
+    color: var(--ink);
+    background: var(--dark);
+    border: 1px solid var(--line);
+    cursor: pointer;
+    overflow: hidden;
+    transition: border-color 220ms ease;
+  }
+
+  /* 底部薄荷线：悬停/焦点时从左铺开，对齐菜单填充节奏 */
+  .card::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 2px;
+    background: var(--mint);
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform 300ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .card:hover,
+  .card:focus-visible {
+    border-color: var(--outline-accent);
+    outline: none;
+  }
+
+  .card:hover::after,
+  .card:focus-visible::after {
+    transform: scaleX(1);
+  }
+
+  .card__stage {
+    display: block;
+    position: relative;
+    height: 180px;
+    perspective: 600px;
+    background: radial-gradient(70% 55% at 50% 62%, rgba(200, 219, 177, 0.07), transparent 70%);
+  }
+
+  .card__info {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .card__index {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    color: var(--mint-deep);
+  }
+
+  .card__name {
+    font-family: var(--font-display);
+    font-size: 1.125rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    transition: color 220ms ease;
+  }
+
+  .card:hover .card__name,
+  .card:focus-visible .card__name {
+    color: var(--mint-bright);
+  }
+
+  .card__meta {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* ---------- 体素占位模型：CSS 3D 盒子组合 ---------- */
+  /* 模型原点在舞台中心，各盒子按 (x, y, z) 偏移组合出部件轮廓 */
+  .model {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 0;
+    height: 0;
+    transform-style: preserve-3d;
+    transform: scale(var(--model-scale, 1)) rotateX(-14deg) rotateY(0deg);
+  }
+
+  /* 画廊卡片内缓慢自转，各卡片用负延迟错开相位 */
+  .model--spin {
+    animation: model-spin 16s linear infinite;
+  }
+
+  @keyframes model-spin {
+    from { transform: scale(var(--model-scale, 1)) rotateX(-14deg) rotateY(0deg); }
+    to { transform: scale(var(--model-scale, 1)) rotateX(-14deg) rotateY(360deg); }
+  }
+
+  .model__box {
+    position: absolute;
+    transform-style: preserve-3d;
+  }
+
+  .model__face {
+    position: absolute;
+  }
+
+  /* ---------- 模型详情 ---------- */
+  .detail {
+    width: 100%;
+    max-width: 1280px;
+    margin: 0 auto;
+    /* 预留固定标题栏高度，避免内容被遮挡 */
+    padding-top: 88px;
+  }
+
+  /* 查看区：指针拖拽旋转（yaw/pitch），滚轮缩放 */
+  .viewer {
+    position: relative;
+    height: min(48vh, 420px);
+    perspective: 1000px;
+    cursor: grab;
+    touch-action: none;
+    border: 1px solid var(--line);
+    background-color: var(--dark);
+    background-image:
+      linear-gradient(rgba(200, 219, 177, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(200, 219, 177, 0.05) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+
+  .viewer.is-dragging {
+    cursor: grabbing;
+  }
+
+  /* 三维尺寸信息：名称 + 宽/高/深三组读数 */
+  .specs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 24px 56px;
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+  }
+
+  .specs__id {
+    flex: 1 1 240px;
+    min-width: 0;
+  }
+
+  .specs__name {
+    margin: 8px 0 0;
+    font-family: var(--font-display);
+    font-size: 1.75rem;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: 0.02em;
+  }
+
+  .spec {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .spec__label {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .spec__row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .spec__value {
+    font-family: var(--font-display);
+    font-size: 1.75rem;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--mint-bright);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .spec__unit {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
   /* ---------- 响应式 ---------- */
   @media (max-width: 900px) {
     .layout { gap: 0; }
@@ -381,10 +733,30 @@
     .menu__label { font-size: 1.1rem; }
     .hud--bottom { padding-bottom: 1.6rem; }
     .hud__build { margin-left: 0; }
+    .backbar { padding: 14px 1.2rem; }
+    .back { padding: 12px 14px; }
+    .gallery { padding-top: 74px; }
+    .detail { padding-top: 74px; }
+    .gallery__head { margin-bottom: 32px; }
+    .gallery__section { margin-top: 40px; }
+    .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; }
+    .card { padding: 16px 14px 14px; }
+    .card__stage { height: 140px; }
+    .viewer { height: min(42vh, 320px); }
+    .specs { gap: 20px 32px; margin-top: 24px; }
+    .specs__name { font-size: 1.4rem; }
+    .spec__value { font-size: 1.4rem; }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .drift { animation: none; }
+    .model--spin { animation: none; }
+    .screen.is-active { animation: none; }
+    .card,
+    .card::after,
+    .card .card__name,
+    .back,
+    .back kbd { transition: none; }
     .menu__item,
     .menu__item::after,
     .menu__item .menu__arrow { transition: none; }
@@ -407,7 +779,8 @@
   </header>
 
   <main class="stage">
-    <div class="layout">
+    <!-- 主菜单：标题、菜单与体素装饰 -->
+    <div class="layout screen is-active" id="screen-menu">
       <section class="hero">
 
       <h1 class="title">V-Tank</h1>
@@ -416,17 +789,17 @@
       <nav class="menu" aria-label="主菜单">
         <a class="menu__item" href="#start">
           <span class="menu__index">01</span>
-          <span class="menu__label">Start Game</span>
+          <span class="menu__label">开始游戏</span>
           <span class="menu__arrow" aria-hidden="true">→</span>
         </a>
         <a class="menu__item" href="#gallery">
           <span class="menu__index">02</span>
-          <span class="menu__label">Model Gallery</span>
+          <span class="menu__label">模型画廊</span>
           <span class="menu__arrow" aria-hidden="true">→</span>
         </a>
       </nav>
 
-      <p class="status" role="status" aria-live="polite">↑ ↓ 选择 · ENTER 确认</p>
+      <p class="status" role="status" aria-live="polite"><kbd>↑</kbd> <kbd>↓</kbd> 选择 · <kbd>ENTER</kbd> 确认</p>
       </section>
 
       <svg class="voxels" viewBox="90 95 470 320" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -482,12 +855,63 @@
         </g>
       </svg>
     </div>
+    </div>
+
+    <!-- 模型画廊：炮管 / 履带 / 车身 / 坦克 四个栏目，网格内模型缓慢自转 -->
+    <div class="screen" id="screen-gallery">
+      <div class="gallery">
+        <div class="backbar">
+          <button class="back" type="button" id="gallery-back" aria-label="返回主菜单">
+            <span class="back__arrow" aria-hidden="true">←</span> <kbd>ESC</kbd>
+          </button>
+        </div>
+
+        <header class="gallery__head">
+          <h2 class="gallery__title">模型画廊</h2>
+          <p class="gallery__lede">按部件分类浏览当前可用模型：炮管、履带、车身、坦克。每个模型缓慢自转便于查看，点击进入查看页后可用鼠标拖拽旋转、滚轮缩放。</p>
+        </header>
+
+        <div id="gallery-sections"></div>
+      </div>
+    </div>
+
+    <!-- 模型详情：鼠标拖拽旋转查看，下方展示三维尺寸 -->
+    <div class="screen" id="screen-detail">
+      <div class="detail">
+        <div class="backbar">
+          <button class="back" type="button" id="detail-back" aria-label="返回模型画廊">
+            <span class="back__arrow" aria-hidden="true">←</span> <kbd>ESC</kbd>
+          </button>
+        </div>
+
+        <div class="viewer" id="viewer" aria-label="模型查看区，按住鼠标拖拽可旋转模型"></div>
+
+        <div class="specs">
+          <div class="specs__id">
+            <p class="eyebrow" id="detail-cat">坦克</p>
+            <h2 class="specs__name" id="detail-name">—</h2>
+          </div>
+          <div class="spec">
+            <span class="spec__label">长度</span>
+            <span class="spec__row"><span class="spec__value" id="detail-len">0</span><span class="spec__unit">米</span></span>
+          </div>
+          <div class="spec">
+            <span class="spec__label">宽度</span>
+            <span class="spec__row"><span class="spec__value" id="detail-w">0</span><span class="spec__unit">米</span></span>
+          </div>
+          <div class="spec">
+            <span class="spec__label">高度</span>
+            <span class="spec__row"><span class="spec__value" id="detail-h">0</span><span class="spec__unit">米</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
   </main>
 
   <footer class="hud hud--bottom">
     <span class="hud__hint"></span>
     <span class="hud__hint"></span>
-    <span class="hud__build">Build 0.1.0</span>
+    <span class="hud__build">版本 0.1.0</span>
   </footer>
 
   <script>
@@ -496,6 +920,7 @@
 
       // 方向键在主菜单内循环移动焦点，符合手柄/键盘操作习惯
       document.addEventListener('keydown', (event) => {
+        if (!screens.menu.classList.contains('is-active')) return;
         if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
         event.preventDefault();
         const activeIndex = items.indexOf(document.activeElement);
@@ -505,6 +930,345 @@
         }
         const step = event.key === 'ArrowDown' ? 1 : -1;
         items[(activeIndex + step + items.length) % items.length].focus();
+      });
+
+      // ---------- 页面切换：主菜单 / 模型画廊 / 模型详情 ----------
+      const screens = {
+        menu: document.getElementById('screen-menu'),
+        gallery: document.getElementById('screen-gallery'),
+        detail: document.getElementById('screen-detail'),
+      };
+
+      // 切换当前页面；非激活页面 display:none，激活页面播放统一淡入
+      function showScreen(name) {
+        for (const [key, el] of Object.entries(screens)) {
+          el.classList.toggle('is-active', key === name);
+        }
+      }
+
+      // ---------- 体素占位模型：CSS 3D 盒子组合出部件轮廓 ----------
+      // 三面色阶：顶面亮、正面中、侧面暗，模拟体素三面明暗
+      const TONES = {
+        mint: ['#e2edcf', '#b7cb9f', '#91a97a'],
+        gray: ['#d8dbd8', '#b0b5b2', '#868c89'],
+        sand: ['#8b7660', '#6d5b49', '#524437'],
+        dark: ['#3a3830', '#2c2a24', '#211f1a'],
+      };
+
+      // 单个盒子面：w/h 为面尺寸（px），transform 负责摆到盒子对应方位
+      function face(w, h, transform, color) {
+        const el = document.createElement('div');
+        el.className = 'model__face';
+        el.style.cssText =
+          `width:${w}px;height:${h}px;left:${-w / 2}px;top:${-h / 2}px;` +
+          `transform:${transform};background:${color};`;
+        return el;
+      }
+
+      // 组合模型：parts 里每个盒子以模型中心为原点偏移 (x, y, z)
+      function buildModel(model) {
+        const el = document.createElement('div');
+        el.className = 'model';
+        el.setAttribute('aria-hidden', 'true');
+        for (const part of model.parts) {
+          const box = document.createElement('div');
+          box.className = 'model__box';
+          const x = part.x || 0;
+          const y = part.y || 0;
+          const z = part.z || 0;
+          box.style.transform = `translate3d(${x}px, ${y}px, ${z}px)`;
+          const [light, mid, dark] = TONES[part.tone || model.tone];
+          const hw = part.w / 2;
+          const hh = part.h / 2;
+          const hd = part.d / 2;
+          box.append(
+            face(part.w, part.h, `translateZ(${hd}px)`, mid),
+            face(part.w, part.h, `rotateY(180deg) translateZ(${hd}px)`, dark),
+            face(part.d, part.h, `rotateY(-90deg) translateZ(${hw}px)`, dark),
+            face(part.d, part.h, `rotateY(90deg) translateZ(${hw}px)`, dark),
+            face(part.w, part.d, `rotateX(90deg) translateZ(${hh}px)`, light),
+            face(part.w, part.d, `rotateX(-90deg) translateZ(${hh}px)`, dark),
+          );
+          el.append(box);
+        }
+        return el;
+      }
+
+      // ---------- 模型数据 ----------
+      // dims 为三维尺寸 [长, 宽, 高]（米）；parts 为占位模型盒子组合（px）
+      const CATEGORIES = [
+        {
+          name: '炮管', code: 'BR',
+          models: [
+            {
+              name: '长管加农', tone: 'gray', dims: [7, 1, 1],
+              parts: [
+                { w: 170, h: 16, d: 16 },
+                { w: 30, h: 28, d: 28, x: -86, tone: 'dark' },
+                { w: 12, h: 22, d: 22, x: 88, tone: 'dark' },
+              ],
+            },
+            {
+              name: '短管榴弹', tone: 'gray', dims: [4, 1.5, 1.5],
+              parts: [
+                { w: 96, h: 24, d: 24 },
+                { w: 18, h: 32, d: 32, x: 46, tone: 'dark' },
+                { w: 34, h: 36, d: 36, x: -52, tone: 'dark' },
+              ],
+            },
+            {
+              name: '双联机炮', tone: 'mint', dims: [4, 2, 1.5],
+              parts: [
+                { w: 116, h: 12, d: 12, z: 15 },
+                { w: 116, h: 12, d: 12, z: -15 },
+                { w: 30, h: 30, d: 52, x: -60, tone: 'dark' },
+              ],
+            },
+          ],
+        },
+        {
+          name: '履带', code: 'TR',
+          models: [
+            {
+              name: '标准履带', tone: 'sand', dims: [4.5, 3, 1.5],
+              parts: [
+                { w: 168, h: 30, d: 24, z: 36 },
+                { w: 168, h: 30, d: 24, z: -36 },
+                { w: 120, h: 10, d: 60, y: -20, tone: 'dark' },
+              ],
+            },
+            {
+              name: '宽履带', tone: 'sand', dims: [4.5, 3.5, 1.5],
+              parts: [
+                { w: 168, h: 26, d: 34, z: 46 },
+                { w: 168, h: 26, d: 34, z: -46 },
+                { w: 110, h: 10, d: 70, y: -18, tone: 'dark' },
+              ],
+            },
+            {
+              name: '轻型履带', tone: 'gray', dims: [3.5, 2.5, 1],
+              parts: [
+                { w: 128, h: 22, d: 18, z: 28 },
+                { w: 128, h: 22, d: 18, z: -28 },
+              ],
+            },
+          ],
+        },
+        {
+          name: '车身', code: 'CH',
+          models: [
+            {
+              name: '标准底盘', tone: 'gray', dims: [4, 2.5, 1.5],
+              parts: [
+                { w: 150, h: 38, d: 92 },
+                { w: 112, h: 12, d: 66, y: -25, tone: 'dark' },
+                { w: 16, h: 24, d: 88, x: 80, tone: 'dark' },
+              ],
+            },
+            {
+              name: '装甲底盘', tone: 'sand', dims: [4.5, 3, 2],
+              parts: [
+                { w: 150, h: 48, d: 98 },
+                { w: 116, h: 16, d: 72, y: -30, tone: 'dark' },
+                { w: 18, h: 30, d: 92, x: 80, tone: 'dark' },
+              ],
+            },
+          ],
+        },
+        {
+          name: '坦克', code: 'TK',
+          models: [
+            {
+              name: '侦察型', tone: 'mint', dims: [4.5, 2.5, 2],
+              parts: [
+                { w: 132, h: 32, d: 84 },
+                { w: 58, h: 24, d: 52, y: -28, tone: 'gray' },
+                { w: 84, h: 10, d: 10, x: 70, y: -28, tone: 'dark' },
+              ],
+            },
+            {
+              name: '主战型', tone: 'gray', dims: [7, 3.5, 2.5],
+              parts: [
+                { w: 156, h: 40, d: 100 },
+                { w: 76, h: 30, d: 66, y: -35, tone: 'mint' },
+                { w: 104, h: 13, d: 13, x: 92, y: -35, tone: 'dark' },
+                { w: 14, h: 18, d: 18, x: 142, y: -35, tone: 'dark' },
+              ],
+            },
+            {
+              name: '重装型', tone: 'sand', dims: [7.5, 4, 3],
+              parts: [
+                { w: 164, h: 48, d: 112 },
+                { w: 88, h: 36, d: 78, y: -42, tone: 'dark' },
+                { w: 108, h: 12, d: 12, x: 96, y: -46, z: 12, tone: 'dark' },
+                { w: 108, h: 12, d: 12, x: 96, y: -46, z: -12, tone: 'dark' },
+              ],
+            },
+          ],
+        },
+      ];
+
+      // ---------- 画廊渲染：栏目 + 网格卡片，卡片内模型慢速自转 ----------
+      const gallerySections = document.getElementById('gallery-sections');
+      const firstCards = [];
+
+      CATEGORIES.forEach((category, ci) => {
+        const section = document.createElement('section');
+        section.className = 'gallery__section';
+
+        const head = document.createElement('div');
+        head.className = 'gallery__section-head';
+        head.innerHTML =
+          `<span class="gallery__index">${String(ci + 1).padStart(2, '0')}</span>` +
+          `<h3 class="gallery__name">${category.name}</h3>` +
+          `<span class="gallery__count">${category.models.length} 个模型</span>`;
+        section.append(head);
+
+        const grid = document.createElement('div');
+        grid.className = 'grid';
+
+        category.models.forEach((model, mi) => {
+          const card = document.createElement('button');
+          card.type = 'button';
+          card.className = 'card';
+          card.innerHTML =
+            `<span class="card__stage"></span>` +
+            `<span class="card__info">` +
+            `<span class="card__index">${category.code}-${String(mi + 1).padStart(2, '0')}</span>` +
+            `<span class="card__name">${model.name}</span>` +
+            `<span class="card__meta">${model.dims.join(' × ')} 米</span>` +
+            `</span>`;
+
+          // 卡片内缩小展示并慢速自转；负延迟让各卡片错开相位
+          const spin = buildModel(model);
+          spin.classList.add('model--spin');
+          spin.style.setProperty('--model-scale', '0.62');
+          spin.style.animationDelay = `${-3 - mi * 2.6}s`;
+          card.querySelector('.card__stage').append(spin);
+
+          card.addEventListener('click', () => openDetail(model, category, card));
+          grid.append(card);
+        });
+
+        section.append(grid);
+        gallerySections.append(section);
+        firstCards.push(grid.querySelector('.card'));
+      });
+
+      // ---------- 模型详情页：拖拽旋转 + 滚轮缩放 ----------
+      const viewer = document.getElementById('viewer');
+      const detailCat = document.getElementById('detail-cat');
+      const detailName = document.getElementById('detail-name');
+      const detailDims = [
+        document.getElementById('detail-len'),
+        document.getElementById('detail-w'),
+        document.getElementById('detail-h'),
+      ];
+
+      let yaw = -28;
+      let pitch = -14;
+      let zoom = 1.5;
+      let detailModel = null;
+      let lastCard = null;
+
+      // 详情页模型由 JS 直接写 transform，缩放与旋转合并应用
+      function renderDetailModel() {
+        if (!detailModel) return;
+        detailModel.style.transform =
+          `scale(${zoom}) rotateX(${pitch}deg) rotateY(${yaw}deg)`;
+      }
+
+      function openDetail(model, category, card) {
+        lastCard = card;
+        detailCat.textContent = category.name;
+        detailName.textContent = model.name;
+        model.dims.forEach((value, i) => { detailDims[i].textContent = value; });
+
+        // 重置为三分之四初始视角，替换查看区内的模型
+        yaw = -28;
+        pitch = -14;
+        zoom = 1.5;
+        detailModel = buildModel(model);
+        viewer.replaceChildren(detailModel);
+        renderDetailModel();
+
+        showScreen('detail');
+        document.getElementById('detail-back').focus();
+      }
+
+      // 指针拖拽：水平改 yaw，垂直改 pitch（限位防止翻面丢失立体感）
+      let dragging = false;
+      let lastX = 0;
+      let lastY = 0;
+
+      viewer.addEventListener('pointerdown', (event) => {
+        dragging = true;
+        lastX = event.clientX;
+        lastY = event.clientY;
+        viewer.classList.add('is-dragging');
+        viewer.setPointerCapture(event.pointerId);
+      });
+
+      viewer.addEventListener('pointermove', (event) => {
+        if (!dragging) return;
+        yaw += (event.clientX - lastX) * 0.45;
+        pitch = Math.max(-80, Math.min(80, pitch - (event.clientY - lastY) * 0.45));
+        lastX = event.clientX;
+        lastY = event.clientY;
+        renderDetailModel();
+      });
+
+      function endDrag(event) {
+        dragging = false;
+        viewer.classList.remove('is-dragging');
+        if (event.pointerId !== undefined && viewer.hasPointerCapture(event.pointerId)) {
+          viewer.releasePointerCapture(event.pointerId);
+        }
+      }
+
+      viewer.addEventListener('pointerup', endDrag);
+      viewer.addEventListener('pointercancel', endDrag);
+
+      // 滚轮缩放，限制在可读范围内
+      viewer.addEventListener('wheel', (event) => {
+        event.preventDefault();
+        zoom = Math.max(0.8, Math.min(2.4, zoom * (event.deltaY > 0 ? 0.92 : 1.08)));
+        renderDetailModel();
+      }, { passive: false });
+
+      // ---------- 导航：点击与 ESC 共用同一返回路径 ----------
+      const galleryLink = document.querySelector('.menu__item[href="#gallery"]');
+      const galleryBack = document.getElementById('gallery-back');
+      const detailBack = document.getElementById('detail-back');
+
+      function openGallery() {
+        showScreen('gallery');
+        // 焦点落到首个模型卡片，方便进入后直接方向/回车浏览
+        firstCards[0]?.focus();
+      }
+
+      function backToGallery() {
+        showScreen('gallery');
+        (lastCard || firstCards[0])?.focus();
+      }
+
+      function backToMenu() {
+        showScreen('menu');
+        galleryLink.focus();
+      }
+
+      galleryLink.addEventListener('click', (event) => {
+        event.preventDefault();
+        openGallery();
+      });
+      galleryBack.addEventListener('click', backToMenu);
+      detailBack.addEventListener('click', backToGallery);
+
+      // ESC 逐级返回：详情 → 画廊 → 主菜单
+      document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        if (screens.detail.classList.contains('is-active')) backToGallery();
+        else if (screens.gallery.classList.contains('is-active')) backToMenu();
       });
     })();
   </script>
