@@ -49,8 +49,8 @@ pub(crate) enum GameState {
 const VOXEL_SIZE: f32 = 0.1;
 
 /// 当前加载的 MagicaVoxel 场景资源路径（相对 `assets/`）。
-/// 车身、炮管、履带三包共用画布；炮管与履带挂载到玩家根实体。
-const VOX_SCENE_PATH: &str = "tank/player/default/body.vox";
+/// 三部件按 `tank/<部件>/<车型>/<变体>/` 分包，共用画布；炮管与履带挂载到玩家根实体。
+const VOX_SCENE_PATH: &str = "tank/bodies/player/anvil/body.vox";
 
 /// 全局灯光的亮度（cd/m²）。场景不使用 `DirectionalLight`，全部光照由全局环境光
 /// 与相机上的 `EnvironmentMapLight` 环境贴图提供，因此这里给得比默认值（80）高。

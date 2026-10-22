@@ -65,7 +65,7 @@ pub(super) fn spawn_enemy_barrels(
         let barrel = commands
             .spawn((
                 Name::new("enemy_barrel"),
-                WorldAssetRoot(assets.load("tank/barrels/enemy/default.vox")),
+                WorldAssetRoot(assets.load("tank/barrels/enemy/spit/barrel.vox")),
             ))
             .id();
         commands.entity(enemy).add_child(barrel);
@@ -134,7 +134,7 @@ fn spawn_enemies(
             return;
         }
     };
-    let scene = assets.load("tank/enemy/default/body.vox");
+    let scene = assets.load("tank/bodies/enemy/carapace/body.vox");
     for transform in transforms {
         commands.spawn((
             EnemyTank,
@@ -170,7 +170,7 @@ fn report_enemy(
             *reported = true;
         }
         _ if assets.is_loaded_with_dependencies(&scene.0) => {
-            info!("vox 场景加载完成：assets/tank/enemy/default/body.vox");
+            info!("vox 场景加载完成：assets/tank/bodies/enemy/carapace/body.vox");
             *reported = true;
         }
         _ => {}

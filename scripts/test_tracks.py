@@ -40,9 +40,9 @@ class TrackLoopTests(unittest.TestCase):
                            + [(25,1)] + [(24,z) for z in range(2,12)])
                 self.assertEqual(len(rim), len(set(rim)))
                 self.assertEqual(len(rim) % 3, 0, '闭环接缝的齿距也必须连续')
-                models = read_models(ASSETS / 'tracks' / chassis / 'lugged' / 'default.vox')
+                models = read_models(ASSETS / 'tracks' / chassis / ('cleat' if chassis == 'player' else 'crawl') / 'track.vox')
                 self.assertEqual(len(models), 20 if chassis == 'player' else 18)
-                body, = read_models(ASSETS / chassis / 'default' / 'body.vox')
+                body, = read_models(ASSETS / 'bodies' / chassis / ('anvil' if chassis == 'player' else 'carapace') / 'body.vox')
                 sides = ((0,0,1),(1,35,34)) if chassis == 'player' else ((0,0,1),(1,33,32))
                 for side, outer_y, face_y in sides:
                     phases = models[side*3:side*3+3]

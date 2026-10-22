@@ -18,7 +18,7 @@
 |---|---|---|---|---|---|---|
 | 玩家坦克（碰撞框） | 车体及履带相位画布135×36×26 | 7.5 | 2.6 | 3.6 | `COLLISION_MIN/MAX`（`src/player_model.rs`）→ `TANK_SIZE` / `STEP_CLIMB_RADIUS`（`src/driving.rs`） | 整车圆角箱形碰撞体（圆角 0.2 m，能翻 1 档 0.1 m 台阶，总尺寸不变）；`body.vox`（含炮塔）+ `barrel.vox` + 玩家履带包；含炮管视觉全长 10.5 m，炮管不碰撞，见 `docs/player-model.md` |
 | 敌人坦克（碰撞框） | 车体及履带相位画布114×34×26 | 6.6 | 2.6 | 3.4 | `COLLISION_MIN/MAX`（`src/enemy_model.rs`）→ `ENEMY_SIZE`（高度复用 `TANK_SIZE.y`） | 非炮管圆角整车框（圆角0.2 m）；车身、炮管、履带轮组三包，含炮管视觉全长9 m，见 `docs/enemy-model.md` |
-| 子弹 | 4×4×4 | 0.4 | 0.4 | 0.4 | `BULLET_SIZE`（`src/firing.rs`） | 立方体；子弹性 `assets/bullet.vox` |
+| 子弹 | 4×4×4 | 0.4 | 0.4 | 0.4 | `BULLET_SIZE`（`src/firing.rs`） | 立方体；子弹性 `assets/tank/barrels/player/lance/bullet.vox` |
 
 坦克与敌人的视觉包围盒有集成测试断言，与上表一致（`src/firing.rs` 中 `real_vox_assets_fire_and_clean_up_scene_instances`）。
 

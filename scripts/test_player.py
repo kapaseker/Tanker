@@ -5,8 +5,8 @@ from test_tracks import read_models, ASSETS
 
 class PlayerTests(unittest.TestCase):
     def test_independent_wheels_have_centered_sizes_and_rotation_clearance(self):
-        data = (ASSETS / 'tracks/player/lugged/default.vox').read_bytes()
-        models = read_models(ASSETS / 'tracks/player/lugged/default.vox')
+        data = (ASSETS / 'tracks/player/cleat/track.vox').read_bytes()
+        models = read_models(ASSETS / 'tracks/player/cleat/track.vox')
         self.assertEqual(len(models), 20, '六个履带相位与十四个独立轮节点')
         for side in ('l', 'r'):
             for index in range(7):
@@ -28,7 +28,7 @@ class PlayerTests(unittest.TestCase):
 
     def test_shared_canvas_and_palette(self):
         palettes = []
-        for path in ('player/default/body.vox', 'barrels/player/default.vox', 'tracks/player/lugged/default.vox'):
+        for path in ('bodies/player/anvil/body.vox', 'barrels/player/lance/barrel.vox', 'tracks/player/cleat/track.vox'):
             data = (ASSETS / path).read_bytes()
             offset = 20
             sizes = []
@@ -51,8 +51,8 @@ class PlayerTests(unittest.TestCase):
         self.assertEqual(palettes[0], palettes[2])
 
     def test_refined_dimensions(self):
-        body, = read_models(ASSETS / 'player/default/body.vox')
-        barrel, = read_models(ASSETS / 'barrels/player/default.vox')
+        body, = read_models(ASSETS / 'bodies/player/anvil/body.vox')
+        barrel, = read_models(ASSETS / 'barrels/player/lance/barrel.vox')
         # 三个炮塔层面的最大宽度分别为 2.6、2.4、2.0 米。
         for z, expected in [(18,26),(21,24),(24,20)]:
             ys = [y for (x,y,h) in body if h == z and 49 <= x < 90]
@@ -70,9 +70,9 @@ class PlayerTests(unittest.TestCase):
         self.assertFalse(any(y == 1 and z < 14 for x,y,z in body))
 
     def test_three_packages_and_dimensions(self):
-        body, = read_models(ASSETS / 'player/default/body.vox')
-        barrel, = read_models(ASSETS / 'barrels/player/default.vox')
-        tracks = read_models(ASSETS / 'tracks/player/lugged/default.vox')
+        body, = read_models(ASSETS / 'bodies/player/anvil/body.vox')
+        barrel, = read_models(ASSETS / 'barrels/player/lance/barrel.vox')
+        tracks = read_models(ASSETS / 'tracks/player/cleat/track.vox')
         self.assertEqual(len(tracks), 20)
         self.assertFalse(body.keys() & barrel.keys())
         for cells in tracks[:6]:

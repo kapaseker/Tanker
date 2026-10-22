@@ -13,9 +13,9 @@
 
 | 资源路径（相对 assets） | 节点 | 内容 |
 |---|---|---|
-| tank/enemy/default/body.vox | body | 车身、炮塔、炮盾、顶盖、侧裙与支架 |
-| tank/barrels/enemy/default.vox | barrel | 炮管、抽烟器与炮口 |
-| tank/tracks/enemy/lugged/default.vox | track_l_0..2 / track_r_0..2、wheel_l_0..5 / wheel_r_0..5 | 六相位履带与十二个独立轮 |
+| tank/bodies/enemy/carapace/body.vox | body | 车身、炮塔、炮盾、顶盖、侧裙与支架 |
+| tank/barrels/enemy/spit/barrel.vox | barrel | 炮管、抽烟器与炮口 |
+| tank/tracks/enemy/crawl/track.vox | track_l_0..2 / track_r_0..2、wheel_l_0..5 / wheel_r_0..5 | 六相位履带与十二个独立轮 |
 
 三包保留原敌人五色调色板：RGB(100,42,38)、(121,55,46)、(75,31,29)、(36,39,37)、(66,60,53)。车身、炮管与履带相位共用画布；独立轮使用局部居中画布，按契约轴心安装。每辆敌人共20个场景实例，根实体销毁时全部注销。
 

@@ -8,9 +8,9 @@ from generate_ground import chunk, dictionary
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / 'assets' / 'tank'
-BODY_OUTPUT = ASSETS / 'enemy/default/body.vox'
-BARREL_OUTPUT = ASSETS / 'barrels/enemy/default.vox'
-TRACKS_OUTPUT = ASSETS / 'tracks/enemy/lugged/default.vox'
+BODY_OUTPUT = ASSETS / 'bodies/enemy/carapace/body.vox'
+BARREL_OUTPUT = ASSETS / 'barrels/enemy/spit/barrel.vox'
+TRACKS_OUTPUT = ASSETS / 'tracks/enemy/crawl/track.vox'
 OUTPUTS = (BODY_OUTPUT, BARREL_OUTPUT, TRACKS_OUTPUT)
 CONTRACT = (ROOT / 'src/enemy_model.rs').read_text()
 

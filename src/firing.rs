@@ -27,7 +27,7 @@ const MUZZLE_POSITION: Vec3 = Vec3::new(
     0.0,
 );
 
-/// 玩家独立炮管的场景根；资源位于 tank/barrels/player/，随车身销毁，不拥有碰撞体。
+/// 玩家独立炮管的场景根；资源位于 tank/barrels/player/<变体>/，随车身销毁，不拥有碰撞体。
 #[derive(Component)]
 struct PlayerBarrel;
 
@@ -41,7 +41,7 @@ fn spawn_barrels(
         let barrel = commands
             .spawn((
                 PlayerBarrel,
-                WorldAssetRoot(assets.load("tank/barrels/player/default.vox")),
+                WorldAssetRoot(assets.load("tank/barrels/player/lance/barrel.vox")),
             ))
             .id();
         commands.entity(tank).add_child(barrel);
@@ -101,7 +101,7 @@ impl Plugin for FiringPlugin {
 /// 启动时预加载子弹场景；加载完成前由发射系统忽略开火输入。
 fn load_bullet(mut commands: Commands, assets: Res<AssetServer>) {
     commands.insert_resource(Gun {
-        bullet_scene: assets.load("bullet.vox"),
+        bullet_scene: assets.load("tank/barrels/player/lance/bullet.vox"),
         cadence: default(),
     });
 }
@@ -117,7 +117,7 @@ fn report_bullet(gun: Res<Gun>, assets: Res<AssetServer>, mut reported: Local<bo
             *reported = true;
         }
         _ if assets.is_loaded_with_dependencies(&gun.bullet_scene) => {
-            info!("子弹资源加载完成：assets/bullet.vox");
+            info!("子弹资源加载完成：assets/tank/barrels/player/lance/bullet.vox");
             *reported = true;
         }
         _ => {}
@@ -623,7 +623,7 @@ mod tests {
         let tank_asset = app
             .world()
             .resource::<AssetServer>()
-            .load("tank/player/default/body.vox");
+            .load("tank/bodies/player/anvil/body.vox");
         let tank = app
             .world_mut()
             .spawn((
@@ -635,7 +635,7 @@ mod tests {
         let enemy_asset: Handle<WorldAsset> = app
             .world()
             .resource::<AssetServer>()
-            .load("tank/enemy/default/body.vox");
+            .load("tank/bodies/enemy/carapace/body.vox");
         let enemy = app
             .world_mut()
             .spawn((

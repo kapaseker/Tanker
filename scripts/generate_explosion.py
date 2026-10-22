@@ -8,7 +8,7 @@ from pathlib import Path
 import struct
 from generate_ground import chunk, dictionary
 
-OUTPUT = Path(__file__).resolve().parents[1] / 'assets' / 'tank' / 'enemy' / 'default' / 'default_explosion.vox'
+OUTPUT = Path(__file__).resolve().parents[1] / 'assets' / 'effects' / 'explosion.vox'
 
 # 帧数与单帧时长（1/12 秒）须与 src/explosion.rs 的 EXPLOSION_FRAME_RATE 对齐；
 # 实际存活时长以加载后 FlipbookFrame 的数量推导，避免两处漂移。

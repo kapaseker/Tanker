@@ -269,14 +269,14 @@ fn main() {
     let root = PathBuf::from(env::args().nth(1).unwrap_or_else(|| ".".into()));
     for (path, models) in [
         (
-            "assets/tank/player/default/body.vox",
+            "assets/tank/bodies/player/anvil/body.vox",
             vec![("body".into(), body())],
         ),
         (
-            "assets/tank/barrels/player/default.vox",
+            "assets/tank/barrels/player/lance/barrel.vox",
             vec![("barrel".into(), barrel())],
         ),
-        ("assets/tank/tracks/player/lugged/default.vox", tracks()),
+        ("assets/tank/tracks/player/cleat/track.vox", tracks()),
     ] {
         let path = root.join(path);
         fs::create_dir_all(path.parent().unwrap()).expect("创建模型目录失败");
@@ -393,14 +393,14 @@ mod tests {
     fn generated_packages_match_delivered_assets() {
         for (path, models) in [
             (
-                "assets/tank/player/default/body.vox",
+                "assets/tank/bodies/player/anvil/body.vox",
                 vec![("body".into(), body())],
             ),
             (
-                "assets/tank/barrels/player/default.vox",
+                "assets/tank/barrels/player/lance/barrel.vox",
                 vec![("barrel".into(), barrel())],
             ),
-            ("assets/tank/tracks/player/lugged/default.vox", tracks()),
+            ("assets/tank/tracks/player/cleat/track.vox", tracks()),
         ] {
             assert_eq!(package(&models), fs::read(path).unwrap(), "{path}");
         }

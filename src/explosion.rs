@@ -1,5 +1,5 @@
 //! 敌人击毁处的体素爆炸表现：消费 [`EnemyDestroyed`] 消息，在被毁车体中心
-//! 播放 `assets/tank/enemy/default/default_explosion.vox` 的 12 帧逐帧动画，播完删除整棵子树。
+//! 播放 `assets/effects/explosion.vox` 的 12 帧逐帧动画，播完删除整棵子树。
 //!
 //! 物理与逻辑清理（刚体、碰撞体、敌人实体）在射击系统命中瞬间已完成，
 //! 本模块生成的实体不带任何物理组件，纯表现。
@@ -11,7 +11,7 @@ use flipbook::FlipbookSpeed;
 use std::time::Duration;
 
 /// 爆炸场景资源路径（相对 assets/）。
-const EXPLOSION_PATH: &str = "tank/enemy/default/default_explosion.vox";
+const EXPLOSION_PATH: &str = "effects/explosion.vox";
 /// 单帧显示时长，单位：秒；12 帧 × 1/12 ≈ 1 秒，与 scripts/generate_explosion.py 对齐。
 const EXPLOSION_FRAME_RATE: f32 = 1.0 / 12.0;
 /// 原始动画直径4米，整体放大至8米以覆盖现有6.6米敌方车体；不改变播放时长。

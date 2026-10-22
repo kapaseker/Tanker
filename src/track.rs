@@ -1,4 +1,4 @@
-//! 履带多帧滚动动画：履带是独立 vox 资产（`assets/tank/tracks/<底盘ID>/<样式>/`），
+//! 履带多帧滚动动画：履带是独立 vox 资产（`assets/tank/tracks/<底盘ID>/<变体>/track.vox`），
 //! 每侧 3 个相位变体节点（`track_l_0..2` / `track_r_0..2`，齿图案相位错位 1 格）。
 //! 随坦克出生以子实体形式 spawn 履带包并直接持有变体句柄，运行时按左右履带
 //! 线速度积分里程、切换变体可见性产生滚动感；原地转向时左右差速反向滚动。
@@ -28,9 +28,9 @@ pub(crate) struct TrackSpec {
     clearance: (f32, f32),
 }
 
-/// 玩家默认底盘适配的 lugged 履带。
+/// 玩家默认底盘适配的 cleat 履带。
 pub(crate) const PLAYER_TRACKS: TrackSpec = TrackSpec {
-    path: "tank/tracks/player/lugged/default.vox",
+    path: "tank/tracks/player/cleat/track.vox",
     size: TANK_SIZE,
     wheels: [
         &crate::player_model::WHEELS[0],
@@ -39,9 +39,9 @@ pub(crate) const PLAYER_TRACKS: TrackSpec = TrackSpec {
     canvas: crate::player_model::CANVAS,
     clearance: (1.0, 11.0),
 };
-/// 默认敌人底盘适配的 lugged 履带，左右各四个负重轮和两个端轮。
+/// 默认敌人底盘适配的 crawl 履带，左右各四个负重轮和两个端轮。
 pub(crate) const ENEMY_TRACKS: TrackSpec = TrackSpec {
-    path: "tank/tracks/enemy/lugged/default.vox",
+    path: "tank/tracks/enemy/crawl/track.vox",
     size: crate::enemy::ENEMY_SIZE,
     wheels: [
         &crate::enemy_model::WHEELS[0],
