@@ -12,6 +12,7 @@ use crate::{
 use bevy::{
     camera::RenderTarget,
     core_pipeline::tonemapping::{DebandDither, Tonemapping},
+    ecs::relationship::RelatedSpawnerCommands,
     prelude::*,
     render::render_resource::{AsBindGroup, ShaderType},
     shader::ShaderRef,
@@ -472,19 +473,23 @@ fn spawn_menu(
                     ..default()
                 },
             ));
-            // 提示行复刻网页的 inline 键帽：子项按基线对齐，键帽尺寸固定。
+            // 提示行复刻网页的 inline 键帽，顺序为 ↑ ↓ 选择 · ENTER 确认。
+            // 说明：设计稿要求键帽与说明文字按基线对齐，但 Bevy 0.20 的 UI 布局
+            // 不向 Taffy 提供文本基线，AlignItems::Baseline 会退化为底边对齐，
+            // 导致键帽字符明显偏高；此处用 Center 近似（偏差小于半像素）。
             root.spawn((
                 Part::Hint,
                 Node {
                     position_type: PositionType::Absolute,
                     display: Display::Flex,
-                    align_items: AlignItems::Baseline,
+                    align_items: AlignItems::Center,
                     column_gap: px(dims::HINT_ITEM_GAP),
                     ..default()
                 },
             ))
             .with_children(|hint| {
-                for (index, key) in strings::KEYCAPS.into_iter().enumerate() {
+                // 生成一个键帽：固定字号、内边距与圆角的行内小方块。
+                let keycap = |hint: &mut RelatedSpawnerCommands<ChildOf>, key: &str| {
                     hint.spawn((
                         Text::new(key),
                         TextFont {
@@ -507,32 +512,26 @@ fn spawn_menu(
                         BorderColor::all(palette::SEPARATOR),
                         BackgroundColor(palette::KBD_BACKGROUND),
                     ));
-                    // 方向键后接“选择 ·”，与网页的提示顺序一致。
-                    if index == 1 {
-                        hint.spawn((
-                            Text::new(labels::HINT_SELECT),
-                            TextFont {
-                                font: font.0.clone().into(),
-                                font_size: FontSize::Px(dims::HINT_SIZE),
-                                ..default()
-                            },
-                            LetterSpacing::Px(dims::HINT_SPACING),
-                            LineHeight::RelativeToFont(dimens::LINE_HEIGHT),
-                            TextColor(colors::ON_SURFACE_MUTED),
-                        ));
-                    }
-                }
-                hint.spawn((
-                    Text::new(labels::HINT_CONFIRM),
-                    TextFont {
-                        font: font.0.clone().into(),
-                        font_size: FontSize::Px(dims::HINT_SIZE),
-                        ..default()
-                    },
-                    LetterSpacing::Px(dims::HINT_SPACING),
-                    LineHeight::RelativeToFont(dimens::LINE_HEIGHT),
-                    TextColor(colors::ON_SURFACE_MUTED),
-                ));
+                };
+                // 生成一段说明文字。
+                let caption = |hint: &mut RelatedSpawnerCommands<ChildOf>, label: &str| {
+                    hint.spawn((
+                        Text::new(label),
+                        TextFont {
+                            font: font.0.clone().into(),
+                            font_size: FontSize::Px(dims::HINT_SIZE),
+                            ..default()
+                        },
+                        LetterSpacing::Px(dims::HINT_SPACING),
+                        LineHeight::RelativeToFont(dimens::LINE_HEIGHT),
+                        TextColor(colors::ON_SURFACE_MUTED),
+                    ));
+                };
+                keycap(hint, strings::KEY_UP);
+                keycap(hint, strings::KEY_DOWN);
+                caption(hint, labels::HINT_SELECT);
+                keycap(hint, strings::KEY_ENTER);
+                caption(hint, labels::HINT_CONFIRM);
             });
             for upper in [true, false] {
                 root.spawn((

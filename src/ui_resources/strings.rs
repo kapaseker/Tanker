@@ -3,5 +3,11 @@
 /// 操作方向符号。
 pub(crate) const ARROW: &str = "→";
 
-/// 键盘提示中的按键，顺序与交互一致。
-pub(crate) const KEYCAPS: [&str; 3] = ["↑", "↓", "ENTER"];
+/// 键帽提示：光标上移。
+pub(crate) const KEY_UP: &str = "↑";
+
+/// 键帽提示：光标下移。
+pub(crate) const KEY_DOWN: &str = "↓";
+
+/// 键帽提示：确认。英文白名单内的按键标识，不随语言翻译。
+pub(crate) const KEY_ENTER: &str = "ENTER";
