@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>模型详情 · V-Tank</title>
+<meta name="description" content="V-Tank 模型详情：拖拽旋转查看模型并展示三维尺寸。">
+<meta name="theme-color" content="#0f0e0c">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230f0e0c'/%3E%3Cpath d='M16 5l11 6-11 6-11-6z' fill='%23e2edcf'/%3E%3Cpath d='M5 11v9l11 6v-9z' fill='%23b7cb9f'/%3E%3Cpath d='M27 11v9l-11 6v-9z' fill='%2391a97a'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+<script src="scale.js"></script>
+</head>
+<body>
+  <div class="bg" aria-hidden="true">
+    <div class="bg__glow"></div>
+    <div class="bg__floor"></div>
+    <div class="bg__scan"></div>
+    <div class="bg__vignette"></div>
+  </div>
+
+  <div class="frame" aria-hidden="true"></div>
+
+  <header class="hud hud--top"></header>
+
+  <main class="stage">
+    <!-- 模型详情：鼠标拖拽旋转查看，下方展示三维尺寸 -->
+    <div class="screen is-active" id="screen-detail">
+      <div class="detail">
+        <div class="backbar">
+          <!-- 返回地址由脚本补上 #编号，保证回画廊后聚焦原卡片 -->
+          <a class="back" href="gallery.html" id="detail-back" aria-label="返回模型画廊">
+            <span class="back__arrow" aria-hidden="true">←</span> <kbd>ESC</kbd>
+          </a>
+          <h1 class="backbar__title" id="detail-name">—</h1>
+        </div>
+
+        <div class="viewer" id="viewer" aria-label="模型查看区，按住鼠标拖拽可旋转模型"></div>
+
+        <div class="specs">
+          <div class="specs__id">
+            <p class="eyebrow" id="detail-cat">坦克</p>
+          </div>
+          <div class="spec">
+            <span class="spec__label">长度</span>
+            <span class="spec__row"><span class="spec__value" id="detail-len">0</span><span class="spec__unit">米</span></span>
+          </div>
+          <div class="spec">
+            <span class="spec__label">宽度</span>
+            <span class="spec__row"><span class="spec__value" id="detail-w">0</span><span class="spec__unit">米</span></span>
+          </div>
+          <div class="spec">
+            <span class="spec__label">高度</span>
+            <span class="spec__row"><span class="spec__value" id="detail-h">0</span><span class="spec__unit">米</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="hud hud--bottom">
+    <span class="hud__hint"></span>
+    <span class="hud__hint"></span>
+    <span class="hud__build">版本 0.1.0</span>
+  </footer>
+
+  <script src="models.js"></script>
+  <script>
+    (() => {
+      // ---------- 通过 URL 参数定位模型：?c=分类下标&m=模型下标 ----------
+      const params = new URLSearchParams(location.search);
+      // 缺失的参数 get 返回 null，Number(null) 是 0，必须先判断存在性
+      const ci = params.has('c') && params.has('m') ? Number(params.get('c')) : NaN;
+      const mi = Number(params.get('m'));
+      const category = CATEGORIES[Number.isInteger(ci) ? ci : -1];
+      const model = category?.models[Number.isInteger(mi) ? mi : -1];
+      // 参数缺失或非法（含直接打开裸链接）时回画廊
+      if (!model) {
+        location.replace('gallery.html');
+        return;
+      }
+
+      const back = document.getElementById('detail-back');
+      // 带锚点返回画廊，画廊据此聚焦原卡片；同时更新标签页标题
+      back.href = `gallery.html#${modelCardId(category, mi)}`;
+      document.title = `${model.name} · V-Tank`;
+
+      document.getElementById('detail-cat').textContent = category.name;
+      document.getElementById('detail-name').textContent = model.name;
+      model.dims.forEach((value, i) => {
+        document.getElementById(['detail-len', 'detail-w', 'detail-h'][i]).textContent = value;
+      });
+
+      // ---------- 查看区：拖拽旋转 + 滚轮缩放 ----------
+      const viewer = document.getElementById('viewer');
+      // 初始为三分之四视角
+      let yaw = -28;
+      let pitch = -14;
+      let zoom = 1.5;
+
+      // 详情页模型由 JS 直接写 transform，缩放与旋转合并应用
+      const detailModel = buildModel(model);
+      viewer.append(detailModel);
+
+      function renderDetailModel() {
+        detailModel.style.transform =
+          `scale(${zoom}) rotateX(${pitch}deg) rotateY(${yaw}deg)`;
+      }
+      renderDetailModel();
+
+      // 指针拖拽：水平改 yaw，垂直改 pitch（限位防止翻面丢失立体感）
+      let dragging = false;
+      let lastX = 0;
+      let lastY = 0;
+
+      viewer.addEventListener('pointerdown', (event) => {
+        dragging = true;
+        lastX = event.clientX;
+        lastY = event.clientY;
+        viewer.classList.add('is-dragging');
+        viewer.setPointerCapture(event.pointerId);
+      });
+
+      viewer.addEventListener('pointermove', (event) => {
+        if (!dragging) return;
+        yaw += (event.clientX - lastX) * 0.45;
+        pitch = Math.max(-80, Math.min(80, pitch - (event.clientY - lastY) * 0.45));
+        lastX = event.clientX;
+        lastY = event.clientY;
+        renderDetailModel();
+      });
+
+      function endDrag(event) {
+        dragging = false;
+        viewer.classList.remove('is-dragging');
+        if (event.pointerId !== undefined && viewer.hasPointerCapture(event.pointerId)) {
+          viewer.releasePointerCapture(event.pointerId);
+        }
+      }
+
+      viewer.addEventListener('pointerup', endDrag);
+      viewer.addEventListener('pointercancel', endDrag);
+
+      // 滚轮缩放，限制在可读范围内
+      viewer.addEventListener('wheel', (event) => {
+        event.preventDefault();
+        zoom = Math.max(0.8, Math.min(2.4, zoom * (event.deltaY > 0 ? 0.92 : 1.08)));
+        renderDetailModel();
+      }, { passive: false });
+
+      // 进入详情默认聚焦返回键，ESC 与点击走同一返回路径
+      back.focus();
+      document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        location.href = back.href;
+      });
+    })();
+  </script>
+
+
+</body></html>

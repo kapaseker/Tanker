@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>模型画廊 · V-Tank</title>
+<meta name="description" content="V-Tank 模型画廊：按炮管、履带、车身、坦克分类浏览模型。">
+<meta name="theme-color" content="#0f0e0c">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230f0e0c'/%3E%3Cpath d='M16 5l11 6-11 6-11-6z' fill='%23e2edcf'/%3E%3Cpath d='M5 11v9l11 6v-9z' fill='%23b7cb9f'/%3E%3Cpath d='M27 11v9l-11 6v-9z' fill='%2391a97a'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+<script src="scale.js"></script>
+</head>
+<body>
+  <div class="bg" aria-hidden="true">
+    <div class="bg__glow"></div>
+    <div class="bg__floor"></div>
+    <div class="bg__scan"></div>
+    <div class="bg__vignette"></div>
+  </div>
+
+  <div class="frame" aria-hidden="true"></div>
+
+  <header class="hud hud--top"></header>
+
+  <main class="stage">
+    <!-- 模型画廊：炮管 / 履带 / 车身 / 坦克 四个栏目，网格内模型缓慢自转 -->
+    <div class="screen is-active" id="screen-gallery">
+      <div class="gallery">
+        <div class="backbar">
+          <!-- 返回用 <a> 直接回首页，无 JS 也可用 -->
+          <a class="back" href="index.html" id="gallery-back" aria-label="返回主菜单">
+            <span class="back__arrow" aria-hidden="true">←</span> <kbd>ESC</kbd>
+          </a>
+          <h1 class="backbar__title">模型画廊</h1>
+        </div>
+
+        <div id="gallery-sections"></div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="hud hud--bottom">
+    <span class="hud__hint"></span>
+    <span class="hud__hint"></span>
+    <span class="hud__build">版本 0.1.0</span>
+  </footer>
+
+  <script src="models.js"></script>
+  <script>
+    (() => {
+      // ---------- 画廊渲染：栏目 + 网格卡片，卡片内模型慢速自转 ----------
+      const gallerySections = document.getElementById('gallery-sections');
+      const firstCards = [];
+
+      CATEGORIES.forEach((category, ci) => {
+        const section = document.createElement('section');
+        section.className = 'gallery__section';
+
+        const head = document.createElement('div');
+        head.className = 'gallery__section-head';
+        head.innerHTML =
+          `<span class="gallery__index">${String(ci + 1).padStart(2, '0')}</span>` +
+          `<h2 class="gallery__name">${category.name}</h2>` +
+          `<span class="gallery__count">${category.models.length} 个模型</span>`;
+        section.append(head);
+
+        const grid = document.createElement('div');
+        grid.className = 'grid';
+
+        category.models.forEach((model, mi) => {
+          const card = document.createElement('button');
+          card.type = 'button';
+          card.className = 'card';
+          // 锚点编号与详情页返回定位共用，例如 BR-01
+          card.id = modelCardId(category, mi);
+          card.innerHTML =
+            `<span class="card__stage"></span>` +
+            `<span class="card__info">` +
+            `<span class="card__index">${category.code}-${String(mi + 1).padStart(2, '0')}</span>` +
+            `<span class="card__name">${model.name}</span>` +
+            `<span class="card__meta">${model.dims.join(' × ')} 米</span>` +
+            `</span>`;
+
+          // 卡片内缩小展示并慢速自转；负延迟让各卡片错开相位
+          const spin = buildModel(model);
+          spin.classList.add('model--spin');
+          spin.style.setProperty('--model-scale', '0.62');
+          spin.style.animationDelay = `${-3 - mi * 2.6}s`;
+          card.querySelector('.card__stage').append(spin);
+
+          // 详情页用 URL 参数 c/m（分类与模型下标）定位模型
+          card.addEventListener('click', () => {
+            location.href = `detail.html?c=${ci}&m=${mi}`;
+          });
+          grid.append(card);
+        });
+
+        section.append(grid);
+        gallerySections.append(section);
+        firstCards.push(grid.querySelector('.card'));
+      });
+
+      // ---------- 焦点归属：从详情页带 #编号 回来时聚焦原卡片，否则聚焦首张 ----------
+      const hashCard = location.hash ? document.getElementById(location.hash.slice(1)) : null;
+      (hashCard || firstCards[0])?.focus();
+
+      // ESC 返回主菜单，与返回键同一目标
+      document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        location.href = document.getElementById('gallery-back').href;
+      });
+    })();
+  </script>
+
+
+</body></html>

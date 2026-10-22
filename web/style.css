@@ -1,0 +1,721 @@
+
+  /* 本文件全部尺寸使用固定 px 设计常量（经 rem/em 换算就近/向上取偶），
+     窗口适配统一由 scale.js 整体等比缩放，不使用相对单位与断点 */
+
+  /* 工程自带的 MiSans 可变字体，权重 100–900，页面所有文字统一使用 */
+  @font-face {
+    font-family: "MiSans";
+    src: url("../assets/fonts/misans/MiSansVF.ttf") format("truetype");
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  :root {
+    --bg: #0f0e0c;
+    --ink: #ebe8df;
+    --muted: #a49d90;
+    --line: rgba(235, 232, 223, 0.15);
+    --mint: #c8dbb1;
+    --mint-bright: #eaf4da;
+    --mint-deep: #9db67e;
+    --dark: #12110d;
+    --font-display: "MiSans", "Microsoft YaHei", sans-serif;
+    --font-body: "MiSans", "Microsoft YaHei", system-ui, sans-serif;
+    --font-mono: "MiSans", "Cascadia Code", Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { height: 100%; }
+
+  body {
+    margin:0;
+    /* 相对 ICB 取 100%，不使用 vh：整体 zoom 缩放时保持与视口一致 */
+    min-height: 100%;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- 背景层：沙色余光、地面网格、体素块 ---------- */
+  .bg {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .bg__glow {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(90% 70% at 82% 108%, rgba(150, 116, 82, 0.42), transparent 62%),
+      radial-gradient(55% 45% at 88% 2%, rgba(200, 219, 177, 0.10), transparent 70%);
+  }
+
+  .bg__floor {
+    position: absolute;
+    left: -22%;
+    right: -22%;
+    bottom: -14%;
+    height: 56%;
+    background-image:
+      linear-gradient(rgba(200, 219, 177, 0.10) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(200, 219, 177, 0.10) 1px, transparent 1px);
+    background-size: 62px 62px;
+    transform: perspective(520px) rotateX(66deg);
+    transform-origin: 50% 100%;
+    -webkit-mask-image: linear-gradient(to top, #000 12%, transparent 82%);
+    mask-image: linear-gradient(to top, #000 12%, transparent 82%);
+    opacity: 0.6;
+  }
+
+  .voxels {
+    flex: 0 0 auto;
+    /* 固定设计尺寸：取参考分辨率 1280px 下的设计值，不随窗口流式拉伸 */
+    width: 384px;
+    height: auto;
+    opacity: 0.95;
+    pointer-events: none;
+    filter: drop-shadow(0 30px 40px rgba(0, 0, 0, 0.45));
+  }
+
+  .drift {
+    animation: drift 7s ease-in-out infinite;
+  }
+
+  @keyframes drift {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-18px); }
+  }
+
+  .bg__vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(120% 90% at 50% 45%, transparent 45%, rgba(0, 0, 0, 0.62));
+  }
+
+  .bg__scan {
+    position: absolute;
+    inset: 0;
+    background-image: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.16) 0 1px, transparent 1px 3px);
+    opacity: 0.22;
+  }
+
+  /* ---------- 页面四角标记 ---------- */
+  .frame {
+    position: fixed;
+    inset: 18px;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  .frame::before,
+  .frame::after {
+    content: "";
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    border: 1px solid rgba(200, 219, 177, 0.38);
+  }
+
+  .frame::before {
+    top: 0;
+    left: 0;
+    border-right: 0;
+    border-bottom: 0;
+  }
+
+  .frame::after {
+    right: 0;
+    bottom: 0;
+    border-left: 0;
+    border-top: 0;
+  }
+
+  /* ---------- 顶部 / 底部 HUD ---------- */
+  .hud {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 30px 54px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .hud__tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--ink);
+  }
+
+  .hud__tag::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    background: var(--mint);
+    box-shadow: 0 0 0 1px rgba(200, 219, 177, 0.25), 0 0 12px rgba(200, 219, 177, 0.5);
+  }
+
+  .hud__meta { white-space: nowrap; }
+
+  .hud--bottom {
+    flex-wrap: wrap;
+    gap: 14px 26px;
+    color: var(--muted);
+  }
+
+  .hud__hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  kbd {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 4px 6px;
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  /* 版本号固定在窗口右下角，不随画廊/详情页内容滚动；偏移量对齐 .hud 内边距 */
+  .hud__build {
+    position: fixed;
+    right: 54px;
+    bottom: 30px;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  /* ---------- 主舞台 ---------- */
+  .stage {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px 64px 40px;
+  }
+
+  /* 标题菜单与体素方块作为一组整体居中，避免宽屏下内容分散到两侧 */
+  .layout {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 76px;
+    width: 100%;
+    max-width: 1280px;
+  }
+
+  .hero {
+    min-width: 0;
+  }
+
+  .eyebrow {
+    margin: 0 0 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--mint);
+  }
+
+  .eyebrow::before {
+    content: "";
+    width: 26px;
+    height: 1px;
+    background: var(--mint);
+  }
+
+  .title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: 154px;
+    line-height: 0.84;
+    letter-spacing: 2px;
+    color: var(--mint-bright);
+    background: linear-gradient(178deg, #f6fbf0 8%, var(--mint) 62%, var(--mint-deep) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-transform: uppercase;
+    /* 用 filter 绘制立体挤出，text-shadow 会把文字填色压暗 */
+    filter:
+      drop-shadow(2px 2px 0 #1b1913)
+      drop-shadow(2px 2px 0 #15140f)
+      drop-shadow(2px 2px 0 #100f0b)
+      drop-shadow(0 16px 28px rgba(0, 0, 0, 0.5));
+  }
+
+  .lede {
+    margin: 24px 0 0;
+    max-width: 480px;
+    text-wrap: pretty;
+    font-size: 16px;
+    line-height: 1.75;
+    color: #c6c0b4;
+  }
+
+  /* ---------- 菜单 ---------- */
+  .menu {
+    margin-top: 32px;
+    width: min(100%, 480px);
+    border-top: 1px solid var(--line);
+  }
+
+  .menu__item {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 6px;
+    border-bottom: 1px solid var(--line);
+    color: var(--ink);
+    text-decoration: none;
+    overflow: hidden;
+    transition: color 0.22s ease, padding-left 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  /* 悬停时从左侧铺开的薄荷色填充 */
+  .menu__item::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background: linear-gradient(90deg, var(--mint) 0%, var(--mint-deep) 100%);
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .menu__item > * { position: relative; z-index: 1; }
+
+  .menu__index {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: var(--mint-deep);
+    transition: color 0.22s ease;
+  }
+
+  .menu__label {
+    font-family: var(--font-display);
+    font-size: 24px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .menu__arrow {
+    font-family: var(--font-mono);
+    font-size: 16px;
+    /* 右侧留出边距，悬停右移后不贴边 */
+    padding-right: 12px;
+    color: var(--mint);
+    transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), color 0.22s ease;
+  }
+
+  .menu__item:hover,
+  .menu__item:focus-visible {
+    color: var(--dark);
+    padding-left: 14px;
+    /* 键盘焦点与鼠标悬停共用高亮，不额外绘制焦点外框。 */
+    outline: none;
+  }
+
+  .menu__item:hover::after,
+  .menu__item:focus-visible::after { transform: scaleX(1); }
+
+  .menu__item:hover .menu__index,
+  .menu__item:focus-visible .menu__index,
+  .menu__item:hover .menu__arrow,
+  .menu__item:focus-visible .menu__arrow {
+    color: var(--dark);
+  }
+
+  .menu__item:hover .menu__arrow,
+  .menu__item:focus-visible .menu__arrow { transform: translateX(6px); }
+
+  .status {
+    margin: 22px 0 0;
+    min-height: 14px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: var(--muted);
+  }
+
+  /* ---------- 页面切换：主菜单 / 模型画廊 / 模型详情 ---------- */
+  /* 非当前页面整体隐藏；激活页面播放统一淡入，节奏对齐 menu.motion */
+  .screen:not(.is-active) { display: none; }
+
+  /* .stage 是 flex 容器，flex 项默认收缩到内容宽度；
+     画廊/详情页的 width:100% 需要相对舞台解析，必须显式撑满，否则容器塌缩、网格退化为单列 */
+  .screen { width: 100%; }
+
+  .screen.is-active {
+    animation: screen-in 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  /* 入场只动透明度：带 transform 的祖先会接管 fixed 子元素的定位参照，
+     导致固定标题栏在动画期间相对 .screen 定位、结束后跳回窗口，产生位移抖动 */
+  @keyframes screen-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  /* ---------- 返回栏：返回按钮 + 页面标题 ---------- */
+  /* 固定在窗口顶部，不随内容滚动；背景与分隔线遮住下方穿过的文字 */
+  .backbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 20px 64px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
+  }
+
+  /* 页面标题从正文区移植到标题栏，字号收紧以适配栏高 */
+  .backbar__title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--ink);
+  }
+
+  .back {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--ink);
+    background: var(--dark);
+    border: 1px solid var(--line);
+    cursor: pointer;
+    /* 返回键改为 <a> 直接跳页，去掉默认下划线 */
+    text-decoration: none;
+    transition: color 220ms ease, background 220ms ease, border-color 220ms ease;
+  }
+
+  .back:hover,
+  .back:focus-visible {
+    color: var(--dark);
+    background: var(--mint);
+    border-color: var(--mint);
+    outline: none;
+  }
+
+  .back__arrow {
+    font-size: 16px;
+    line-height: 1;
+  }
+
+  /* 悬停填充变亮后，kbd 描边与文字同步换深色，保持可读 */
+  .back:hover kbd,
+  .back:focus-visible kbd {
+    color: var(--dark);
+    border-color: rgba(18, 17, 13, 0.4);
+  }
+
+  /* ---------- 模型画廊 ---------- */
+  .gallery {
+    width: 100%;
+    /* 1152px = 参考分辨率下的内容宽（1280 - 两侧 64px 舞台边距），
+       4 列 270px 卡片 + 3×24px 间距恰好填满，容器与网格边缘对齐 */
+    max-width: 1152px;
+    margin: 0 auto;
+    /* 预留固定标题栏高度，避免内容被遮挡 */
+    padding-top: 88px;
+  }
+
+  .gallery__section {
+    margin-top: 56px;
+  }
+
+  /* 栏目之间只靠间距区分，不画分割线 */
+  .gallery__section-head {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .gallery__index {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: var(--mint-deep);
+  }
+
+  .gallery__name {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 24px;
+    font-weight: 700;
+  }
+
+  .gallery__count {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .grid {
+    display: grid;
+    /* 游戏式库存网格：卡片固定 270px，不随窗口拉伸变宽或变窄；
+       参考分辨率下 4 列恰好填满 1152px 容器，窗口适配全部交给整体缩放 */
+    grid-template-columns: repeat(auto-fill, 270px);
+    gap: 24px;
+  }
+
+  /* ---------- 模型卡片 ---------- */
+  .card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 20px 20px 18px;
+    text-align: left;
+    color: var(--ink);
+    background: var(--dark);
+    border: 1px solid var(--line);
+    cursor: pointer;
+    overflow: hidden;
+    transition: border-color 220ms ease;
+  }
+
+  /* 底部薄荷线：悬停/焦点时从左铺开，对齐菜单填充节奏 */
+  .card::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 2px;
+    background: var(--mint);
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform 300ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .card:hover,
+  .card:focus-visible {
+    border-color: var(--outline-accent);
+    outline: none;
+  }
+
+  .card:hover::after,
+  .card:focus-visible::after {
+    transform: scaleX(1);
+  }
+
+  .card__stage {
+    display: block;
+    position: relative;
+    height: 180px;
+    perspective: 600px;
+    background: radial-gradient(70% 55% at 50% 62%, rgba(200, 219, 177, 0.07), transparent 70%);
+  }
+
+  .card__info {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .card__index {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: var(--mint-deep);
+  }
+
+  .card__name {
+    font-family: var(--font-display);
+    font-size: 18px;
+    font-weight: 700;
+    transition: color 220ms ease;
+  }
+
+  .card:hover .card__name,
+  .card:focus-visible .card__name {
+    color: var(--mint-bright);
+  }
+
+  .card__meta {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* ---------- 体素占位模型：CSS 3D 盒子组合 ---------- */
+  /* 模型原点在舞台中心，各盒子按 (x, y, z) 偏移组合出部件轮廓 */
+  .model {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 0;
+    height: 0;
+    transform-style: preserve-3d;
+    transform: scale(var(--model-scale, 1)) rotateX(-14deg) rotateY(0deg);
+  }
+
+  /* 画廊卡片内缓慢自转，各卡片用负延迟错开相位 */
+  .model--spin {
+    animation: model-spin 16s linear infinite;
+  }
+
+  @keyframes model-spin {
+    from { transform: scale(var(--model-scale, 1)) rotateX(-14deg) rotateY(0deg); }
+    to { transform: scale(var(--model-scale, 1)) rotateX(-14deg) rotateY(360deg); }
+  }
+
+  .model__box {
+    position: absolute;
+    transform-style: preserve-3d;
+  }
+
+  .model__face {
+    position: absolute;
+  }
+
+  /* ---------- 模型详情 ---------- */
+  .detail {
+    width: 100%;
+    /* 与画廊同为 1152px 内容容器，查看区与规格区边缘对齐 */
+    max-width: 1152px;
+    margin: 0 auto;
+    /* 预留固定标题栏高度，避免内容被遮挡 */
+    padding-top: 88px;
+  }
+
+  /* 查看区：指针拖拽旋转（yaw/pitch），滚轮缩放 */
+  .viewer {
+    position: relative;
+    height: 346px;
+    perspective: 1000px;
+    cursor: grab;
+    touch-action: none;
+    border: 1px solid var(--line);
+    background-color: var(--dark);
+    background-image:
+      linear-gradient(rgba(200, 219, 177, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(200, 219, 177, 0.05) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+
+  .viewer.is-dragging {
+    cursor: grabbing;
+  }
+
+  /* 三维尺寸信息：名称 + 宽/高/深三组读数 */
+  .specs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 24px 56px;
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+  }
+
+  .specs__id {
+    flex: 1 1 240px;
+    min-width: 0;
+  }
+
+  .spec {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .spec__label {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .spec__row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .spec__value {
+    font-family: var(--font-display);
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--mint-bright);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .spec__unit {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* ---------- 窗口适配 ---------- */
+  /* 游戏式整体缩放：不设布局断点、不做窄屏重排，窗口窄于参考分辨率时
+     由 scale.js 对整个页面设置 zoom 等比缩小（等价游戏 UiScale），
+     控件尺寸与列数在任何窗口下保持设计常量。仅保留减少动态偏好。 */
+  @media (prefers-reduced-motion: reduce) {
+    .drift { animation: none; }
+    .model--spin { animation: none; }
+    .screen.is-active { animation: none; }
+    .card,
+    .card::after,
+    .card .card__name,
+    .back,
+    .back kbd { transition: none; }
+    .menu__item,
+    .menu__item::after,
+    .menu__item .menu__arrow { transition: none; }
+  }
