@@ -111,101 +111,56 @@ fn cubic(t: f32, x1: f32, y1: f32, x2: f32, y2: f32) -> f32 {
     eval((lo + hi) * 0.5, y1, y2)
 }
 
-/// CSS 像素坐标布局；视口缩放由内容相机的图像 scale_factor 统一处理。
+/// scale.js 的 zoom 语义：可用宽度不足参考宽度时整体等比缩小，只缩不放大，高度不参与。
+pub(crate) fn zoom(available_width: f32) -> f32 {
+    (available_width / dimens::REFERENCE_WIDTH).min(1.0)
+}
+
+/// 给定物理像素与缩放系数，返回整体缩放后的 CSS 像素视口；
+/// 窄窗口时宽度恒等于参考宽度，纵向空间为窗口高度除以缩放（与 zoom 语义一致）。
+fn css_viewport(pixels: Vec2, scale_factor: f32) -> Vec2 {
+    pixels / (scale_factor * zoom(pixels.x / scale_factor))
+}
+
+/// CSS 像素坐标布局；控件取 1280px 设计常量，视口缩放由内容相机的图像
+/// scale_factor 乘以 zoom 统一处理，本结构只按 CSS 视口决定整体居中位置。
 #[derive(Resource, Clone, Copy)]
 pub(crate) struct Layout {
     pub hero: Vec2,
-    pub title_size: f32,
     pub menu_y: f32,
     pub menu_width: f32,
     pub row_height: f32,
     pub cube_rect: Vec4,
-    label_size: f32,
 }
 impl Layout {
     fn new(size: Vec2) -> Self {
-        let narrow = size.x <= dims::NARROW_BREAKPOINT;
-        let title_size = if narrow {
-            (size.x * dims::TITLE_SCALE_NARROW)
-                .clamp(dims::TITLE_MIN_NARROW, dims::TITLE_MAX_NARROW)
-        } else {
-            (size.x * dims::TITLE_SCALE).clamp(dims::TITLE_MIN, dims::TITLE_MAX)
-        };
-        // MiSans 的真实浏览器字宽（含 .015em 字距），由 export_menu_title.cjs 输出。
-        let hero_width = (title_size * (dims::TITLE_TEXT_WIDTH / dims::TITLE_REFERENCE_SIZE)).min(
-            size.x
-                - if narrow {
-                    dims::NARROW_GUTTERS
-                } else {
-                    2.0 * (size.x * dims::GUTTER_SCALE).clamp(dims::GUTTER_MIN, dims::GUTTER_MAX)
-                },
-        );
-        let cube_width = if size.x <= dims::COMPACT_BREAKPOINT {
-            0.0
-        } else {
-            (size.x * dims::CUBE_SCALE).clamp(dims::CUBE_MIN, dims::CUBE_MAX)
-        };
-        let gap = if cube_width == 0.0 {
-            0.0
-        } else {
-            (size.x * dims::HERO_GAP_SCALE).clamp(dims::HERO_GAP_MIN, dims::HERO_GAP_MAX)
-        };
-        let hero_width = hero_width.min(
-            (size.x
-                - 2.0 * (size.x * dims::GUTTER_SCALE).clamp(dims::GUTTER_MIN, dims::GUTTER_MAX)
-                - cube_width
-                - gap)
-                .max(1.0),
-        );
-        let label_size = if narrow {
-            dims::LABEL_NARROW
-        } else {
-            (size.x * dims::LABEL_SCALE).clamp(dims::LABEL_MIN, dims::LABEL_MAX)
-        };
+        // 设计常量下的固定排版；size 只影响整体居中位置，宽度始终不低于参考值。
+        let title_size = dims::TITLE_SIZE;
+        let hero_width = title_size * (dims::TITLE_TEXT_WIDTH / dims::TITLE_REFERENCE_SIZE);
+        let cube_width = dims::CUBE_WIDTH;
+        let gap = dims::HERO_GAP;
         // MiSans 的 normal 行高为字号的 4/3，浏览器基准 24px -> 32px。
-        let row_height = label_size * dimens::LINE_HEIGHT
-            + (if narrow {
-                dims::ROW_PADDING_NARROW
-            } else {
-                dims::ROW_PADDING
-            })
-            + dimens::BORDER_WIDTH;
-        let menu_margin = if narrow {
-            dims::MENU_MARGIN_NARROW
-        } else {
-            (size.y * dims::MENU_MARGIN_SCALE).clamp(dims::MENU_MARGIN_MIN, dims::MENU_MARGIN_MAX)
-        };
-        let menu_y_offset = title_size * dims::TITLE_LINE_HEIGHT + menu_margin;
+        let row_height =
+            dims::LABEL_SIZE * dimens::LINE_HEIGHT + dims::ROW_PADDING + dimens::BORDER_WIDTH;
+        let menu_y_offset = title_size * dims::TITLE_LINE_HEIGHT + dims::MENU_MARGIN;
         let hero_height = menu_y_offset
             + dimens::BORDER_WIDTH
             + row_height * 2.0
             + dims::HINT_GAP
             + dims::HINT_HEIGHT;
-        let top = if narrow { dims::TOP_NARROW } else { dims::TOP };
-        let bottom = if narrow {
-            dims::BOTTOM_NARROW
-        } else {
-            dims::BOTTOM
-        };
-        let pad_top = if narrow {
-            dims::PADDING_TOP_NARROW
-        } else {
-            dims::PADDING_TOP
-        };
-        let pad_bottom = if narrow {
-            dims::PADDING_BOTTOM_NARROW
-        } else {
-            dims::PADDING_BOTTOM
-        };
-        let content_height = (size.y - top - bottom - pad_top - pad_bottom).max(hero_height);
+        let content_height = (size.y
+            - dims::TOP
+            - dims::BOTTOM
+            - dims::PADDING_TOP
+            - dims::PADDING_BOTTOM)
+            .max(hero_height);
         let hero = Vec2::new(
             (size.x - hero_width - gap - cube_width) * 0.5,
-            top + pad_top + (content_height - hero_height) * 0.5,
+            dims::TOP + dims::PADDING_TOP + (content_height - hero_height) * 0.5,
         );
         let cube_height = cube_width * dims::CUBE_VIEWBOX_HEIGHT / dims::CUBE_VIEWBOX_WIDTH;
         Self {
             hero,
-            title_size,
             menu_y: hero.y + menu_y_offset,
             menu_width: hero_width.min(dims::MENU_MAX_WIDTH),
             row_height,
@@ -215,7 +170,6 @@ impl Layout {
                 cube_width,
                 cube_height,
             ),
-            label_size,
         }
     }
     fn hit(&self, point: Vec2) -> Option<usize> {
@@ -425,9 +379,9 @@ fn spawn_menu(
                         (
                             Part::Label(i),
                             labels::ACTIONS[i].into(),
-                            dims::LABEL_MAX,
+                            dims::LABEL_SIZE,
                             700,
-                            dims::LABEL_MAX * dims::LABEL_TRACKING,
+                            dims::LABEL_SPACING,
                         ),
                         (
                             Part::Arrow(i),
@@ -572,7 +526,9 @@ fn menu_input(
     mut next: ResMut<NextState<GameState>>,
 ) {
     if let Ok(window) = windows.single() {
-        input.pointer = window.cursor_position();
+        // 指针位于窗口逻辑像素；布局按整体缩放后的 CSS 视口计算，需除以 zoom。
+        let s = zoom(window.width());
+        input.pointer = window.cursor_position().map(|point| point / s);
     }
     if !fade.accepts_input() {
         return;
@@ -639,10 +595,17 @@ fn update_visual(
     )>,
     mut materials: ResMut<Assets<MenuBackground>>,
 ) {
-    let size = windows
-        .single()
-        .map(|w| Vec2::new(w.width(), w.height()))
-        .unwrap_or_else(|_| images.get(&target.0).unwrap().size().as_vec2());
+    // 窗口模式取窗口物理尺寸与缩放系数；离屏无窗口时纹理尺寸即物理尺寸、缩放系数为 1。
+    let size = match windows.single() {
+        Ok(window) => css_viewport(
+            window.resolution.physical_size().as_vec2(),
+            window.resolution.scale_factor(),
+        ),
+        Err(_) => {
+            let pixels = images.get(&target.0).unwrap().size().as_vec2();
+            css_viewport(pixels, 1.0)
+        }
+    };
     *layout = Layout::new(size);
     let l = *layout;
     for i in 0..2 {
@@ -660,7 +623,7 @@ fn update_visual(
         match *part {
             Part::Background => {}
             Part::Title => {
-                let s = l.title_size / dims::TITLE_REFERENCE_SIZE;
+                let s = dims::TITLE_SIZE / dims::TITLE_REFERENCE_SIZE;
                 rect = Some((
                     l.hero.x - dims::TITLE_OVERHANG_X * s,
                     l.hero.y - dims::TITLE_OVERHANG_Y * s,
@@ -694,12 +657,7 @@ fn update_visual(
             }
             Part::Index(i) | Part::Label(i) | Part::Arrow(i) => {
                 let p = input.animation[i].value;
-                let narrow = size.x <= dims::NARROW_BREAKPOINT;
-                let left = (if narrow {
-                    dims::ROW_INSET_NARROW
-                } else {
-                    dims::ROW_INSET
-                }) + dims::ACTION_TRAVEL * p[1];
+                let left = dims::ROW_INSET + dims::ACTION_TRAVEL * p[1];
                 let (x, fs, letter, normal) = match *part {
                     Part::Index(_) => (
                         left,
@@ -709,17 +667,13 @@ fn update_visual(
                     ),
                     Part::Label(_) => (
                         left + dims::LABEL_OFFSET,
-                        l.label_size,
-                        l.label_size * dims::LABEL_TRACKING,
+                        dims::LABEL_SIZE,
+                        dims::LABEL_SPACING,
                         colors::ON_SURFACE,
                     ),
                     _ => (
                         l.menu_width
-                            - (if narrow {
-                                dims::ROW_INSET_NARROW
-                            } else {
-                                dims::ROW_INSET
-                            })
+                            - dims::ROW_INSET
                             - dims::ARROW_INSET
                             - dims::ARROW_SIZE
                             + dims::ARROW_TRAVEL * p[1],
@@ -757,19 +711,9 @@ fn update_visual(
                     px(l.menu_y + dimens::BORDER_WIDTH + l.row_height * 2.0 + dims::HINT_GAP);
             }
             Part::Build => {
-                node.bottom = px(if size.x <= dims::NARROW_BREAKPOINT {
-                    dims::BUILD_BOTTOM_NARROW
-                } else {
-                    dims::BUILD_BOTTOM
-                });
-                if size.x <= dims::NARROW_BREAKPOINT {
-                    node.left = px(dims::BUILD_LEFT_NARROW);
-                    node.right = Val::Auto;
-                } else {
-                    node.right = px((size.x * dims::BUILD_RIGHT_SCALE)
-                        .clamp(dims::BUILD_RIGHT_MIN, dims::BUILD_RIGHT_MAX));
-                    node.left = Val::Auto;
-                }
+                node.bottom = px(dims::BUILD_BOTTOM);
+                node.right = px(dims::BUILD_RIGHT);
+                node.left = Val::Auto;
             }
             Part::Corner(upper) => {
                 if upper {
@@ -919,21 +863,25 @@ mod tests {
             crate::transition::Phase::Out
         );
     }
-    /// 两个方向首次进入第一项，再次移动循环，Gallery 确认可安全无动作。
+    /// 布局取 1280px 设计常量；窗口适配只由 zoom 等比缩放承担，无断点分支。
     #[test]
-    fn layout_hit_and_css_breakpoints() {
+    fn layout_uses_design_constants_and_uniform_zoom() {
         let l = Layout::new(Vec2::new(1280.0, 720.0));
-        assert!((l.hero.x - 88.42).abs() < 0.1);
+        assert!((l.hero.x - 87.98).abs() < 0.1);
         assert_eq!(l.hit(Vec2::new(l.hero.x + 10.0, l.menu_y + 10.0)), Some(0));
         assert_eq!(
             l.hit(Vec2::new(l.hero.x + 10.0, l.menu_y + l.row_height + 10.0)),
             Some(1)
         );
         assert_eq!(l.hit(Vec2::ZERO), None);
-        assert_eq!(Layout::new(Vec2::new(900.0, 720.0)).cube_rect.z, 0.0);
-        assert!(Layout::new(Vec2::new(901.0, 720.0)).cube_rect.z > 0.0);
-        assert_eq!(Layout::new(Vec2::new(640.0, 720.0)).label_size, 17.6);
-        assert!(Layout::new(Vec2::new(641.0, 720.0)).label_size > 17.6);
+        // 控件尺寸是固定设计常量，只随视口平移居中，不随窗口缩放或收起。
+        let wide = Layout::new(Vec2::new(1920.0, 1080.0));
+        assert_eq!(wide.cube_rect.z, dims::CUBE_WIDTH);
+        assert!((wide.hero.x - 407.98).abs() < 0.1);
+        // zoom 语义：只缩不放大，高度不参与（与 scale.js 一致）。
+        assert_eq!(zoom(1920.0), 1.0);
+        assert_eq!(zoom(1280.0), 1.0);
+        assert!((zoom(640.0) - 0.5).abs() < 1e-6);
     }
     /// 颜色/位移分段缓动在反向时保持连续，最终回到初始态。
     #[test]

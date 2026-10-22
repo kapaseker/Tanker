@@ -198,34 +198,52 @@ fn setup_output(
     ));
 }
 
-/// 无窗口时保留离屏入口设定的尺寸；缩放按窗口逻辑尺寸排版、物理尺寸渲染。
+/// 内容纹理随真实视口变化；菜单 UI 在此叠加 scale.js 的 zoom 等比缩放，
+/// 对局相机保持 1:1，HUD 不参与菜单的整体缩放。
 fn resize_target(
     windows: Query<&Window>,
     target: Res<SceneTarget>,
     mut images: ResMut<Assets<Image>>,
-    mut cameras: Query<
+    mut menu_cameras: Query<&mut RenderTarget, With<crate::menu::MenuCamera>>,
+    mut scene_cameras: Query<
         &mut RenderTarget,
-        Or<(
-            With<crate::menu::MenuCamera>,
+        (
+            Without<crate::menu::MenuCamera>,
             With<crate::driving::FollowCamera>,
-        )>,
+        ),
     >,
 ) {
-    let Ok(window) = windows.single() else {
-        return;
+    // 有窗口时以窗口为准；无窗口（离屏）时纹理尺寸即物理尺寸，缩放系数固定为 1。
+    let (physical, scale_factor) = match windows.single() {
+        Ok(window) => (
+            window.resolution.physical_size().max(UVec2::ONE),
+            window.resolution.scale_factor(),
+        ),
+        Err(_) => (images.get(&target.0).unwrap().size(), 1.0),
     };
-    let size = window.resolution.physical_size().max(UVec2::ONE);
     let mut image = images.get_mut(&target.0).unwrap();
-    if image.size() != size {
+    if image.size() != physical {
         image.resize(bevy::render::render_resource::Extent3d {
-            width: size.x,
-            height: size.y,
+            width: physical.x,
+            height: physical.y,
             depth_or_array_layers: 1,
         });
     }
-    for mut camera in &mut cameras {
+    drop(image);
+    // 菜单相机缩放系数 = 窗口缩放 × zoom；只缩不放大，高度不参与。
+    let menu_scale = scale_factor * crate::menu::zoom(physical.x as f32 / scale_factor);
+    for mut camera in &mut menu_cameras {
         if let RenderTarget::Image(image) = &mut *camera {
-            image.scale_factor = window.resolution.scale_factor();
+            if (image.scale_factor - menu_scale).abs() > f32::EPSILON {
+                image.scale_factor = menu_scale;
+            }
+        }
+    }
+    for mut camera in &mut scene_cameras {
+        if let RenderTarget::Image(image) = &mut *camera {
+            if (image.scale_factor - scale_factor).abs() > f32::EPSILON {
+                image.scale_factor = scale_factor;
+            }
         }
     }
 }

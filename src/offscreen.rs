@@ -971,7 +971,7 @@ fn run_menu_scenario(app: &mut App, options: &Options, report: &mut String) -> R
             app,
             &options.output.join(format!("layout-{width}x{height}.png")),
         )?;
-        report.push_str(&format!("响应式布局：{width}×{height}\n"));
+        report.push_str(&format!("整体缩放布局：{width}×{height}\n"));
     }
     let mut frame = 0u32;
     let mut session_instances = Vec::new();
