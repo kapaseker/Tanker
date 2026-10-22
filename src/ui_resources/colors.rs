@@ -55,7 +55,12 @@ pub(crate) mod menu {
         Color::srgb_u8(82, 68, 55),
         Color::srgb_u8(33, 31, 26),
     ];
-    /// 线性 UI 渲染下的细线补偿，不能替换成规范中的 outline 默认 alpha。
+    /// 菜单分隔线，对应网页原型的 rgba(235,232,223,0.15)。
+    /// CSS 在 sRGB 空间做透明合成；bevy_ui 在线性空间混合，不能直接用 0.15
+    /// （直接使用会得到 sRGB≈100，约为网页观感的两倍亮度）。
+    /// 0.028 是 0.15 在背景 rgb(15,14,12) 上的等效线性 alpha：
+    /// 0.028 线性混合后编码回 sRGB≈46，与网页实测 48 一致
+    /// （离屏验证 2026-10-22，见 .scratch/homepage-parity/issues/02）。
     pub(crate) const SEPARATOR: Color = with_alpha(ON_SURFACE, 0.028);
     /// 角标边框。
     pub(crate) const CORNER: Color = with_alpha(PRIMARY, 0.14);
