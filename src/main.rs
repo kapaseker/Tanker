@@ -5,16 +5,16 @@
 
 mod app;
 mod gameplay;
-mod offscreen;
 mod pages;
 mod tank;
 mod terrain;
 mod ui;
+mod validation;
 
 /// 先校验命令行，再创建渲染器；参数错误不会意外打开窗口。
 fn main() -> std::process::ExitCode {
     let result =
-        offscreen::Options::parse(std::env::args_os().skip(1).collect()).and_then(app::run);
+        validation::Options::parse(std::env::args_os().skip(1).collect()).and_then(app::run);
     match result {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
