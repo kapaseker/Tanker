@@ -378,7 +378,7 @@ pub(super) fn run(mut app: App, options: Options) -> Result<(), String> {
         .add_systems(Last, collect_evidence);
     if !matches!(options.scenario, Scenario::Menu | Scenario::Gallery) {
         // 旧场景在首个 StateTransition 前直接请求 InGame 跳过菜单：
-        // 启动期 StateTransition 应用 InGame 并运行 OnEnter(setup_scene)，
+        // 启动期 StateTransition 应用 InGame 并运行 OnEnter(session::setup)，
         // 引导消息与 Pending 取 .last() 后以 InGame 为准，不会落入菜单。
         app.world_mut()
             .resource_mut::<NextState<crate::app::state::GameState>>()
@@ -477,35 +477,14 @@ fn shader_pending(error: &bevy::shader::ShaderCacheError) -> bool {
 }
 
 /// 同时确认 CPU 场景、依赖、实例和 GPU 网格/纹理，避免仅凭加载日志提前截黑图。
+/// 业务就绪汇总复用 `gameplay::session::content_ready`，此处只补充验证特有的
+/// 托管纹理加载与实际 GPU 上传检查。
 fn scene_ready(app: &mut App) -> bool {
     let world = app.world_mut();
-    if !world.contains_resource::<crate::ground::TerrainReady>()
-        || !crate::gameplay::combat::firing::assets_ready(world)
-        || !crate::gameplay::combat::explosion::assets_ready(world)
-        || !crate::font::assets_ready(world)
-    {
+    if !crate::font::assets_ready(world) || !crate::gameplay::session::content_ready(world) {
         return false;
     }
-    let tank_count = world
-        .query_filtered::<(), Or<(With<crate::gameplay::player::Tank>, With<crate::gameplay::enemy::EnemyTank>)>>()
-        .iter(world)
-        .count();
-    let validated = world
-        .query_filtered::<(), With<crate::tank::track::TracksValidated>>()
-        .iter(world)
-        .count();
-    if tank_count != crate::gameplay::enemy::ENEMY_COUNT + 1 || validated != tank_count {
-        return false;
-    }
-    let mut roots = world.query::<(&WorldAssetRoot, Option<&WorldInstance>)>();
     let server = world.resource::<AssetServer>();
-    let spawner = world.resource::<WorldInstanceSpawner>();
-    if !roots.iter(world).all(|(root, instance)| {
-        server.is_loaded_with_dependencies(&root.0)
-            && instance.is_some_and(|instance| spawner.instance_is_ready(**instance))
-    }) {
-        return false;
-    }
     if !world
         .resource::<Assets<Image>>()
         .ids()
@@ -1350,7 +1329,7 @@ fn run_menu_scenario(app: &mut App, options: &Options, report: &mut String) -> R
                 let world = app.world_mut();
                 ensure(
                     world
-                        .query_filtered::<(), With<crate::app::transition::SessionEntity>>()
+                        .query_filtered::<(), With<crate::gameplay::session::SessionEntity>>()
                         .iter(world)
                         .count()
                         == 0,

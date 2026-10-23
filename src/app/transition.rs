@@ -15,7 +15,6 @@ use bevy::{
         render_resource::{CachedPipelineState, PipelineCache, TextureFormat},
         texture::GpuImage,
     },
-    world_serialization::{WorldInstance, WorldInstanceSpawner},
 };
 use std::sync::{
     Arc, Mutex,
@@ -24,10 +23,6 @@ use std::sync::{
 
 /// 每个方向的单段时长；加载等待不占用渐变时间。
 const FADE_SECONDS: f32 = 0.6;
-
-/// 仅对局拥有的根实体；删除时连同场景实例与后代一起回收。
-#[derive(Component)]
-pub(crate) struct SessionEntity;
 
 /// 最终输出相机；离屏入口只重定向这台相机。
 #[derive(Component)]
@@ -150,7 +145,7 @@ impl Plugin for TransitionPlugin {
                 Update,
                 (report_asset_failure, return_to_menu, advance).chain(),
             )
-            .add_systems(OnEnter(GameState::Menu), cleanup_session);
+            .add_systems(OnEnter(GameState::Menu), crate::gameplay::session::cleanup);
         app.sub_app_mut(RenderApp)
             .add_systems(Render, check_render_ready.in_set(RenderSystems::Cleanup));
     }
@@ -297,40 +292,16 @@ fn report_asset_failure(
 }
 
 /// 就绪检查统一用于正常游戏与离屏，不以“加载成功日志”代替实体实例化。
+/// 对局业务就绪汇总委托 `gameplay::session`，本模块只按页面分流并保留字体门槛。
 pub(crate) fn content_ready(world: &mut World) -> bool {
     if !crate::font::assets_ready(world) {
         return false;
     }
-    if *world.resource::<State<GameState>>().get() == GameState::Menu {
-        return crate::menu::assets_ready(world);
+    match world.resource::<State<GameState>>().get() {
+        GameState::Menu => crate::menu::assets_ready(world),
+        GameState::Gallery => crate::gallery::assets_ready(world),
+        _ => crate::gameplay::session::content_ready(world),
     }
-    if *world.resource::<State<GameState>>().get() == GameState::Gallery {
-        return crate::gallery::assets_ready(world);
-    }
-    if !world.contains_resource::<crate::ground::TerrainReady>()
-        || !crate::gameplay::combat::firing::assets_ready(world)
-        || !crate::gameplay::combat::explosion::assets_ready(world)
-    {
-        return false;
-    }
-    let tanks = world
-        .query_filtered::<(), Or<(With<crate::gameplay::player::Tank>, With<crate::gameplay::enemy::EnemyTank>)>>()
-        .iter(world)
-        .count();
-    let tracks = world
-        .query_filtered::<(), With<crate::tank::track::TracksValidated>>()
-        .iter(world)
-        .count();
-    if tanks != crate::gameplay::enemy::ENEMY_COUNT + 1 || tracks != tanks {
-        return false;
-    }
-    let mut roots = world.query::<(&WorldAssetRoot, Option<&WorldInstance>)>();
-    let server = world.resource::<AssetServer>();
-    let spawner = world.resource::<WorldInstanceSpawner>();
-    roots.iter(world).all(|(root, instance)| {
-        server.is_loaded_with_dependencies(&root.0)
-            && instance.is_some_and(|instance| spawner.instance_is_ready(**instance))
-    })
 }
 
 /// 全黑交接后至少等待八个稳定渲染帧，避免把上一页面的 GPU 就绪值当成新页面。
@@ -424,21 +395,6 @@ fn check_render_ready(
             && readiness.images.iter().all(|id| images.get(*id).is_some()),
         Ordering::Release,
     );
-}
-
-/// 页面切回首页时移除整局及其生成标志，预加载的共享资产继续复用。
-fn cleanup_session(world: &mut World) {
-    let entities: Vec<_> = world
-        .query_filtered::<Entity, With<SessionEntity>>()
-        .iter(world)
-        .collect();
-    for entity in entities {
-        world.despawn(entity);
-    }
-    crate::ground::reset_session(world);
-    crate::gameplay::enemy::reset_session(world);
-    crate::gameplay::combat::firing::reset_session(world);
-    world.remove_resource::<super::VoxScene>();
 }
 
 /// 报告记录实际阶段、GPU 就绪与相机目标，避免依赖终端的截断探针。

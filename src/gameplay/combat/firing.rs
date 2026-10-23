@@ -183,7 +183,7 @@ fn fire_bullets(
     debug!("发射子弹：位置={position:?}，方向={direction:?}");
     let transform = Transform::from_translation(position).with_rotation(tank.rotation());
     commands.spawn((
-        crate::app::transition::SessionEntity,
+        crate::gameplay::session::SessionEntity,
         Bullet {
             direction,
             distance: 0.0,
@@ -605,7 +605,9 @@ mod tests {
         .init_resource::<ButtonInput<KeyCode>>()
         .add_message::<EnemyDestroyed>()
         .add_systems(Update, crate::gameplay::enemy::spawn_enemy_barrels)
-        .add_systems(Startup, crate::ground::load_ground)
+        .add_systems(Startup, |mut commands: Commands, assets: Res<AssetServer>| {
+            crate::ground::load_ground(&mut commands, &assets)
+        })
         .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f32(
             0.25,
         )));

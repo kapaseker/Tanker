@@ -103,21 +103,21 @@ pub(crate) fn reset_session(world: &mut World) {
 }
 
 /// 等地形铺设完成后随机放置敌人；玩家在地图中心出生。
+/// 随机来源为启动注入的 `SpawnConfig`（业务不读验证入口的 Options）。
 fn spawn_enemies(
     mut commands: Commands,
     spawned: Option<Res<EnemyAsset>>,
     ready: Option<Res<crate::ground::TerrainReady>>,
     assets: Res<AssetServer>,
-    offscreen: Option<Res<crate::offscreen::Options>>,
+    config: Res<crate::gameplay::session::SpawnConfig>,
 ) {
     // 地形图异步加载，高度场碰撞体就绪前下落会穿透场地，故等待就绪信号。
     if spawned.is_some() || ready.is_none() {
         return;
     }
-    let mut rng = if offscreen.is_some() {
-        fastrand::Rng::with_seed(crate::offscreen::SEED)
-    } else {
-        fastrand::Rng::new()
+    let mut rng = match config.fixed_seed {
+        Some(seed) => fastrand::Rng::with_seed(seed),
+        None => fastrand::Rng::new(),
     };
     let transforms = match spawn_transforms(&mut rng, Vec2::ZERO) {
         Ok(transforms) => transforms,
@@ -130,7 +130,7 @@ fn spawn_enemies(
     for transform in transforms {
         commands.spawn((
             EnemyTank,
-            crate::app::transition::SessionEntity,
+            crate::gameplay::session::SessionEntity,
             track::ENEMY_TRACKS,
             WorldAssetRoot(scene.clone()),
             enemy_body(),

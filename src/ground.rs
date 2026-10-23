@@ -90,6 +90,11 @@ pub(super) struct TerrainChunk;
 #[derive(Component)]
 pub(super) struct TerrainSurface;
 
+/// 地形自有的根实体标记（视觉块、碰撞面与边界墙）：地形实体由本模块的
+/// [`reset_session`] 回收，不依赖对局或页面状态的标记。
+#[derive(Component)]
+struct TerrainEntity;
+
 /// 标记地形网格与高度场碰撞体已铺设完成，供依赖地形的生成逻辑（敌人）等待。
 #[derive(Resource)]
 pub(crate) struct TerrainReady;
@@ -101,8 +106,16 @@ struct GroundAssets {
     colors: Handle<GroundMap>,
 }
 
-/// 返回首页时清除本局资源与生成完成标志，允许下一局重新铺设。
+/// 返回首页时清除本局地形：回收地形自有标记的实体与生成完成标志，
+/// 允许下一局重新铺设；预加载的共享资产继续复用。
 pub(crate) fn reset_session(world: &mut World) {
+    let entities: Vec<_> = world
+        .query_filtered::<Entity, With<TerrainEntity>>()
+        .iter(world)
+        .collect();
+    for entity in entities {
+        world.despawn(entity);
+    }
     world.remove_resource::<GroundAssets>();
     world.remove_resource::<TerrainReady>();
 }
@@ -120,7 +133,8 @@ impl Plugin for GroundPlugin {
 }
 
 /// 进入 InGame 时登记两张地形图，实际铺设等资源就绪后由 [`spawn_terrain`] 完成。
-pub(crate) fn load_ground(mut commands: Commands, assets: Res<AssetServer>) {
+/// 由 `gameplay::session` 在对局生成时调用；接收借用参数以便作为普通函数调用。
+pub(crate) fn load_ground(commands: &mut Commands, assets: &AssetServer) {
     // 路径形如 "terrain/ground/ground.ht"；Bevy 资产路径固定用正斜杠。
     commands.insert_resource(GroundAssets {
         heights: assets.load(format!("{TERRAIN_ROOT}/{TERRAIN_NAME}/ground.ht")),
@@ -192,7 +206,7 @@ fn spawn_terrain(
             });
             commands.spawn((
                 TerrainChunk,
-                crate::app::transition::SessionEntity,
+                TerrainEntity,
                 Mesh3d(meshes.add(chunk)),
                 MeshMaterial3d(material.clone()),
             ));
@@ -201,7 +215,7 @@ fn spawn_terrain(
             cuboid_count += cuboids.len();
             commands.spawn((
                 TerrainSurface,
-                crate::app::transition::SessionEntity,
+                TerrainEntity,
                 RigidBody::Static,
                 Collider::compound(
                     cuboids
@@ -363,7 +377,7 @@ pub(super) fn spawn_walls(commands: &mut Commands) {
             ),
         ] {
             commands.spawn((
-                crate::app::transition::SessionEntity,
+                TerrainEntity,
                 RigidBody::Static,
                 Collider::cuboid(size.x, size.y, size.z),
                 Transform::from_translation(position),
@@ -911,7 +925,7 @@ mod tests {
             let size_y = top - COLLIDER_BASE_Y;
             app.world_mut().spawn((
                 TerrainSurface,
-                crate::app::transition::SessionEntity,
+                TerrainEntity,
                 RigidBody::Static,
                 Collider::cuboid(x1 - x0, size_y, 20.0),
                 Transform::from_xyz((x0 + x1) / 2.0, (top + COLLIDER_BASE_Y) / 2.0, 0.0),
