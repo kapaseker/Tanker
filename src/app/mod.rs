@@ -7,7 +7,7 @@ use avian3d::prelude::PhysicsPlugins;
 use bevy::prelude::*;
 use bevy_vox_scene::{VoxLoaderSettings, VoxScenePlugin};
 
-use crate::{font, gallery, gameplay, ground, menu, offscreen, tank, ui_resources};
+use crate::{gameplay, ground, offscreen, pages, tank, ui};
 use state::GameState;
 
 /// 全局灯光的亮度（cd/m²）。场景不使用 `DirectionalLight`，全部光照由全局环境光
@@ -27,7 +27,7 @@ pub(super) fn run(options: Option<offscreen::Options>) -> Result<(), String> {
     } else {
         app.add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
-                title: ui_resources::strings_cn::WINDOW_TITLE.into(),
+                title: ui::resources::strings_cn::WINDOW_TITLE.into(),
                 ..default()
             }),
             ..default()
@@ -50,10 +50,10 @@ pub(super) fn run(options: Option<offscreen::Options>) -> Result<(), String> {
         tank::driving::DrivingPlugin,
         tank::track::TrackAnimationPlugin,
         gameplay::camera::FollowCameraPlugin,
-        font::UiFontPlugin,
+        ui::font::UiFontPlugin,
         transition::TransitionPlugin,
-        menu::MenuPlugin,
-        gallery::GalleryPlugin,
+        pages::menu::MenuPlugin,
+        pages::gallery::GalleryPlugin,
     ))
     .insert_resource(GlobalAmbientLight {
         brightness: GLOBAL_AMBIENT_BRIGHTNESS,

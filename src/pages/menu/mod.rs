@@ -5,9 +5,9 @@ use crate::{
         state::GameState,
         transition::{Fade, SceneTarget},
     },
-    font::UiFont,
-    ui_resources::{colors, dimens},
-    ui_resources::{
+    ui::font::UiFont,
+    ui::resources::{colors, dimens},
+    ui::resources::{
         colors::menu as palette, dimens::menu as dims, strings, strings_cn::menu as labels,
     },
 };

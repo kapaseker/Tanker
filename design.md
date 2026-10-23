@@ -129,7 +129,7 @@ hud:
 
 ## UI 资源的代码入口
 
-运行时 UI 资源集中在 `src/ui_resources/`，均为 `pub(crate)` Rust 常量，修改后重新编译：
+运行时 UI 资源集中在 `src/ui/resources/`，均为 `pub(crate)` Rust 常量，修改后重新编译：
 
 | 模块 | 职责与用法 |
 | --- | --- |

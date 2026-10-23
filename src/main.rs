@@ -4,14 +4,12 @@
 //! `assets/pisa_diffuse.ktx2` 与 `pisa_specular.ktx2` 仍取自 bevy_vox_scene 官方仓库示例资源（环境贴图）。
 
 mod app;
-mod font;
-mod gallery;
 mod gameplay;
 mod ground;
-mod menu;
 mod offscreen;
+mod pages;
 mod tank;
-mod ui_resources;
+mod ui;
 
 /// 先校验命令行，再创建渲染器；参数错误不会意外打开窗口。
 fn main() -> std::process::ExitCode {

@@ -481,7 +481,7 @@ fn shader_pending(error: &bevy::shader::ShaderCacheError) -> bool {
 /// 托管纹理加载与实际 GPU 上传检查。
 fn scene_ready(app: &mut App) -> bool {
     let world = app.world_mut();
-    if !crate::font::assets_ready(world) || !crate::gameplay::session::content_ready(world) {
+    if !crate::ui::font::assets_ready(world) || !crate::gameplay::session::content_ready(world) {
         return false;
     }
     let server = world.resource::<AssetServer>();
@@ -842,9 +842,9 @@ fn run_gallery_scenario(
             }
         }
         if cycle == 2 {
-            let layout = *app.world().resource::<crate::menu::Layout>();
+            let layout = *app.world().resource::<crate::pages::menu::Layout>();
             app.world_mut()
-                .resource_mut::<crate::menu::MenuInput>()
+                .resource_mut::<crate::pages::menu::MenuInput>()
                 .pointer = Some(Vec2::new(
                 layout.hero.x + 40.0,
                 layout.menu_y + layout.row_height + 20.0,
@@ -854,29 +854,29 @@ fn run_gallery_scenario(
             app.world_mut().resource_mut::<MenuMouse>().0 = false;
             update(app, STEP, None)?;
             app.world_mut()
-                .resource_mut::<crate::menu::MenuInput>()
+                .resource_mut::<crate::pages::menu::MenuInput>()
                 .pointer = None;
         } else {
             update(app, STEP, Some(3))?;
         }
         finish_gallery_transition(app, options, cycle, "enter", GameState::Gallery)?;
         report.push_str(&format!("第{cycle}次进入画廊：过渡完成，alpha=0\n"));
-        report.push_str(&crate::gallery::validate(app.world())?);
+        report.push_str(&crate::pages::gallery::validate(app.world())?);
         ensure(
             app.world_mut()
-                .query_filtered::<(), With<crate::menu::MenuRoot>>()
+                .query_filtered::<(), With<crate::pages::menu::MenuRoot>>()
                 .iter(app.world())
                 .count()
                 == 0,
             "进入画廊未清理首页",
         )?;
         ensure(
-            crate::gallery::view_mut(app.world_mut()).scroll == 0.0,
+            crate::pages::gallery::view_mut(app.world_mut()).scroll == 0.0,
             "进入画廊必须从顶部开始",
         )?;
         let images: Vec<_> = app
             .world()
-            .resource::<crate::gallery::Previews>()
+            .resource::<crate::pages::gallery::Previews>()
             .items
             .iter()
             .map(|p| p.image.id())
@@ -889,12 +889,12 @@ fn run_gallery_scenario(
             .collect();
         if cycle == 1 {
             capture(app, &options.output.join("gallery-top.png"))?;
-            crate::gallery::view_mut(app.world_mut()).pointer = Some(Vec2::new(120.0, 250.0));
+            crate::pages::gallery::view_mut(app.world_mut()).pointer = Some(Vec2::new(120.0, 250.0));
             for _ in 0..20 {
                 update(app, STEP, None)?;
             }
             capture(app, &options.output.join("gallery-hover.png"))?;
-            crate::gallery::view_mut(app.world_mut()).pointer = None;
+            crate::pages::gallery::view_mut(app.world_mut()).pointer = None;
             // 真实轮滚消息与键盘共用滚动状态，滚动不得改变标题栏。
             app.world_mut()
                 .write_message(bevy::input::mouse::MouseWheel {
@@ -906,7 +906,7 @@ fn run_gallery_scenario(
                 });
             update(app, STEP, None)?;
             ensure(
-                crate::gallery::view_mut(app.world_mut()).scroll == 128.0,
+                crate::pages::gallery::view_mut(app.world_mut()).scroll == 128.0,
                 "滚轮步长不符",
             )?;
             for section in 1..=3 {
@@ -922,7 +922,7 @@ fn run_gallery_scenario(
             capture(app, &options.output.join("gallery-bottom.png"))?;
             let rotations: Vec<_> = app
                 .world()
-                .resource::<crate::gallery::Previews>()
+                .resource::<crate::pages::gallery::Previews>()
                 .items
                 .iter()
                 .map(|p| app.world().get::<Transform>(p.root).unwrap().rotation)
@@ -932,7 +932,7 @@ fn run_gallery_scenario(
             }
             ensure(
                 app.world()
-                    .resource::<crate::gallery::Previews>()
+                    .resource::<crate::pages::gallery::Previews>()
                     .items
                     .iter()
                     .zip(rotations)
@@ -948,7 +948,7 @@ fn run_gallery_scenario(
             )?;
             capture(app, &options.output.join("gallery-rotation.png"))?;
             // 非交互卡片点击和 Enter 不打开页面，也不停止自转。
-            crate::gallery::view_mut(app.world_mut()).pointer = Some(Vec2::new(120.0, 430.0));
+            crate::pages::gallery::view_mut(app.world_mut()).pointer = Some(Vec2::new(120.0, 430.0));
             app.world_mut().resource_mut::<MenuMouse>().0 = true;
             update(app, STEP, None)?;
             app.world_mut().resource_mut::<MenuMouse>().0 = false;
@@ -958,7 +958,7 @@ fn run_gallery_scenario(
                 app.world().resource::<Fade>().phase == Phase::Idle,
                 "卡片确认不应发起页面跳转",
             )?;
-            crate::gallery::view_mut(app.world_mut()).pointer = None;
+            crate::pages::gallery::view_mut(app.world_mut()).pointer = None;
             for (width, height) in [(640, 720), (1920, 720), (1280, 720)] {
                 let size = bevy::render::render_resource::Extent3d {
                     width,
@@ -992,7 +992,7 @@ fn run_gallery_scenario(
             );
         }
         if cycle == 2 {
-            crate::gallery::view_mut(app.world_mut()).pointer = Some(Vec2::new(90.0, 40.0));
+            crate::pages::gallery::view_mut(app.world_mut()).pointer = Some(Vec2::new(90.0, 40.0));
             app.world_mut().resource_mut::<MenuMouse>().0 = true;
             update(app, STEP, None)?;
             app.world_mut().resource_mut::<MenuMouse>().0 = false;
@@ -1009,12 +1009,12 @@ fn run_gallery_scenario(
             update(app, Duration::ZERO, None)?;
         }
         ensure(
-            !app.world().contains_resource::<crate::gallery::Previews>(),
+            !app.world().contains_resource::<crate::pages::gallery::Previews>(),
             "退出后残留预览资源",
         )?;
         ensure(
             app.world_mut()
-                .query_filtered::<(), With<crate::gallery::GalleryEntity>>()
+                .query_filtered::<(), With<crate::pages::gallery::GalleryEntity>>()
                 .iter(app.world())
                 .count()
                 == 0,
@@ -1035,7 +1035,7 @@ fn run_gallery_scenario(
             "退出后残留场景实例",
         )?;
         ensure(
-            app.world().resource::<crate::menu::MenuInput>().focus == Some(1),
+            app.world().resource::<crate::pages::menu::MenuInput>().focus == Some(1),
             "返回未恢复画廊入口焦点",
         )?;
         report.push_str(&format!(
@@ -1108,14 +1108,14 @@ fn run_menu_scenario(app: &mut App, options: &Options, report: &mut String) -> R
     }
     ensure(
         app.world()
-            .resource::<crate::menu::MenuInput>()
+            .resource::<crate::pages::menu::MenuInput>()
             .focus
             .is_none(),
         "初始首页不应选中菜单项",
     )?;
     let orders: Vec<_> = app
         .world_mut()
-        .query::<&crate::menu::MenuItem>()
+        .query::<&crate::pages::menu::MenuItem>()
         .iter(app.world())
         .map(|item| item.order)
         .collect();
@@ -1135,7 +1135,7 @@ fn run_menu_scenario(app: &mut App, options: &Options, report: &mut String) -> R
     // UI 遮罩受控对照：移除后必须恢复，不能据历史失败认定引擎永久黑屏。
     let camera = app
         .world_mut()
-        .query_filtered::<Entity, With<crate::menu::MenuCamera>>()
+        .query_filtered::<Entity, With<crate::pages::menu::MenuCamera>>()
         .single(app.world())
         .map_err(|e| e.to_string())?;
     let overlay = app
@@ -1157,9 +1157,9 @@ fn run_menu_scenario(app: &mut App, options: &Options, report: &mut String) -> R
     capture(app, &options.output.join("control-ui-removed.png"))?;
     report.push_str("受控对照：全屏 UI 遮罩添加与移除均正常渲染；无永久黑屏\n");
     for i in 0..2 {
-        let l = *app.world().resource::<crate::menu::Layout>();
+        let l = *app.world().resource::<crate::pages::menu::Layout>();
         app.world_mut()
-            .resource_mut::<crate::menu::MenuInput>()
+            .resource_mut::<crate::pages::menu::MenuInput>()
             .pointer = Some(Vec2::new(
             l.hero.x + 50.0,
             l.menu_y + 20.0 + l.row_height * i as f32,
@@ -1168,13 +1168,13 @@ fn run_menu_scenario(app: &mut App, options: &Options, report: &mut String) -> R
             update(app, STEP, None)?;
         }
         ensure(
-            app.world().resource::<crate::menu::MenuInput>().hover == Some(i),
+            app.world().resource::<crate::pages::menu::MenuInput>().hover == Some(i),
             "鼠标未命中菜单项",
         )?;
         capture(app, &options.output.join(format!("hover-{}.png", i + 1)))?;
     }
     app.world_mut()
-        .resource_mut::<crate::menu::MenuInput>()
+        .resource_mut::<crate::pages::menu::MenuInput>()
         .pointer = None;
     for _ in 0..20 {
         update(app, STEP, None)?;
@@ -1191,7 +1191,7 @@ fn run_menu_scenario(app: &mut App, options: &Options, report: &mut String) -> R
     update(app, STEP, Some(8))?;
     update(app, STEP, None)?;
     ensure(
-        app.world().resource::<crate::menu::MenuInput>().focus == Some(0),
+        app.world().resource::<crate::pages::menu::MenuInput>().focus == Some(0),
         "Shift+Tab 应返回第一项",
     )?;
     for _ in 0..20 {
@@ -1310,7 +1310,7 @@ fn run_menu_scenario(app: &mut App, options: &Options, report: &mut String) -> R
                     .collect();
                 ensure(
                     app.world_mut()
-                        .query_filtered::<(), With<crate::menu::MenuRoot>>()
+                        .query_filtered::<(), With<crate::pages::menu::MenuRoot>>()
                         .iter(app.world())
                         .count()
                         == 0,
@@ -1341,7 +1341,7 @@ fn run_menu_scenario(app: &mut App, options: &Options, report: &mut String) -> R
                 )?;
                 ensure(
                     world
-                        .query_filtered::<(), With<crate::menu::MenuCamera>>()
+                        .query_filtered::<(), With<crate::pages::menu::MenuCamera>>()
                         .iter(world)
                         .count()
                         == 1,

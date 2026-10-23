@@ -1,16 +1,19 @@
 //! 固定尺寸画廊排版与输入；所有命中坐标均为整体缩放后的逻辑像素。
 use super::*;
 use crate::{
-    font::UiFont,
-    menu::{MenuBackground, MenuPalette},
-    ui_resources::{
-        colors,
-        dimens::gallery as dims,
-        strings_cn::{gallery as labels, menu as menu_labels},
+    pages::menu::{MenuBackground, MenuPalette},
+    ui::{
+        font::UiFont,
+        resources::{
+            colors,
+            dimens::gallery as dims,
+            strings_cn::{gallery as labels, menu as menu_labels},
+        },
     },
 };
 use bevy::{
-    core_pipeline::tonemapping::DebandDither,
+    camera::RenderTarget,
+    core_pipeline::tonemapping::{DebandDither, Tonemapping},
     input::mouse::{MouseScrollUnit, MouseWheel},
     text::{LetterSpacing, LineHeight},
     ui_render::prelude::MaterialNode,
@@ -229,8 +232,8 @@ pub(super) fn spawn(
                             Part::BackText,
                             Text::new(format!(
                                 "{}   {}",
-                                crate::ui_resources::strings::BACK_ARROW,
-                                crate::ui_resources::strings::KEY_ESCAPE
+                                crate::ui::resources::strings::BACK_ARROW,
+                                crate::ui::resources::strings::KEY_ESCAPE
                             )),
                             text_font(&font, dims::META_SIZE, 400.0),
                             TextColor(colors::ON_SURFACE),
@@ -280,10 +283,10 @@ fn text_font(font: &UiFont, size: f32, weight: f32) -> TextFont {
 /// 当前页面逻辑视口；离屏直接读取内容纹理尺寸。
 fn viewport(windows: &Query<&Window>, images: &Assets<Image>, target: &SceneTarget) -> Vec2 {
     if let Ok(window) = windows.single() {
-        Vec2::new(window.width(), window.height()) / crate::menu::zoom(window.width())
+        Vec2::new(window.width(), window.height()) / crate::pages::menu::zoom(window.width())
     } else {
         let size = images.get(&target.0).unwrap().size().as_vec2();
-        size / crate::menu::zoom(size.x)
+        size / crate::pages::menu::zoom(size.x)
     }
 }
 /// 输入先经过过渡锁；鼠标按下和松开必须同在返回键内。
@@ -297,18 +300,18 @@ pub(super) fn input(
     target: Res<SceneTarget>,
     mut fade: ResMut<Fade>,
     mut next: ResMut<NextState<GameState>>,
-    mut return_focus: ResMut<crate::menu::ReturnFocus>,
+    mut return_focus: ResMut<crate::pages::menu::ReturnFocus>,
 ) {
     let size = viewport(&windows, &images, &target);
     view.size = size;
     if let Ok(window) = windows.single() {
         view.pointer = window
             .cursor_position()
-            .map(|p| p / crate::menu::zoom(window.width()));
+            .map(|p| p / crate::pages::menu::zoom(window.width()));
     }
     let scale = windows.single().map_or_else(
-        |_| crate::menu::zoom(images.get(&target.0).unwrap().size().x as f32),
-        |window| crate::menu::zoom(window.width()),
+        |_| crate::pages::menu::zoom(images.get(&target.0).unwrap().size().x as f32),
+        |window| crate::pages::menu::zoom(window.width()),
     );
     let delta: f32 = wheel
         .read()
@@ -551,8 +554,8 @@ pub(super) fn update(
             ),
             Part::Build => (size.x - 148.0, size.y - 38.0, 110.0, 20.0),
             Part::Corner(bottom) => {
-                let inset = crate::ui_resources::dimens::menu::CORNER_INSET;
-                let side = crate::ui_resources::dimens::menu::CORNER_SIZE;
+                let inset = crate::ui::resources::dimens::menu::CORNER_INSET;
+                let side = crate::ui::resources::dimens::menu::CORNER_SIZE;
                 node.border = if bottom {
                     UiRect {
                         right: px(1.0),
@@ -583,6 +586,7 @@ pub(super) fn update(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bevy::render::render_resource::TextureFormat;
     /// 仅安装页面输入需要的资源，不加载渲染器或创建窗口。
     fn input_app() -> App {
         let mut app = App::new();
@@ -599,7 +603,7 @@ mod tests {
             .init_resource::<View>()
             .init_resource::<Fade>()
             .init_resource::<NextState<GameState>>()
-            .init_resource::<crate::menu::ReturnFocus>()
+            .init_resource::<crate::pages::menu::ReturnFocus>()
             .init_resource::<ButtonInput<KeyCode>>()
             .init_resource::<ButtonInput<MouseButton>>()
             .add_message::<MouseWheel>()
@@ -647,11 +651,11 @@ mod tests {
         key(&mut app, KeyCode::End);
         assert_eq!(app.world().resource::<View>().scroll, 0.0);
         key(&mut app, KeyCode::Escape);
-        assert!(!app.world().resource::<crate::menu::ReturnFocus>().0);
+        assert!(!app.world().resource::<crate::pages::menu::ReturnFocus>().0);
         app.world_mut().insert_resource(Fade::default());
         key(&mut app, KeyCode::Tab);
         key(&mut app, KeyCode::Enter);
-        assert!(app.world().resource::<crate::menu::ReturnFocus>().0);
+        assert!(app.world().resource::<crate::pages::menu::ReturnFocus>().0);
         assert_eq!(
             app.world().resource::<Fade>().phase,
             crate::app::transition::Phase::Out
@@ -691,6 +695,6 @@ mod tests {
             .resource_mut::<ButtonInput<MouseButton>>()
             .release(MouseButton::Left);
         app.update();
-        assert!(app.world().resource::<crate::menu::ReturnFocus>().0);
+        assert!(app.world().resource::<crate::pages::menu::ReturnFocus>().0);
     }
 }

@@ -202,15 +202,15 @@ fn resize_target(
     mut menu_cameras: Query<
         &mut RenderTarget,
         Or<(
-            With<crate::menu::MenuCamera>,
-            With<crate::gallery::GalleryCamera>,
+            With<crate::pages::menu::MenuCamera>,
+            With<crate::pages::gallery::GalleryCamera>,
         )>,
     >,
     mut scene_cameras: Query<
         &mut RenderTarget,
         (
-            Without<crate::menu::MenuCamera>,
-            Without<crate::gallery::GalleryCamera>,
+            Without<crate::pages::menu::MenuCamera>,
+            Without<crate::pages::gallery::GalleryCamera>,
             With<crate::gameplay::camera::FollowCamera>,
         ),
     >,
@@ -233,7 +233,7 @@ fn resize_target(
     }
     drop(image);
     // 菜单相机缩放系数 = 窗口缩放 × zoom；只缩不放大，高度不参与。
-    let menu_scale = scale_factor * crate::menu::zoom(physical.x as f32 / scale_factor);
+    let menu_scale = scale_factor * crate::pages::menu::zoom(physical.x as f32 / scale_factor);
     for mut camera in &mut menu_cameras {
         if let RenderTarget::Image(image) = &mut *camera {
             if (image.scale_factor - menu_scale).abs() > f32::EPSILON {
@@ -294,12 +294,12 @@ fn report_asset_failure(
 /// 就绪检查统一用于正常游戏与离屏，不以“加载成功日志”代替实体实例化。
 /// 对局业务就绪汇总委托 `gameplay::session`，本模块只按页面分流并保留字体门槛。
 pub(crate) fn content_ready(world: &mut World) -> bool {
-    if !crate::font::assets_ready(world) {
+    if !crate::ui::font::assets_ready(world) {
         return false;
     }
     match world.resource::<State<GameState>>().get() {
-        GameState::Menu => crate::menu::assets_ready(world),
-        GameState::Gallery => crate::gallery::assets_ready(world),
+        GameState::Menu => crate::pages::menu::assets_ready(world),
+        GameState::Gallery => crate::pages::gallery::assets_ready(world),
         _ => crate::gameplay::session::content_ready(world),
     }
 }
