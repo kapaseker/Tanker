@@ -53,7 +53,7 @@ fn read_player_input(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::enemy::EnemyTank;
+    use crate::gameplay::enemy::EnemyTank;
     use crate::ground;
     use crate::tank::driving::{DrivingPlugin, TANK_SIZE, TurnRate, tank_body};
     use bevy::time::TimeUpdateStrategy;

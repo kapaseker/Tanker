@@ -4,7 +4,7 @@
 //! 物理与逻辑清理（刚体、碰撞体、敌人实体）在射击系统命中瞬间已完成，
 //! 本模块生成的实体不带任何物理组件，纯表现。
 
-use crate::enemy::EnemyDestroyed;
+use crate::gameplay::enemy::EnemyDestroyed;
 use bevy::{asset::LoadState, prelude::*, world_serialization::WorldAsset};
 use bevy_vox_scene::{FlipbookFrame, FlipbookPlayer, FlipbookRepeatMode};
 use flipbook::FlipbookSpeed;
@@ -19,7 +19,7 @@ const EXPLOSION_SCALE: f32 = 2.0;
 
 /// 爆炸场景根标记；计时到期后整棵子树（含全部帧节点）随之销毁。
 #[derive(Component)]
-pub(super) struct Explosion;
+pub(crate) struct Explosion;
 
 /// 爆炸根实体的存活计时；时长由加载后的动画组件推导（见 [`arm_explosion_lifetime`]）。
 #[derive(Component)]
@@ -30,7 +30,7 @@ struct ExplosionLifetime(Timer);
 struct ExplosionAssets(Option<Handle<WorldAsset>>);
 
 /// 离屏战斗开始前预热爆炸资源，命中帧不能因异步加载跳过表现。
-pub(super) fn assets_ready(world: &World) -> bool {
+pub(crate) fn assets_ready(world: &World) -> bool {
     world
         .get_resource::<ExplosionAssets>()
         .and_then(|assets| assets.0.as_ref())
@@ -42,7 +42,7 @@ pub(super) fn assets_ready(world: &World) -> bool {
 }
 
 /// 注册爆炸资源加载、击毁消息消费与到期清理。
-pub(super) struct ExplosionPlugin;
+pub(crate) struct ExplosionPlugin;
 
 impl Plugin for ExplosionPlugin {
     fn build(&self, app: &mut App) {
@@ -375,7 +375,7 @@ mod tests {
             0.0,
         )));
         // 走真实击毁消息，验证生产生成路径的尺寸和位置，而不是测试中手动缩放。
-        let position = Vec3::new(5.0, crate::enemy::ENEMY_SIZE.y / 2.0, 2.0);
+        let position = Vec3::new(5.0, crate::gameplay::enemy::ENEMY_SIZE.y / 2.0, 2.0);
         app.world_mut().write_message(EnemyDestroyed { position });
         app.update();
         let root = app

@@ -14,9 +14,7 @@ use bevy::{
 };
 use bevy_vox_scene::{VoxLoaderSettings, VoxScenePlugin};
 
-use crate::{
-    enemy, explosion, firing, font, gallery, gameplay, ground, menu, offscreen, tank, ui_resources,
-};
+use crate::{font, gallery, gameplay, ground, menu, offscreen, tank, ui_resources};
 use state::GameState;
 
 /// 当前加载的 MagicaVoxel 场景资源路径（相对 `assets/`）。
@@ -58,11 +56,11 @@ pub(super) fn run(options: Option<offscreen::Options>) -> Result<(), String> {
                 ..default()
             }),
         },
-        firing::FiringPlugin,
+        gameplay::combat::firing::FiringPlugin,
         PhysicsPlugins::default(),
         ground::GroundPlugin,
-        enemy::EnemyPlugin,
-        explosion::ExplosionPlugin,
+        gameplay::enemy::EnemyPlugin,
+        gameplay::combat::explosion::ExplosionPlugin,
         gameplay::player::PlayerPlugin,
         tank::driving::DrivingPlugin,
         tank::track::TrackAnimationPlugin,

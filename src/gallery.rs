@@ -403,7 +403,7 @@ pub(crate) fn validate(world: &World) -> Result<String, String> {
         let mut wheels = 0;
         for (entity, _, visible) in nodes {
             if world.get::<crate::gameplay::player::Tank>(entity).is_some()
-                || world.get::<crate::enemy::EnemyTank>(entity).is_some()
+                || world.get::<crate::gameplay::enemy::EnemyTank>(entity).is_some()
                 || world.get::<avian3d::prelude::RigidBody>(entity).is_some()
             {
                 return Err("预览混入游戏行为或物理组件".into());

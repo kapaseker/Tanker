@@ -9,9 +9,9 @@ use crate::tank::{driving, track, visual};
 
 /// 非炮管碰撞尺寸（长、高、宽），单位米；尺寸契约统一由敌人模型推导，
 /// 高度复用玩家底盘的权威值，避免与玩家驾驶刚体出现两套数据源。
-pub(super) const ENEMY_SIZE: Vec3 = Vec3::from_array(crate::tank::model::enemy::COLLISION_SIZE);
+pub(crate) const ENEMY_SIZE: Vec3 = Vec3::from_array(crate::tank::model::enemy::COLLISION_SIZE);
 /// 单轮敌人数；被击毁后不补充。
-pub(super) const ENEMY_COUNT: usize = 10;
+pub(crate) const ENEMY_COUNT: usize = 10;
 /// 交战区半径，单位：米；出生中心在该半径内均匀采样，离 300 米场地边缘留有充足余量。
 const SPAWN_LIMIT: f32 = 120.0;
 /// 水平外接圆之间保留的净空，单位米；覆盖随机朝向，避免出生时接触。
@@ -29,12 +29,12 @@ const SPAWN_DROP_Y: f32 = 3.0;
 
 /// 仅标记敌人根实体，供炮弹筛选碰撞目标及统计剩余数量。
 #[derive(Component)]
-pub(super) struct EnemyTank;
+pub(crate) struct EnemyTank;
 
 /// 敌人被击毁的消息；位置为被毁车体中心的世界坐标，供表现层（爆炸）消费。
 /// 消息类型放在敌人域：射击系统是生产方，爆炸表现是消费方，后者无需感知射击。
 #[derive(Message)]
-pub(super) struct EnemyDestroyed {
+pub(crate) struct EnemyDestroyed {
     pub(super) position: Vec3,
 }
 
@@ -43,7 +43,7 @@ pub(super) struct EnemyDestroyed {
 struct EnemyAsset(Handle<WorldAsset>);
 
 /// 注册开局随机放置和一次性加载状态汇报。
-pub(super) struct EnemyPlugin;
+pub(crate) struct EnemyPlugin;
 
 impl Plugin for EnemyPlugin {
     fn build(&self, app: &mut App) {

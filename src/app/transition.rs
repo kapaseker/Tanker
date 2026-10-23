@@ -308,20 +308,20 @@ pub(crate) fn content_ready(world: &mut World) -> bool {
         return crate::gallery::assets_ready(world);
     }
     if !world.contains_resource::<crate::ground::TerrainReady>()
-        || !crate::firing::assets_ready(world)
-        || !crate::explosion::assets_ready(world)
+        || !crate::gameplay::combat::firing::assets_ready(world)
+        || !crate::gameplay::combat::explosion::assets_ready(world)
     {
         return false;
     }
     let tanks = world
-        .query_filtered::<(), Or<(With<crate::gameplay::player::Tank>, With<crate::enemy::EnemyTank>)>>()
+        .query_filtered::<(), Or<(With<crate::gameplay::player::Tank>, With<crate::gameplay::enemy::EnemyTank>)>>()
         .iter(world)
         .count();
     let tracks = world
         .query_filtered::<(), With<crate::tank::track::TracksValidated>>()
         .iter(world)
         .count();
-    if tanks != crate::enemy::ENEMY_COUNT + 1 || tracks != tanks {
+    if tanks != crate::gameplay::enemy::ENEMY_COUNT + 1 || tracks != tanks {
         return false;
     }
     let mut roots = world.query::<(&WorldAssetRoot, Option<&WorldInstance>)>();
@@ -436,8 +436,8 @@ fn cleanup_session(world: &mut World) {
         world.despawn(entity);
     }
     crate::ground::reset_session(world);
-    crate::enemy::reset_session(world);
-    crate::firing::reset_session(world);
+    crate::gameplay::enemy::reset_session(world);
+    crate::gameplay::combat::firing::reset_session(world);
     world.remove_resource::<super::VoxScene>();
 }
 

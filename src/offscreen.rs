@@ -342,9 +342,9 @@ fn inject_input(
 fn collect_evidence(
     mut evidence: ResMut<Evidence>,
     mut failures: MessageReader<UntypedAssetLoadFailedEvent>,
-    mut destroyed: MessageReader<crate::enemy::EnemyDestroyed>,
-    bullets: Query<&Transform, With<crate::firing::Bullet>>,
-    explosions: Query<(), With<crate::explosion::Explosion>>,
+    mut destroyed: MessageReader<crate::gameplay::enemy::EnemyDestroyed>,
+    bullets: Query<&Transform, With<crate::gameplay::combat::firing::Bullet>>,
+    explosions: Query<(), With<crate::gameplay::combat::explosion::Explosion>>,
 ) {
     for failure in failures.read() {
         evidence
@@ -480,21 +480,21 @@ fn shader_pending(error: &bevy::shader::ShaderCacheError) -> bool {
 fn scene_ready(app: &mut App) -> bool {
     let world = app.world_mut();
     if !world.contains_resource::<crate::ground::TerrainReady>()
-        || !crate::firing::assets_ready(world)
-        || !crate::explosion::assets_ready(world)
+        || !crate::gameplay::combat::firing::assets_ready(world)
+        || !crate::gameplay::combat::explosion::assets_ready(world)
         || !crate::font::assets_ready(world)
     {
         return false;
     }
     let tank_count = world
-        .query_filtered::<(), Or<(With<crate::gameplay::player::Tank>, With<crate::enemy::EnemyTank>)>>()
+        .query_filtered::<(), Or<(With<crate::gameplay::player::Tank>, With<crate::gameplay::enemy::EnemyTank>)>>()
         .iter(world)
         .count();
     let validated = world
         .query_filtered::<(), With<crate::tank::track::TracksValidated>>()
         .iter(world)
         .count();
-    if tank_count != crate::enemy::ENEMY_COUNT + 1 || validated != tank_count {
+    if tank_count != crate::gameplay::enemy::ENEMY_COUNT + 1 || validated != tank_count {
         return false;
     }
     let mut roots = world.query::<(&WorldAssetRoot, Option<&WorldInstance>)>();
@@ -558,7 +558,7 @@ fn wait_render(app: &mut App, require_scene: bool) -> Result<(), String> {
 /// 将真实敌人调整为战斗测试布局；仍保留原有动态刚体、碰撞体和资源层级。
 fn arrange_combat(world: &mut World) {
     // 新敌人与玩家同高，在真实平地直接验证水平命中。
-    let mut query = world.query_filtered::<Entity, With<crate::enemy::EnemyTank>>();
+    let mut query = world.query_filtered::<Entity, With<crate::gameplay::enemy::EnemyTank>>();
     let mut enemies: Vec<_> = query.iter(world).collect();
     enemies.sort_by_key(|entity| entity.to_bits());
     for (index, entity) in enemies.into_iter().enumerate() {
@@ -607,7 +607,7 @@ fn validate_scene_state(
     terrain: Query<(), With<crate::ground::TerrainSurface>>,
     tanks: Query<
         (&Transform, Has<crate::gameplay::player::Tank>),
-        Or<(With<crate::gameplay::player::Tank>, With<crate::enemy::EnemyTank>)>,
+        Or<(With<crate::gameplay::player::Tank>, With<crate::gameplay::enemy::EnemyTank>)>,
     >,
     players: Query<&Transform, With<crate::gameplay::player::Tank>>,
     cameras: Query<&Transform, With<crate::gameplay::camera::FollowCamera>>,
@@ -632,7 +632,7 @@ fn validate_scene_state(
         let half_height = if is_player {
             crate::tank::driving::TANK_SIZE.y
         } else {
-            crate::enemy::ENEMY_SIZE.y
+            crate::gameplay::enemy::ENEMY_SIZE.y
         } / 2.0;
         ensure(
             tank.translation.y - half_height >= origin.y - hit.distance - 0.1,
@@ -665,7 +665,7 @@ fn run_scenario(app: &mut App, options: &Options, report: &mut String) -> Result
     if options.enemy_wheels {
         let world = app.world_mut();
         let enemy = world
-            .query_filtered::<Entity, With<crate::enemy::EnemyTank>>()
+            .query_filtered::<Entity, With<crate::gameplay::enemy::EnemyTank>>()
             .iter(world)
             .min_by_key(|e| e.to_bits())
             .ok_or("未找到敌人轮组目标")?;
@@ -694,7 +694,7 @@ fn run_scenario(app: &mut App, options: &Options, report: &mut String) -> Result
     ));
     let world = app.world_mut();
     let mut enemies: Vec<_> = world
-        .query_filtered::<&Transform, With<crate::enemy::EnemyTank>>()
+        .query_filtered::<&Transform, With<crate::gameplay::enemy::EnemyTank>>()
         .iter(world)
         .map(|transform| transform.translation)
         .collect();
@@ -790,17 +790,17 @@ fn run_scenario(app: &mut App, options: &Options, report: &mut String) -> Result
                 report,
                 &mut failures,
                 world
-                    .query_filtered::<(), With<crate::enemy::EnemyTank>>()
+                    .query_filtered::<(), With<crate::gameplay::enemy::EnemyTank>>()
                     .iter(world)
                     .count()
-                    == crate::enemy::ENEMY_COUNT - 1,
+                    == crate::gameplay::enemy::ENEMY_COUNT - 1,
                 "单次命中只清理一辆敌人",
             );
             record_check(
                 report,
                 &mut failures,
                 world
-                    .query_filtered::<(), With<crate::explosion::Explosion>>()
+                    .query_filtered::<(), With<crate::gameplay::combat::explosion::Explosion>>()
                     .iter(world)
                     .count()
                     == 0,
@@ -810,7 +810,7 @@ fn run_scenario(app: &mut App, options: &Options, report: &mut String) -> Result
                 report,
                 &mut failures,
                 world
-                    .query_filtered::<(), With<crate::firing::Bullet>>()
+                    .query_filtered::<(), With<crate::gameplay::combat::firing::Bullet>>()
                     .iter(world)
                     .count()
                     == 0,
@@ -1444,7 +1444,7 @@ fn capture_wheel_views(app: &mut App, output: &Path) -> Result<(), String> {
         Vec3::new(13.0, 10.0, 18.0),
     )?;
     let half = if app.world().contains_resource::<WheelTarget>() {
-        crate::enemy::ENEMY_SIZE
+        crate::gameplay::enemy::ENEMY_SIZE
     } else {
         crate::tank::driving::TANK_SIZE
     } / 2.0;

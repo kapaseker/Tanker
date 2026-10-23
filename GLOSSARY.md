@@ -18,9 +18,9 @@
 |---|---|---|---|---|---|---|
 | 玩家坦克（碰撞框） | 车体及履带相位画布135×36×26 | 7.5 | 2.6 | 3.6 | `COLLISION_MIN/MAX`（`src/tank/model/player.rs`）→ `TANK_SIZE` / `STEP_CLIMB_RADIUS`（`src/tank/driving.rs`） | 整车圆角箱形碰撞体（圆角 0.2 m，能翻 1 档 0.1 m 台阶，总尺寸不变）；`body.vox`（含炮塔）+ `barrel.vox` + 玩家履带包；含炮管视觉全长 10.5 m，炮管不碰撞，见 `docs/player-model.md` |
 | 敌人坦克（碰撞框） | 车体及履带相位画布114×34×26 | 6.6 | 2.6 | 3.4 | `COLLISION_SIZE`（`src/tank/model/enemy.rs`，高度沿用玩家底盘契约）→ `ENEMY_SIZE`、`ENEMY_TRACKS.size` | 非炮管圆角整车框（圆角0.2 m）；车身、炮管、履带轮组三包，含炮管视觉全长9 m，见 `docs/enemy-model.md` |
-| 子弹 | 4×4×4 | 0.4 | 0.4 | 0.4 | `BULLET_SIZE`（`src/firing.rs`） | 立方体；子弹性 `assets/tank/barrels/player/lance/bullet.vox` |
+| 子弹 | 4×4×4 | 0.4 | 0.4 | 0.4 | `BULLET_SIZE`（`src/gameplay/combat/firing.rs`） | 立方体；子弹性 `assets/tank/barrels/player/lance/bullet.vox` |
 
-坦克与敌人的视觉包围盒有集成测试断言，与上表一致（`src/firing.rs` 中 `real_vox_assets_fire_and_clean_up_scene_instances`）。
+坦克与敌人的视觉包围盒有集成测试断言，与上表一致（`src/gameplay/combat/firing.rs` 中 `real_vox_assets_fire_and_clean_up_scene_instances`）。
 
 ## 驾驶与履带
 
@@ -53,20 +53,20 @@
 | 含义 | 数值 | 权威定义 |
 |---|---|---|
 | 玩家坦克出生中心 Y | 1.3（= `TANK_SIZE.y / 2`） | `src/app/mod.rs` `setup_scene` |
-| 敌人坦克出生中心 Y | 3.0（落地后平地中心约 1.3） | `SPAWN_DROP_Y`（`src/enemy.rs`） |
-| 炮口局部坐标（车体根节点下，车头为 −X） | (−6.95, 0.7, 0) | `MUZZLE_POSITION`（`src/firing.rs`） |
+| 敌人坦克出生中心 Y | 3.0（落地后平地中心约 1.3） | `SPAWN_DROP_Y`（`src/gameplay/enemy.rs`） |
+| 炮口局部坐标（车体根节点下，车头为 −X） | (−6.95, 0.7, 0) | `MUZZLE_POSITION`（`src/gameplay/combat/firing.rs`） |
 | 相机水平后退距离 / 竖直高度 | 16 / 9 | `CAMERA_DISTANCE` / `CAMERA_HEIGHT`（`src/gameplay/camera.rs`） |
 | 相机视线相对车身的上抬角 | 8° | `CAMERA_PITCH_UP_DEGREES`（`src/gameplay/camera.rs`） |
-| 敌人数量 / 出生中心半径、与玩家及彼此最小中心距 | 10 / ±120 / 约8.87 / 约8.42 | `ENEMY_COUNT` / `SPAWN_LIMIT` / `spawn_clearance`（双方水平外接半径之和+`SPAWN_GAP` 1 m，`src/enemy.rs`） |
-| 场地面积、子弹射程 | 360000 m² / 2000 m | `AREA`（`src/ground.rs`）/ `BULLET_RANGE`（`src/firing.rs`） |
+| 敌人数量 / 出生中心半径、与玩家及彼此最小中心距 | 10 / ±120 / 约8.87 / 约8.42 | `ENEMY_COUNT` / `SPAWN_LIMIT` / `spawn_clearance`（双方水平外接半径之和+`SPAWN_GAP` 1 m，`src/gameplay/enemy.rs`） |
+| 场地面积、子弹射程 | 360000 m² / 2000 m | `AREA`（`src/ground.rs`）/ `BULLET_RANGE`（`src/gameplay/combat/firing.rs`） |
 
 ## 术语对照
 
 | 领域词 | 代码标识 |
 |---|---|
 | 玩家坦克 | `Tank`（`src/gameplay/player.rs`）、`tank_body()`（`src/tank/driving.rs`） |
-| 敌人坦克（靶车） | `EnemyTank`、`ENEMY_COUNT`（`src/enemy.rs`） |
-| 子弹 | `Bullet`、`Gun`（`src/firing.rs`） |
+| 敌人坦克（靶车） | `EnemyTank`、`ENEMY_COUNT`（`src/gameplay/enemy.rs`） |
+| 子弹 | `Bullet`、`Gun`（`src/gameplay/combat/firing.rs`） |
 | 场地 / 地形 | `GroundPlugin`、`GroundMap`、`TerrainChunk`、`TerrainSurface`（`src/ground.rs`）；地形数据由 `scripts/generate_ground.py` 生成 |
 | 竞技场边界 | `spawn_walls()`（`src/ground.rs`）：四面围墙；`spawn_arena()` 另加一块平坦物理地面，仅供测试 |
 | 跟随相机 | `FollowCamera`、`camera_transform()`（`src/gameplay/camera.rs`） |

@@ -1,6 +1,6 @@
 //! 坦克空格连发：按炮口世界方向发射，沿飞行路径检测敌人，命中或射程耗尽时清理。
 
-use crate::enemy::{EnemyDestroyed, EnemyTank};
+use crate::gameplay::enemy::{EnemyDestroyed, EnemyTank};
 use crate::gameplay::player::Tank;
 use crate::tank::visual;
 use avian3d::prelude::{Collider, ShapeCastConfig, SpatialQuery, SpatialQueryFilter};
@@ -47,7 +47,7 @@ fn spawn_barrels(
 
 /// 子弹根节点的飞行状态；独立于坦克场景层级，发射后保持原方向。
 #[derive(Component)]
-pub(super) struct Bullet {
+pub(crate) struct Bullet {
     /// 发射瞬间确定的世界空间单位方向向量，不随相机或坦克转向。
     direction: Vec3,
     /// 自出生以来累计飞行的距离，单位：世界单位。
@@ -64,7 +64,7 @@ struct Gun {
 }
 
 /// 离屏运行须在开始计帧前确认弹体及其依赖已加载，避免首次输入被吞掉。
-pub(super) fn assets_ready(world: &World) -> bool {
+pub(crate) fn assets_ready(world: &World) -> bool {
     world.get_resource::<Gun>().is_some_and(|gun| {
         world
             .resource::<AssetServer>()
@@ -80,7 +80,7 @@ pub(crate) fn reset_session(world: &mut World) {
 }
 
 /// 注册子弹资源加载、空格发射与飞行清理系统。
-pub(super) struct FiringPlugin;
+pub(crate) struct FiringPlugin;
 
 impl Plugin for FiringPlugin {
     /// 在变换传播完成后发射，确保读取到坦克本帧的世界位置和方向。
@@ -385,12 +385,12 @@ mod tests {
             .map(|&(position, yaw)| {
                 app.world_mut()
                     .spawn((
-                        crate::enemy::EnemyTank,
+                        crate::gameplay::enemy::EnemyTank,
                         RigidBody::Static,
                         Collider::cuboid(
-                            crate::enemy::ENEMY_SIZE.x,
-                            crate::enemy::ENEMY_SIZE.y,
-                            crate::enemy::ENEMY_SIZE.z,
+                            crate::gameplay::enemy::ENEMY_SIZE.x,
+                            crate::gameplay::enemy::ENEMY_SIZE.y,
+                            crate::gameplay::enemy::ENEMY_SIZE.z,
                         ),
                         Transform::from_translation(position)
                             .with_rotation(Quat::from_rotation_y(yaw)),
@@ -431,7 +431,7 @@ mod tests {
     #[test]
     fn modern_muzzle_hits_ground_level_enemy_without_platform() {
         let origin = MUZZLE_POSITION + Vec3::Y * crate::tank::driving::TANK_SIZE.y / 2.0;
-        for (height, should_hit) in [(crate::enemy::ENEMY_SIZE.y / 2.0, true), (4.0, false)] {
+        for (height, should_hit) in [(crate::gameplay::enemy::ENEMY_SIZE.y / 2.0, true), (4.0, false)] {
             let (mut app, enemies) = hit_test_app(&[(Vec3::new(-12.0, height, 0.0), 0.0)]);
             let bullet = test_bullet(&mut app, origin, Vec3::NEG_X, 0.0);
             advance_test_bullets(&mut app, 0.5);
@@ -604,7 +604,7 @@ mod tests {
         .register_type::<FogVolume>()
         .init_resource::<ButtonInput<KeyCode>>()
         .add_message::<EnemyDestroyed>()
-        .add_systems(Update, crate::enemy::spawn_enemy_barrels)
+        .add_systems(Update, crate::gameplay::enemy::spawn_enemy_barrels)
         .add_systems(Startup, crate::ground::load_ground)
         .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f32(
             0.25,
@@ -635,7 +635,7 @@ mod tests {
                 WorldAssetRoot(enemy_asset.clone()),
                 crate::tank::track::ENEMY_TRACKS,
                 EnemyTank,
-                Transform::from_xyz(15.0, crate::enemy::ENEMY_SIZE.y / 2.0, 0.0),
+                Transform::from_xyz(15.0, crate::gameplay::enemy::ENEMY_SIZE.y / 2.0, 0.0),
             ))
             .id();
         // 真实资源异步加载；这里使用现实时间限制等待，避免失败时测试无限循环。
