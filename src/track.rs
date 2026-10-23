@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use crate::driving::{TANK_SIZE, TurnRate};
 
 /// 每相位沿履带轮廓移动一体素，单位：米；三相位合计为 0.3 米齿距。
-const TRACK_PHASE_STEP: f32 = crate::VOXEL_SIZE;
+const TRACK_PHASE_STEP: f32 = crate::app::VOXEL_SIZE;
 /// 相位数（与履带包变体节点数一致）
 const TRACK_PHASES: i64 = 3;
 /// 每辆车的履带资产与整车尺寸契约；添加此组件后自动挂载一次履带。
@@ -240,7 +240,7 @@ fn validate_tracks(
                             wheel.size.0 as f32,
                             wheel.size.2 as f32,
                             wheel.size.1 as f32,
-                        ) * crate::VOXEL_SIZE;
+                        ) * crate::app::VOXEL_SIZE;
                         if !(high - low).abs_diff_eq(size, 1e-4)
                             || (high + low).length() > 1e-4
                             || wheel.center[2] - wheel.envelope <= spec.clearance.0
@@ -320,12 +320,12 @@ fn wheel_transform(
     let [x, y, z] = wheel.center;
     let (sx, sy, sz) = canvas;
     Transform::from_xyz(
-        (sx as f32 / 2.0 - x) * crate::VOXEL_SIZE,
-        (z - sz as f32 / 2.0) * crate::VOXEL_SIZE,
-        (y - sy as f32 / 2.0) * crate::VOXEL_SIZE,
+        (sx as f32 / 2.0 - x) * crate::app::VOXEL_SIZE,
+        (z - sz as f32 / 2.0) * crate::app::VOXEL_SIZE,
+        (y - sy as f32 / 2.0) * crate::app::VOXEL_SIZE,
     )
     .with_rotation(Quat::from_rotation_z(
-        distance / (wheel.radius * crate::VOXEL_SIZE),
+        distance / (wheel.radius * crate::app::VOXEL_SIZE),
     ))
 }
 
@@ -440,7 +440,7 @@ mod tests {
             VisibilityPlugin,
             VoxScenePlugin {
                 global_settings: Some(VoxLoaderSettings {
-                    voxel_size: crate::VOXEL_SIZE,
+                    voxel_size: crate::app::VOXEL_SIZE,
                     ..default()
                 }),
             },
@@ -662,7 +662,7 @@ mod tests {
         let spec = &crate::player_model::WHEELS[0][0];
         let forward = wheel_transform(spec, PLAYER_TRACKS.canvas, 0.001);
         let reverse = wheel_transform(spec, PLAYER_TRACKS.canvas, -0.001);
-        let bottom = Vec3::NEG_Y * spec.radius * crate::VOXEL_SIZE;
+        let bottom = Vec3::NEG_Y * spec.radius * crate::app::VOXEL_SIZE;
         assert!((forward.rotation * bottom).x > 0.0);
         assert!((reverse.rotation * bottom).x < 0.0);
         // 正 Z 角速度叉乘底部 −Y，得到 +X 接触速度。

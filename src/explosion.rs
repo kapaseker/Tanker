@@ -104,7 +104,7 @@ fn spawn_explosions(
         // mesh 以模型几何中心为原点（加载器默认 CENTER），根位置即爆炸球心。
         commands.spawn((
             Explosion,
-            crate::transition::SessionEntity,
+            crate::app::transition::SessionEntity,
             Transform::from_translation(event.position).with_scale(Vec3::splat(EXPLOSION_SCALE)),
             WorldAssetRoot(handle.clone()),
         ));
@@ -354,7 +354,7 @@ mod tests {
             TransformPlugin,
             VoxScenePlugin {
                 global_settings: Some(VoxLoaderSettings {
-                    voxel_size: crate::VOXEL_SIZE,
+                    voxel_size: crate::app::VOXEL_SIZE,
                     ..default()
                 }),
             },

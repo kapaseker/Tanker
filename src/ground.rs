@@ -192,7 +192,7 @@ fn spawn_terrain(
             });
             commands.spawn((
                 TerrainChunk,
-                crate::transition::SessionEntity,
+                crate::app::transition::SessionEntity,
                 Mesh3d(meshes.add(chunk)),
                 MeshMaterial3d(material.clone()),
             ));
@@ -201,7 +201,7 @@ fn spawn_terrain(
             cuboid_count += cuboids.len();
             commands.spawn((
                 TerrainSurface,
-                crate::transition::SessionEntity,
+                crate::app::transition::SessionEntity,
                 RigidBody::Static,
                 Collider::compound(
                     cuboids
@@ -363,7 +363,7 @@ pub(super) fn spawn_walls(commands: &mut Commands) {
             ),
         ] {
             commands.spawn((
-                crate::transition::SessionEntity,
+                crate::app::transition::SessionEntity,
                 RigidBody::Static,
                 Collider::cuboid(size.x, size.y, size.z),
                 Transform::from_translation(position),
@@ -909,7 +909,7 @@ mod tests {
             let size_y = top - COLLIDER_BASE_Y;
             app.world_mut().spawn((
                 TerrainSurface,
-                crate::transition::SessionEntity,
+                crate::app::transition::SessionEntity,
                 RigidBody::Static,
                 Collider::cuboid(x1 - x0, size_y, 20.0),
                 Transform::from_xyz((x0 + x1) / 2.0, (top + COLLIDER_BASE_Y) / 2.0, 0.0),

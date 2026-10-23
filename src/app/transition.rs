@@ -1,6 +1,6 @@
 //! 菜单与对局共用画面合成：内容相机写入纹理，最终相机统一混合到黑色。
 
-use crate::GameState;
+use super::state::GameState;
 use avian3d::prelude::{Physics, PhysicsTime};
 use bevy::{
     asset::{AssetId, UntypedAssetLoadFailedEvent},
@@ -438,7 +438,7 @@ fn cleanup_session(world: &mut World) {
     crate::ground::reset_session(world);
     crate::enemy::reset_session(world);
     crate::firing::reset_session(world);
-    world.remove_resource::<crate::VoxScene>();
+    world.remove_resource::<super::VoxScene>();
 }
 
 /// 报告记录实际阶段、GPU 就绪与相机目标，避免依赖终端的截断探针。

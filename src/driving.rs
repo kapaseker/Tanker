@@ -7,11 +7,11 @@ use bevy::{prelude::*, transform::TransformSystems};
 /// 玩家车身与履带的单一碰撞框（X 长、Y 高、Z 宽），不包含伸出的炮管，单位米。
 pub(super) const TANK_SIZE: Vec3 = Vec3::new(
     (crate::player_model::COLLISION_MAX[0] - crate::player_model::COLLISION_MIN[0]) as f32
-        * crate::VOXEL_SIZE,
+        * crate::app::VOXEL_SIZE,
     (crate::player_model::COLLISION_MAX[2] - crate::player_model::COLLISION_MIN[2]) as f32
-        * crate::VOXEL_SIZE,
+        * crate::app::VOXEL_SIZE,
     (crate::player_model::COLLISION_MAX[1] - crate::player_model::COLLISION_MIN[1]) as f32
-        * crate::VOXEL_SIZE,
+        * crate::app::VOXEL_SIZE,
 );
 /// 前进与后退速度，单位：米/秒。
 const FORWARD_SPEED: f32 = 6.0;
@@ -146,7 +146,7 @@ fn apply_input(
 fn read_player_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut players: Query<&mut DrivingInput, With<Tank>>,
-    fade: Option<Res<crate::transition::Fade>>,
+    fade: Option<Res<crate::app::transition::Fade>>,
 ) {
     for mut input in &mut players {
         *input = if fade.as_ref().is_none_or(|fade| fade.accepts_input()) {

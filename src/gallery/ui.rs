@@ -641,9 +641,9 @@ mod tests {
         key(&mut app, KeyCode::Enter);
         assert_eq!(
             app.world().resource::<Fade>().phase,
-            crate::transition::Phase::Idle
+            crate::app::transition::Phase::Idle
         );
-        app.world_mut().resource_mut::<Fade>().phase = crate::transition::Phase::Out;
+        app.world_mut().resource_mut::<Fade>().phase = crate::app::transition::Phase::Out;
         key(&mut app, KeyCode::End);
         assert_eq!(app.world().resource::<View>().scroll, 0.0);
         key(&mut app, KeyCode::Escape);
@@ -654,7 +654,7 @@ mod tests {
         assert!(app.world().resource::<crate::menu::ReturnFocus>().0);
         assert_eq!(
             app.world().resource::<Fade>().phase,
-            crate::transition::Phase::Out
+            crate::app::transition::Phase::Out
         );
     }
 
@@ -674,7 +674,7 @@ mod tests {
         app.update();
         assert_eq!(
             app.world().resource::<Fade>().phase,
-            crate::transition::Phase::Idle
+            crate::app::transition::Phase::Idle
         );
         app.world_mut()
             .resource_mut::<ButtonInput<MouseButton>>()

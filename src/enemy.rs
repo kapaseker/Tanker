@@ -8,10 +8,10 @@ use bevy::{asset::LoadState, prelude::*, world_serialization::WorldAsset};
 /// 非炮管碰撞尺寸（长、高、宽），单位米；高度直接复用玩家权威值。
 pub(super) const ENEMY_SIZE: Vec3 = Vec3::new(
     (crate::enemy_model::COLLISION_MAX[0] - crate::enemy_model::COLLISION_MIN[0]) as f32
-        * crate::VOXEL_SIZE,
+        * crate::app::VOXEL_SIZE,
     crate::driving::TANK_SIZE.y,
     (crate::enemy_model::COLLISION_MAX[1] - crate::enemy_model::COLLISION_MIN[1]) as f32
-        * crate::VOXEL_SIZE,
+        * crate::app::VOXEL_SIZE,
 );
 /// 单轮敌人数；被击毁后不补充。
 pub(super) const ENEMY_COUNT: usize = 10;
@@ -138,7 +138,7 @@ fn spawn_enemies(
     for transform in transforms {
         commands.spawn((
             EnemyTank,
-            crate::transition::SessionEntity,
+            crate::app::transition::SessionEntity,
             crate::track::ENEMY_TRACKS,
             WorldAssetRoot(scene.clone()),
             enemy_body(),
@@ -149,8 +149,8 @@ fn spawn_enemies(
     info!(
         "已随机放置 {ENEMY_COUNT} 辆敌人坦克；碰撞尺寸 {ENEMY_SIZE:?} 米，炮管 {:.1} 米、轴高 {:.1} 米",
         (crate::enemy_model::BARREL_X.1 - crate::enemy_model::BARREL_X.0) as f32
-            * crate::VOXEL_SIZE,
-        crate::enemy_model::BORE_HEIGHT * crate::VOXEL_SIZE
+            * crate::app::VOXEL_SIZE,
+        crate::enemy_model::BORE_HEIGHT * crate::app::VOXEL_SIZE
     );
 }
 

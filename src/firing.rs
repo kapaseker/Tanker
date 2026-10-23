@@ -20,10 +20,10 @@ const BULLET_RANGE: f32 = 2000.0;
 /// 炮口与作者化炮管共用格坐标；子弹中心前移半边长，避免与炮口重叠。
 const MUZZLE_POSITION: Vec3 = Vec3::new(
     -(crate::player_model::BARREL_X.1 as f32 - crate::player_model::CANVAS.0 as f32 / 2.0)
-        * crate::VOXEL_SIZE
+        * crate::app::VOXEL_SIZE
         - BULLET_SIZE / 2.0,
     (crate::player_model::BORE_HEIGHT - crate::player_model::CANVAS.2 as f32 / 2.0)
-        * crate::VOXEL_SIZE,
+        * crate::app::VOXEL_SIZE,
     0.0,
 );
 
@@ -163,7 +163,7 @@ fn fire_bullets(
     instances: Res<WorldInstanceSpawner>,
     tanks: Query<(&GlobalTransform, &WorldInstance, &WorldAssetRoot), With<Tank>>,
     barrels: Query<(&WorldAssetRoot, &WorldInstance), With<PlayerBarrel>>,
-    fade: Option<Res<crate::transition::Fade>>,
+    fade: Option<Res<crate::app::transition::Fade>>,
 ) {
     // 场景资源加载完成不等于实体已实例化，两者都就绪后才能确定发射位置。
     let barrel_ready = barrels.single().ok().is_some_and(|(root, instance)| {
@@ -190,7 +190,7 @@ fn fire_bullets(
     debug!("发射子弹：位置={position:?}，方向={direction:?}");
     let transform = Transform::from_translation(position).with_rotation(tank.rotation());
     commands.spawn((
-        crate::transition::SessionEntity,
+        crate::app::transition::SessionEntity,
         Bullet {
             direction,
             distance: 0.0,
@@ -588,7 +588,7 @@ mod tests {
             TransformPlugin,
             VoxScenePlugin {
                 global_settings: Some(VoxLoaderSettings {
-                    voxel_size: crate::VOXEL_SIZE,
+                    voxel_size: crate::app::VOXEL_SIZE,
                     ..default()
                 }),
             },

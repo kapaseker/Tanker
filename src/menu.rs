@@ -1,9 +1,11 @@
 //! 首页使用原生 UI 排版与输入；装饰层复现 HTML 背景和 SVG 方块，标题由原稿导出。
 
 use crate::{
-    GameState,
+    app::{
+        state::GameState,
+        transition::{Fade, SceneTarget},
+    },
     font::UiFont,
-    transition::{Fade, SceneTarget},
     ui_resources::{colors, dimens},
     ui_resources::{
         colors::menu as palette, dimens::menu as dims, strings, strings_cn::menu as labels,
@@ -810,7 +812,7 @@ mod tests {
         press(&mut world, KeyCode::Enter);
         assert_eq!(
             world.resource::<Fade>().phase,
-            crate::transition::Phase::Out
+            crate::app::transition::Phase::Out
         );
         world.insert_resource(Fade::default());
         press(&mut world, KeyCode::Tab);
@@ -818,7 +820,7 @@ mod tests {
         press(&mut world, KeyCode::Enter);
         assert_eq!(
             world.resource::<Fade>().phase,
-            crate::transition::Phase::Out
+            crate::app::transition::Phase::Out
         );
         let focus = world.resource::<MenuInput>().focus;
         press(&mut world, KeyCode::ArrowDown);
@@ -845,7 +847,7 @@ mod tests {
         world.run_system_once(menu_input).unwrap();
         assert_eq!(
             world.resource::<Fade>().phase,
-            crate::transition::Phase::Idle
+            crate::app::transition::Phase::Idle
         );
         world.resource_mut::<ButtonInput<MouseButton>>().clear();
         world
@@ -855,7 +857,7 @@ mod tests {
         world.run_system_once(menu_input).unwrap();
         assert_eq!(
             world.resource::<Fade>().phase,
-            crate::transition::Phase::Idle
+            crate::app::transition::Phase::Idle
         );
         world.resource_mut::<MenuInput>().pointer = Some(point);
         world.resource_mut::<ButtonInput<MouseButton>>().clear();
@@ -870,7 +872,7 @@ mod tests {
         world.run_system_once(menu_input).unwrap();
         assert_eq!(
             world.resource::<Fade>().phase,
-            crate::transition::Phase::Out
+            crate::app::transition::Phase::Out
         );
     }
     /// 布局取 1280px 设计常量；窗口适配只由 zoom 等比缩放承担，无断点分支。

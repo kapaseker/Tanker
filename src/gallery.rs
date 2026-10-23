@@ -2,8 +2,11 @@
 mod ui;
 
 use crate::{
-    GameState, tank_visual, track,
-    transition::{Fade, SceneTarget},
+    app::{
+        state::GameState,
+        transition::{Fade, SceneTarget},
+    },
+    tank_visual, track,
 };
 use bevy::{
     asset::LoadState,
@@ -509,7 +512,7 @@ mod tests {
             TransformPlugin,
             bevy_vox_scene::VoxScenePlugin {
                 global_settings: Some(bevy_vox_scene::VoxLoaderSettings {
-                    voxel_size: crate::VOXEL_SIZE,
+                    voxel_size: crate::app::VOXEL_SIZE,
                     ..default()
                 }),
             },

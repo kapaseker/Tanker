@@ -6,8 +6,8 @@
 
 ## 度量约定
 
-- 世界单位：1 世界单位 = 1 米，由 `VoxScenePlugin` 的全局 `VoxLoaderSettings` 统一设定（`src/main.rs`）。
-- 体素格：MagicaVoxel 单格边长 = 0.1 米（`VOXEL_SIZE`，`src/main.rs`）；所有 `.vox` 模型尺寸都按“格数 × 0.1”换算。
+- 世界单位：1 世界单位 = 1 米，由 `VoxScenePlugin` 的全局 `VoxLoaderSettings` 统一设定（`src/app/mod.rs`）。
+- 体素格：MagicaVoxel 单格边长 = 0.1 米（`VOXEL_SIZE`，`src/app/mod.rs`）；所有 `.vox` 模型尺寸都按“格数 × 0.1”换算。
 - 地形栅格：地形图按 0.5 米采样作者化，视觉网格与碰撞体统一量化到 0.1 米台阶（`AUTHOR_RES` / `TERRAIN_STEP`，`src/ground.rs`）。
 - VOX 轴向映射：VOX 的 Z 为高度（→ Bevy +Y），VOX 的 Y 为宽度（→ Bevy Z），VOX 的 +X 为车头方向（→ Bevy −X）。
 - 尺寸约定：下表 X 为车长方向、Y 为高度、Z 为车宽方向；坦克车头朝局部 −X（`src/driving.rs`）。
@@ -52,7 +52,7 @@
 
 | 含义 | 数值 | 权威定义 |
 |---|---|---|
-| 玩家坦克出生中心 Y | 1.3（= `TANK_SIZE.y / 2`） | `src/main.rs` `setup_scene` |
+| 玩家坦克出生中心 Y | 1.3（= `TANK_SIZE.y / 2`） | `src/app/mod.rs` `setup_scene` |
 | 敌人坦克出生中心 Y | 3.0（落地后平地中心约 1.3） | `SPAWN_DROP_Y`（`src/enemy.rs`） |
 | 炮口局部坐标（车体根节点下，车头为 −X） | (−6.95, 0.7, 0) | `MUZZLE_POSITION`（`src/firing.rs`） |
 | 相机水平后退距离 / 竖直高度 | 16 / 9 | `CAMERA_DISTANCE` / `CAMERA_HEIGHT`（`src/driving.rs`） |

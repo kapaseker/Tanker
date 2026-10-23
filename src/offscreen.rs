@@ -275,7 +275,7 @@ fn setup_target(
     mut commands: Commands,
     target: Option<Res<Target>>,
     mut images: ResMut<Assets<Image>>,
-    cameras: Query<(Entity, &RenderTarget), With<crate::transition::OutputCamera>>,
+    cameras: Query<(Entity, &RenderTarget), With<crate::app::transition::OutputCamera>>,
 ) {
     let image = match target {
         Some(target) => target.0.clone(),
@@ -381,8 +381,8 @@ pub(super) fn run(mut app: App, options: Options) -> Result<(), String> {
         // 启动期 StateTransition 应用 InGame 并运行 OnEnter(setup_scene)，
         // 引导消息与 Pending 取 .last() 后以 InGame 为准，不会落入菜单。
         app.world_mut()
-            .resource_mut::<NextState<crate::GameState>>()
-            .set(crate::GameState::InGame);
+            .resource_mut::<NextState<crate::app::state::GameState>>()
+            .set(crate::app::state::GameState::InGame);
     }
     while app.plugins_state() == PluginsState::Adding {
         bevy::tasks::tick_global_task_pools_on_main_thread();
@@ -846,12 +846,12 @@ fn run_gallery_scenario(
     options: &Options,
     report: &mut String,
 ) -> Result<(), String> {
-    use crate::{
-        GameState,
+    use crate::app::{
+        state::GameState,
         transition::{Fade, Phase},
     };
     wait_render(app, false)?;
-    while !crate::transition::content_ready(app.world_mut()) {
+    while !crate::app::transition::content_ready(app.world_mut()) {
         update(app, Duration::ZERO, None)?;
     }
     capture(app, &options.image_path(0))?;
@@ -989,7 +989,7 @@ fn run_gallery_scenario(
                 for handle in [
                     app.world().resource::<Target>().0.clone(),
                     app.world()
-                        .resource::<crate::transition::SceneTarget>()
+                        .resource::<crate::app::transition::SceneTarget>()
                         .0
                         .clone(),
                 ] {
@@ -1073,9 +1073,9 @@ fn finish_gallery_transition(
     options: &Options,
     cycle: u32,
     direction: &str,
-    target: crate::GameState,
+    target: crate::app::state::GameState,
 ) -> Result<(), String> {
-    use crate::transition::{Fade, Phase};
+    use crate::app::transition::{Fade, Phase};
     let mut saved = [false; 3];
     for _ in 0..2000 {
         update(app, STEP, None)?;
@@ -1103,7 +1103,11 @@ fn finish_gallery_transition(
             }
         }
         if phase == Phase::Idle
-            && *app.world().resource::<State<crate::GameState>>().get() == target
+            && *app
+                .world()
+                .resource::<State<crate::app::state::GameState>>()
+                .get()
+                == target
         {
             ensure(alpha == 0.0, "画廊过渡完成后仍有黑幕")?;
             ensure(
@@ -1118,9 +1122,9 @@ fn finish_gallery_transition(
 
 /// 菜单回归共用真实输入和渲染链路；全黑交接帧单独验收。
 fn run_menu_scenario(app: &mut App, options: &Options, report: &mut String) -> Result<(), String> {
-    use crate::transition::{Fade, Phase};
+    use crate::app::transition::{Fade, Phase};
     wait_render(app, false)?;
-    while !crate::transition::content_ready(app.world_mut()) {
+    while !crate::app::transition::content_ready(app.world_mut()) {
         update(app, Duration::ZERO, None)?;
     }
     ensure(
@@ -1232,7 +1236,7 @@ fn run_menu_scenario(app: &mut App, options: &Options, report: &mut String) -> R
         let handles = [
             app.world().resource::<Target>().0.clone(),
             app.world()
-                .resource::<crate::transition::SceneTarget>()
+                .resource::<crate::app::transition::SceneTarget>()
                 .0
                 .clone(),
         ];
@@ -1257,8 +1261,8 @@ fn run_menu_scenario(app: &mut App, options: &Options, report: &mut String) -> R
             update(app, STEP, None)?;
         }
         for (direction, key_frame, target) in [
-            ("enter", 3, crate::GameState::InGame),
-            ("return", 5, crate::GameState::Menu),
+            ("enter", 3, crate::app::state::GameState::InGame),
+            ("return", 5, crate::app::state::GameState::Menu),
         ] {
             update(app, STEP, Some(key_frame))?;
             let mut saved = [false; 3];
@@ -1287,7 +1291,7 @@ fn run_menu_scenario(app: &mut App, options: &Options, report: &mut String) -> R
                         capture_checked(app, &path, slot == 1)?;
                         report.push_str(&format!(
                             "{}\n",
-                            crate::transition::diagnostics(app.world_mut())
+                            crate::app::transition::diagnostics(app.world_mut())
                         ));
                         report.push_str(&format!("第{cycle}轮 {direction}：阶段={phase:?} alpha={new_alpha:.4} frame={frame} 图片={}\n",path.display()));
                     }
@@ -1299,7 +1303,10 @@ fn run_menu_scenario(app: &mut App, options: &Options, report: &mut String) -> R
                 }
             }
             ensure(
-                *app.world().resource::<State<crate::GameState>>().get() == target,
+                *app.world()
+                    .resource::<State<crate::app::state::GameState>>()
+                    .get()
+                    == target,
                 "过渡未到达目标页面",
             )?;
             if cycle == 1 {
@@ -1314,7 +1321,7 @@ fn run_menu_scenario(app: &mut App, options: &Options, report: &mut String) -> R
                     && app.world().resource::<Fade>().alpha == 0.0,
                 "过渡结束后黑幕重新出现",
             )?;
-            if target == crate::GameState::InGame {
+            if target == crate::app::state::GameState::InGame {
                 validate_scene(app.world_mut())?;
                 session_instances = app
                     .world_mut()
@@ -1343,7 +1350,7 @@ fn run_menu_scenario(app: &mut App, options: &Options, report: &mut String) -> R
                 let world = app.world_mut();
                 ensure(
                     world
-                        .query_filtered::<(), With<crate::transition::SessionEntity>>()
+                        .query_filtered::<(), With<crate::app::transition::SessionEntity>>()
                         .iter(world)
                         .count()
                         == 0,
@@ -1380,7 +1387,7 @@ fn run_menu_scenario(app: &mut App, options: &Options, report: &mut String) -> R
             capture(app, &options.image_path(frame))?;
             report.push_str(&format!(
                 "{}\n",
-                crate::transition::diagnostics(app.world_mut())
+                crate::app::transition::diagnostics(app.world_mut())
             ));
         }
     }
