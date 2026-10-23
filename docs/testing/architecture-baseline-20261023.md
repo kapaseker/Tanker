@@ -3,8 +3,8 @@
 2026-10-23 完成基线记录；未修改生产代码、依赖、断言或原资产，未启动可见窗口。
 基线提交为 `9a0bf8cb22c2d13efe845dd6b4e3c5bf485568ec`，分支 `master`。
 开始时已有未跟踪的 `docs/plans/`，本任务没有修改或纳入提交。
-范围来自本机 `.scratch/architecture-reorganization/issues/01-baseline.md` 与
-`docs/plans/architecture-reorganization.md` 第 6 节。
+范围为目录与职责整理的迁移前完整验收矩阵；原工单和执行计划已在改造完成后清理，
+本记录保留当时的命令与结果，最终验收见 [任务 10](architecture-step10-20261023.md)。
 
 原始证据目录为 `.scratch/architecture-reorganization/evidence/20261023-ticket01-01/`
 （下称 `EVIDENCE`，被 Git 忽略，仅本机保留）。此文保存可同步的结果及资产清单；
