@@ -1,6 +1,6 @@
 # 首页过渡黑屏：修复与验收记录
 
-目录整理导航：当前过渡实现在 `src/app/transition.rs`，首页在 `src/pages/menu/mod.rs`，业务就绪汇总在 `src/gameplay/session.rs`，无窗口预设在 `src/validation/scenarios/menu.rs`。下文保留原修复时的历史路径；最终回归见 [任务 10](architecture-step10-20261023.md)。
+目录整理导航：当前过渡实现在 `src/app/transition.rs`，首页在 `src/pages/index/mod.rs`，业务就绪汇总在 `src/gameplay/session.rs`，无窗口预设在 `src/validation/scenarios/index.rs`（原 `menu` 命名已统一为 `index`）。下文保留原修复时的历史路径；最终回归见 [任务 10](architecture-step10-20261023.md)。
 
 日期：2026-10-21。分类：渲染 / bevy_ui / 页面过渡。状态：**已修复，离屏验收通过**。
 

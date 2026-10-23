@@ -52,7 +52,7 @@ pub(super) fn run(options: Option<validation::Options>) -> Result<(), String> {
         gameplay::camera::FollowCameraPlugin,
         ui::font::UiFontPlugin,
         transition::TransitionPlugin,
-        pages::menu::MenuPlugin,
+        pages::index::IndexPlugin,
         pages::gallery::GalleryPlugin,
     ))
     .insert_resource(GlobalAmbientLight {

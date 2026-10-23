@@ -8,9 +8,9 @@ use bevy::prelude::States;
 /// 菜单期不加载 3D 战斗场景；离屏测试直接把状态置为 InGame 跳过菜单。
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub(crate) enum GameState {
-    /// 主菜单首页（web/index.html 设计还原）。
+    /// 首页（web/index.html 设计还原）。
     #[default]
-    Menu,
+    Index,
     /// Start Game 确认后：黑幕淡出，淡至全黑时生成场景并切 InGame。
     ToGame,
     /// 首页渐出后进入模型画廊。
@@ -18,9 +18,9 @@ pub(crate) enum GameState {
     /// 真实模型的只读展示页。
     Gallery,
     /// 画廊渐出，黑场时回到首页。
-    GalleryToMenu,
+    GalleryToIndex,
     /// Esc 返回首页，先保持当前场景并渐出。
-    ToMenu,
+    ToIndex,
     /// 游戏内：黑幕淡入完成后的正常 gameplay。
     InGame,
 }

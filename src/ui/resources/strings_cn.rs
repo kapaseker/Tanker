@@ -14,7 +14,7 @@ pub(crate) mod gallery {
 }
 
 /// 首页可见文案；品牌标题已烘焙在 PNG 中，不在此重复定义。
-pub(crate) mod menu {
+pub(crate) mod index {
     /// 与菜单交互顺序一致的操作标签。
     pub(crate) const ACTIONS: [&str; 2] = ["开始游戏", "模型画廊"];
     /// 方向键提示后的动作说明。

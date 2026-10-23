@@ -26,9 +26,9 @@ pub(super) fn run_gallery_scenario(
             }
         }
         if cycle == 2 {
-            let layout = *app.world().resource::<crate::pages::menu::Layout>();
+            let layout = *app.world().resource::<crate::pages::index::Layout>();
             app.world_mut()
-                .resource_mut::<crate::pages::menu::MenuInput>()
+                .resource_mut::<crate::pages::index::MenuInput>()
                 .pointer = Some(Vec2::new(
                 layout.hero.x + 40.0,
                 layout.menu_y + layout.row_height + 20.0,
@@ -38,7 +38,7 @@ pub(super) fn run_gallery_scenario(
             app.world_mut().resource_mut::<MenuMouse>().0 = false;
             update(app, STEP, None)?;
             app.world_mut()
-                .resource_mut::<crate::pages::menu::MenuInput>()
+                .resource_mut::<crate::pages::index::MenuInput>()
                 .pointer = None;
         } else {
             update(app, STEP, Some(3))?;
@@ -48,7 +48,7 @@ pub(super) fn run_gallery_scenario(
         report.push_str(&crate::pages::gallery::validate(app.world())?);
         ensure(
             app.world_mut()
-                .query_filtered::<(), With<crate::pages::menu::MenuRoot>>()
+                .query_filtered::<(), With<crate::pages::index::IndexRoot>>()
                 .iter(app.world())
                 .count()
                 == 0,
@@ -190,7 +190,7 @@ pub(super) fn run_gallery_scenario(
         } else {
             update(app, STEP, Some(5))?;
         }
-        finish_gallery_transition(app, options, cycle, "return", GameState::Menu)?;
+        finish_gallery_transition(app, options, cycle, "return", GameState::Index)?;
         for _ in 0..3 {
             update(app, Duration::ZERO, None)?;
         }
@@ -223,7 +223,7 @@ pub(super) fn run_gallery_scenario(
         )?;
         ensure(
             app.world()
-                .resource::<crate::pages::menu::MenuInput>()
+                .resource::<crate::pages::index::MenuInput>()
                 .focus
                 == Some(1),
             "返回未恢复画廊入口焦点",
@@ -232,7 +232,7 @@ pub(super) fn run_gallery_scenario(
             "第{cycle}次返回：首页焦点恢复；预览实体、场景实例和纹理全部清理\n"
         ));
     }
-    capture(app, &options.output.join("gallery-return-menu.png"))?;
+    capture(app, &options.output.join("gallery-return-index.png"))?;
     Ok(())
 }
 

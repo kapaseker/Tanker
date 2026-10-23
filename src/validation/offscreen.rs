@@ -150,7 +150,7 @@ pub(crate) fn run(mut app: App, options: Options) -> Result<(), String> {
         .init_resource::<MenuMouse>()
         .add_systems(PreUpdate, (setup_target, inject_input.after(InputSystems)))
         .add_systems(Last, collect_evidence);
-    if !matches!(options.scenario, Scenario::Menu | Scenario::Gallery) {
+    if !matches!(options.scenario, Scenario::Index | Scenario::Gallery) {
         // 旧场景在首个 StateTransition 前直接请求 InGame 跳过菜单：
         // 启动期 StateTransition 应用 InGame 并运行 OnEnter(session::setup)，
         // 引导消息与 Pending 取 .last() 后以 InGame 为准，不会落入菜单。

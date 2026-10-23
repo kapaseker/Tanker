@@ -3,7 +3,7 @@
 mod combat;
 mod drive;
 mod gallery;
-mod menu;
+mod index;
 pub(super) mod scene;
 mod wheels;
 
@@ -15,7 +15,7 @@ use super::{
 use avian3d::prelude::{LinearVelocity, Position, Rotation};
 use combat::arrange_combat;
 use gallery::run_gallery_scenario;
-use menu::run_menu_scenario;
+use index::run_index_scenario;
 use scene::{subject_state, validate_scene};
 
 /// 内置验证场景，不提供独立于游戏逻辑的测试实现。
@@ -26,8 +26,8 @@ pub(super) enum Scenario {
     Combat,
     /// 所选车型轮组的侧面动画与三视点对照。
     Wheels,
-    /// 主菜单首页：验证 UI 结构、键盘流转与到真实场景的过渡。
-    Menu,
+    /// 首页：验证 UI 结构、键盘流转与到真实场景的过渡。
+    Index,
     /// 模型画廊：真实预览、滚动、自转及反复往返清理。
     Gallery,
 }
@@ -46,7 +46,7 @@ impl Scenario {
                 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 75, 90, 105, 120, 130, 240, 250,
             ],
             // 菜单关键帧按真实阶段动态计帧，固定列表只声明基准图。
-            Self::Menu | Self::Gallery => &[0],
+            Self::Index | Self::Gallery => &[0],
         }
     }
 
@@ -60,11 +60,11 @@ impl Scenario {
             (Self::Wheels, 31..=60) => &[KeyCode::ArrowDown],
             (Self::Wheels, 61..=90) => &[KeyCode::ArrowLeft],
             (Self::Wheels, 91..=120) => &[KeyCode::ArrowRight],
-            (Self::Menu | Self::Gallery, 1) => &[KeyCode::ArrowDown],
-            (Self::Menu | Self::Gallery, 3) => &[KeyCode::Enter],
-            (Self::Menu | Self::Gallery, 5) => &[KeyCode::Escape],
-            (Self::Menu | Self::Gallery, 7) => &[KeyCode::Tab],
-            (Self::Menu | Self::Gallery, 8) => &[KeyCode::Tab, KeyCode::ShiftLeft],
+            (Self::Index | Self::Gallery, 1) => &[KeyCode::ArrowDown],
+            (Self::Index | Self::Gallery, 3) => &[KeyCode::Enter],
+            (Self::Index | Self::Gallery, 5) => &[KeyCode::Escape],
+            (Self::Index | Self::Gallery, 7) => &[KeyCode::Tab],
+            (Self::Index | Self::Gallery, 8) => &[KeyCode::Tab, KeyCode::ShiftLeft],
             (Self::Gallery, 11) => &[KeyCode::End],
             (Self::Gallery, 12) => &[KeyCode::Home],
             (Self::Gallery, 13) => &[KeyCode::PageDown],
@@ -83,8 +83,8 @@ pub(super) fn run_scenario(
     if options.scenario == Scenario::Gallery {
         return run_gallery_scenario(app, options, report);
     }
-    if options.scenario == Scenario::Menu {
-        return run_menu_scenario(app, options, report);
+    if options.scenario == Scenario::Index {
+        return run_index_scenario(app, options, report);
     }
     wait_render(app, true)?;
     if options.scenario == Scenario::Combat {
@@ -193,9 +193,9 @@ mod tests {
         assert!(Scenario::Combat.keys(2).is_empty());
         assert!(Scenario::Combat.keys(120).is_empty());
         assert!(Scenario::Scene.keys(1).is_empty());
-        assert_eq!(Scenario::Menu.keys(1), &[KeyCode::ArrowDown]);
-        assert_eq!(Scenario::Menu.keys(3), &[KeyCode::Enter]);
-        assert_eq!(Scenario::Menu.keys(5), &[KeyCode::Escape]);
-        assert!(Scenario::Menu.keys(2).is_empty());
+        assert_eq!(Scenario::Index.keys(1), &[KeyCode::ArrowDown]);
+        assert_eq!(Scenario::Index.keys(3), &[KeyCode::Enter]);
+        assert_eq!(Scenario::Index.keys(5), &[KeyCode::Escape]);
+        assert!(Scenario::Index.keys(2).is_empty());
     }
 }

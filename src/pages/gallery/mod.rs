@@ -93,13 +93,13 @@ impl Plugin for GalleryPlugin {
                 (prepare_previews, spin).chain().run_if(in_gallery),
             )
             .add_systems(Update, (ui::input, ui::update).chain().run_if(in_gallery))
-            .add_systems(OnExit(GameState::GalleryToMenu), cleanup);
+            .add_systems(OnExit(GameState::GalleryToIndex), cleanup);
     }
 }
 
 /// 渐出时保留最后一页内容与动画，黑场交接后才销毁。
 fn in_gallery(state: Res<State<GameState>>) -> bool {
-    matches!(state.get(), GameState::Gallery | GameState::GalleryToMenu)
+    matches!(state.get(), GameState::Gallery | GameState::GalleryToIndex)
 }
 
 /// 错误卡片也完成等待，用户仍可返回首页；错误细节写入日志与离屏报告。

@@ -4,7 +4,7 @@ use super::*;
 use bevy::world_serialization::WorldInstance;
 
 /// 菜单回归共用真实输入和渲染链路；全黑交接帧单独验收。
-pub(super) fn run_menu_scenario(
+pub(super) fn run_index_scenario(
     app: &mut App,
     options: &Options,
     report: &mut String,
@@ -16,14 +16,14 @@ pub(super) fn run_menu_scenario(
     }
     ensure(
         app.world()
-            .resource::<crate::pages::menu::MenuInput>()
+            .resource::<crate::pages::index::MenuInput>()
             .focus
             .is_none(),
         "初始首页不应选中菜单项",
     )?;
     let orders: Vec<_> = app
         .world_mut()
-        .query::<&crate::pages::menu::MenuItem>()
+        .query::<&crate::pages::index::MenuItem>()
         .iter(app.world())
         .map(|item| item.order)
         .collect();
@@ -43,7 +43,7 @@ pub(super) fn run_menu_scenario(
     // UI 遮罩受控对照：移除后必须恢复，不能据历史失败认定引擎永久黑屏。
     let camera = app
         .world_mut()
-        .query_filtered::<Entity, With<crate::pages::menu::MenuCamera>>()
+        .query_filtered::<Entity, With<crate::pages::index::IndexCamera>>()
         .single(app.world())
         .map_err(|e| e.to_string())?;
     let overlay = app
@@ -65,9 +65,9 @@ pub(super) fn run_menu_scenario(
     capture(app, &options.output.join("control-ui-removed.png"))?;
     report.push_str("受控对照：全屏 UI 遮罩添加与移除均正常渲染；无永久黑屏\n");
     for i in 0..2 {
-        let l = *app.world().resource::<crate::pages::menu::Layout>();
+        let l = *app.world().resource::<crate::pages::index::Layout>();
         app.world_mut()
-            .resource_mut::<crate::pages::menu::MenuInput>()
+            .resource_mut::<crate::pages::index::MenuInput>()
             .pointer = Some(Vec2::new(
             l.hero.x + 50.0,
             l.menu_y + 20.0 + l.row_height * i as f32,
@@ -77,7 +77,7 @@ pub(super) fn run_menu_scenario(
         }
         ensure(
             app.world()
-                .resource::<crate::pages::menu::MenuInput>()
+                .resource::<crate::pages::index::MenuInput>()
                 .hover
                 == Some(i),
             "鼠标未命中菜单项",
@@ -85,7 +85,7 @@ pub(super) fn run_menu_scenario(
         capture(app, &options.output.join(format!("hover-{}.png", i + 1)))?;
     }
     app.world_mut()
-        .resource_mut::<crate::pages::menu::MenuInput>()
+        .resource_mut::<crate::pages::index::MenuInput>()
         .pointer = None;
     for _ in 0..20 {
         update(app, STEP, None)?;
@@ -103,7 +103,7 @@ pub(super) fn run_menu_scenario(
     update(app, STEP, None)?;
     ensure(
         app.world()
-            .resource::<crate::pages::menu::MenuInput>()
+            .resource::<crate::pages::index::MenuInput>()
             .focus
             == Some(0),
         "Shift+Tab 应返回第一项",
@@ -155,7 +155,7 @@ pub(super) fn run_menu_scenario(
         }
         for (direction, key_frame, target) in [
             ("enter", 3, crate::app::state::GameState::InGame),
-            ("return", 5, crate::app::state::GameState::Menu),
+            ("return", 5, crate::app::state::GameState::Index),
         ] {
             update(app, STEP, Some(key_frame))?;
             let mut saved = [false; 3];
@@ -224,7 +224,7 @@ pub(super) fn run_menu_scenario(
                     .collect();
                 ensure(
                     app.world_mut()
-                        .query_filtered::<(), With<crate::pages::menu::MenuRoot>>()
+                        .query_filtered::<(), With<crate::pages::index::IndexRoot>>()
                         .iter(app.world())
                         .count()
                         == 0,
@@ -255,7 +255,7 @@ pub(super) fn run_menu_scenario(
                 )?;
                 ensure(
                     world
-                        .query_filtered::<(), With<crate::pages::menu::MenuCamera>>()
+                        .query_filtered::<(), With<crate::pages::index::IndexCamera>>()
                         .iter(world)
                         .count()
                         == 1,

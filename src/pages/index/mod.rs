@@ -8,7 +8,7 @@ use crate::{
     ui::font::UiFont,
     ui::resources::{colors, dimens},
     ui::resources::{
-        colors::menu as palette, dimens::menu as dims, strings, strings_cn::menu as labels,
+        colors::index as palette, dimens::index as dims, strings, strings_cn::index as labels,
     },
 };
 use bevy::{
@@ -27,13 +27,13 @@ use bevy::{
 
 /// 菜单内容相机，始终写入内部纹理，不直接清除最终输出。
 #[derive(Component)]
-pub(crate) struct MenuCamera;
+pub(crate) struct IndexCamera;
 /// 菜单实体的共同根；进入游戏时递归清理。
 #[derive(Component)]
-pub(crate) struct MenuRoot;
+pub(crate) struct IndexRoot;
 /// 标题标记，文字由原稿以两倍分辨率导出以保留渐变和挤出。
 #[derive(Component)]
-pub(crate) struct MenuTitle;
+pub(crate) struct IndexTitle;
 /// 交互项顺序：0 开始，1 展示馆；两项均可焦点和悬停。
 #[derive(Component)]
 pub(crate) struct MenuItem {
@@ -192,9 +192,9 @@ impl Layout {
     }
 }
 
-/// 与 menu.wesl 的 MenuPalette 同布局；Vec4 的 RGB 为 sRGB，W 为合成强度。
+/// 与 index.wesl 的 IndexPalette 同布局；Vec4 的 RGB 为 sRGB，W 为合成强度。
 #[derive(ShaderType, Clone, Debug)]
-pub(crate) struct MenuPalette {
+pub(crate) struct IndexPalette {
     /// 页面底色。
     background: Vec4,
     /// 暖色与薄荷环境光。
@@ -211,7 +211,7 @@ pub(crate) struct MenuPalette {
     rights: [Vec4; 4],
 }
 
-impl Default for MenuPalette {
+impl Default for IndexPalette {
     fn default() -> Self {
         Self {
             // 不用 LinearRgba：着色器在混色结束后统一转线性空间。
@@ -236,7 +236,7 @@ impl Default for MenuPalette {
 
 /// 背景材质包含实际可见的 glow/floor/scan/vignette 和九个 SVG 方块。
 #[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
-pub(crate) struct MenuBackground {
+pub(crate) struct IndexBackground {
     /// XY 为逻辑视口尺寸，Z 为秒数，W 为装饰漂浮距离（逻辑像素）。
     #[uniform(0)]
     pub(crate) viewport: Vec4,
@@ -244,17 +244,17 @@ pub(crate) struct MenuBackground {
     pub(crate) cubes: Vec4,
     /// 静态配色只在创建材质时由 UI 常量构建。
     #[uniform(2)]
-    pub(crate) palette: MenuPalette,
+    pub(crate) palette: IndexPalette,
 }
-impl UiMaterial for MenuBackground {
+impl UiMaterial for IndexBackground {
     fn fragment_shader() -> ShaderRef {
-        "shaders/menu.wesl".into()
+        "shaders/index.wesl".into()
     }
 }
 
-/// 首页插件，所有输入与动画只在 Menu 且过渡结束后响应。
-pub(crate) struct MenuPlugin;
-impl Plugin for MenuPlugin {
+/// 首页插件，所有输入与动画只在 Index 且过渡结束后响应。
+pub(crate) struct IndexPlugin;
+impl Plugin for IndexPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MenuInput>()
             .init_resource::<ReturnFocus>()
@@ -262,10 +262,10 @@ impl Plugin for MenuPlugin {
                 dimens::REFERENCE_WIDTH,
                 dimens::REFERENCE_HEIGHT,
             )))
-            .add_plugins(UiMaterialPlugin::<MenuBackground>::default())
-            .add_systems(OnEnter(GameState::Menu), spawn_menu)
-            .add_systems(OnEnter(GameState::InGame), despawn_menu)
-            .add_systems(OnEnter(GameState::Gallery), despawn_menu)
+            .add_plugins(UiMaterialPlugin::<IndexBackground>::default())
+            .add_systems(OnEnter(GameState::Index), spawn_index)
+            .add_systems(OnEnter(GameState::InGame), despawn_index)
+            .add_systems(OnEnter(GameState::Gallery), despawn_index)
             .add_systems(
                 Update,
                 (menu_input, update_visual)
@@ -273,7 +273,7 @@ impl Plugin for MenuPlugin {
                     .run_if(|state: Res<State<GameState>>| {
                         matches!(
                             state.get(),
-                            GameState::Menu | GameState::ToGame | GameState::ToGallery
+                            GameState::Index | GameState::ToGame | GameState::ToGallery
                         )
                     }),
             );
@@ -281,13 +281,13 @@ impl Plugin for MenuPlugin {
 }
 
 /// 创建 UI 结构；坐标由 update_visual 按视口计算，未显示的 CSS 文案不生成。
-fn spawn_menu(
+fn spawn_index(
     mut commands: Commands,
     target: Res<SceneTarget>,
     assets: Res<AssetServer>,
     font: Res<UiFont>,
     mut input: ResMut<MenuInput>,
-    mut materials: ResMut<Assets<MenuBackground>>,
+    mut materials: ResMut<Assets<IndexBackground>>,
     mut return_focus: ResMut<ReturnFocus>,
 ) {
     *input = MenuInput::default();
@@ -299,7 +299,7 @@ fn spawn_menu(
     let camera = commands
         .spawn((
             Camera3d::default(),
-            MenuCamera,
+            IndexCamera,
             Msaa::Off,
             Tonemapping::None,
             DebandDither::Disabled,
@@ -310,7 +310,7 @@ fn spawn_menu(
             RenderTarget::Image(target.0.clone().into()),
         ))
         .id();
-    let background = materials.add(MenuBackground {
+    let background = materials.add(IndexBackground {
         viewport: Vec4::new(
             dimens::REFERENCE_WIDTH,
             dimens::REFERENCE_HEIGHT,
@@ -318,11 +318,11 @@ fn spawn_menu(
             dims::AMBIENT_TRAVEL,
         ),
         cubes: Vec4::ZERO,
-        palette: MenuPalette::default(),
+        palette: IndexPalette::default(),
     });
     commands
         .spawn((
-            MenuRoot,
+            IndexRoot,
             UiTargetCamera(camera),
             Node {
                 width: percent(100),
@@ -343,9 +343,9 @@ fn spawn_menu(
             ));
             root.spawn((
                 Part::Title,
-                MenuTitle,
+                IndexTitle,
                 Name::new("V-TANK"),
-                ImageNode::new(assets.load("menu/title.png")),
+                ImageNode::new(assets.load("index/title.png")),
                 Node {
                     position_type: PositionType::Absolute,
                     ..default()
@@ -607,7 +607,7 @@ fn update_visual(
         Option<&mut LetterSpacing>,
         Option<&mut BorderColor>,
     )>,
-    mut materials: ResMut<Assets<MenuBackground>>,
+    mut materials: ResMut<Assets<IndexBackground>>,
 ) {
     // 窗口模式取窗口物理尺寸与缩放系数；离屏无窗口时纹理尺寸即物理尺寸、缩放系数为 1。
     let size = match windows.single() {
@@ -746,9 +746,9 @@ fn update_visual(
 }
 
 /// 内容相机与 UI 根都属于首页，不能留给下一局重复使用。
-fn despawn_menu(
+fn despawn_index(
     mut commands: Commands,
-    entities: Query<Entity, Or<(With<MenuRoot>, With<MenuCamera>)>>,
+    entities: Query<Entity, Or<(With<IndexRoot>, With<IndexCamera>)>>,
 ) {
     for entity in &entities {
         commands.entity(entity).despawn();
@@ -758,7 +758,7 @@ fn despawn_menu(
 /// 标题纹理必须真正加载成功，不能只等字体加载完成便揭幕。
 pub(crate) fn assets_ready(world: &mut World) -> bool {
     let handles: Vec<_> = world
-        .query_filtered::<&ImageNode, With<MenuTitle>>()
+        .query_filtered::<&ImageNode, With<IndexTitle>>()
         .iter(world)
         .map(|image| image.image.clone())
         .collect();
@@ -778,7 +778,7 @@ mod tests {
     /// 材质必须传原始 sRGB 而非线性值，且保留网格与阴影的合成强度。
     #[test]
     fn shader_palette_preserves_srgb_and_alpha() {
-        let palette = MenuPalette::default();
+        let palette = IndexPalette::default();
         assert!((palette.background.x - 15.0 / 255.0).abs() < 1e-7);
         assert!((palette.warm.w - 0.42).abs() < 1e-7);
         assert!((palette.grid.w - 0.06).abs() < 1e-7);

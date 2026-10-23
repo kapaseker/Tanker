@@ -57,7 +57,7 @@ impl Default for Fade {
         Self {
             alpha: 0.0,
             phase: Phase::Idle,
-            target: GameState::Menu,
+            target: GameState::Index,
             stable_frames: 0,
             input_armed: true,
         }
@@ -143,9 +143,9 @@ impl Plugin for TransitionPlugin {
             .add_systems(Update, resize_target)
             .add_systems(
                 Update,
-                (report_asset_failure, return_to_menu, advance).chain(),
+                (report_asset_failure, return_to_index, advance).chain(),
             )
-            .add_systems(OnEnter(GameState::Menu), crate::gameplay::session::cleanup);
+            .add_systems(OnEnter(GameState::Index), crate::gameplay::session::cleanup);
         app.sub_app_mut(RenderApp)
             .add_systems(Render, check_render_ready.in_set(RenderSystems::Cleanup));
     }
@@ -199,17 +199,17 @@ fn resize_target(
     windows: Query<&Window>,
     target: Res<SceneTarget>,
     mut images: ResMut<Assets<Image>>,
-    mut menu_cameras: Query<
+    mut index_cameras: Query<
         &mut RenderTarget,
         Or<(
-            With<crate::pages::menu::MenuCamera>,
+            With<crate::pages::index::IndexCamera>,
             With<crate::pages::gallery::GalleryCamera>,
         )>,
     >,
     mut scene_cameras: Query<
         &mut RenderTarget,
         (
-            Without<crate::pages::menu::MenuCamera>,
+            Without<crate::pages::index::IndexCamera>,
             Without<crate::pages::gallery::GalleryCamera>,
             With<crate::gameplay::camera::FollowCamera>,
         ),
@@ -233,11 +233,11 @@ fn resize_target(
     }
     drop(image);
     // 菜单相机缩放系数 = 窗口缩放 × zoom；只缩不放大，高度不参与。
-    let menu_scale = scale_factor * crate::pages::menu::zoom(physical.x as f32 / scale_factor);
-    for mut camera in &mut menu_cameras {
+    let index_scale = scale_factor * crate::pages::index::zoom(physical.x as f32 / scale_factor);
+    for mut camera in &mut index_cameras {
         if let RenderTarget::Image(image) = &mut *camera {
-            if (image.scale_factor - menu_scale).abs() > f32::EPSILON {
-                image.scale_factor = menu_scale;
+            if (image.scale_factor - index_scale).abs() > f32::EPSILON {
+                image.scale_factor = index_scale;
             }
         }
     }
@@ -261,7 +261,7 @@ fn sync_physics(fade: Res<Fade>, mut physics: ResMut<Time<Physics>>) {
 }
 
 /// Esc 只在对局可操作时生效；首次请求立即锁输入。
-fn return_to_menu(
+fn return_to_index(
     keys: Res<ButtonInput<KeyCode>>,
     state: Res<State<GameState>>,
     mut next: ResMut<NextState<GameState>>,
@@ -269,9 +269,9 @@ fn return_to_menu(
 ) {
     if *state.get() == GameState::InGame
         && keys.just_pressed(KeyCode::Escape)
-        && fade.begin(GameState::Menu)
+        && fade.begin(GameState::Index)
     {
-        next.set(GameState::ToMenu);
+        next.set(GameState::ToIndex);
     }
 }
 
@@ -285,7 +285,7 @@ fn report_asset_failure(
         let message = format!("页面资源加载失败：{}：{}", event.path, event.error);
         error!("{message}");
         // 画廊以错误卡片结束加载，保留返回入口；战斗资源错误仍阻止揭幕。
-        if !matches!(state.get(), GameState::Gallery | GameState::GalleryToMenu) {
+        if !matches!(state.get(), GameState::Gallery | GameState::GalleryToIndex) {
             *readiness.failure.lock().unwrap() = Some(message);
         }
     }
@@ -298,7 +298,7 @@ pub(crate) fn content_ready(world: &mut World) -> bool {
         return false;
     }
     match world.resource::<State<GameState>>().get() {
-        GameState::Menu => crate::pages::menu::assets_ready(world),
+        GameState::Index => crate::pages::index::assets_ready(world),
         GameState::Gallery => crate::pages::gallery::assets_ready(world),
         _ => crate::gameplay::session::content_ready(world),
     }
@@ -482,7 +482,7 @@ mod tests {
     #[test]
     fn transition_blocks_reentry_and_held_input() {
         let mut fade = Fade::default();
-        assert!(fade.begin(GameState::Menu));
+        assert!(fade.begin(GameState::Index));
         assert!(!fade.begin(GameState::InGame));
         assert!(!fade.accepts_input());
         fade.phase = Phase::In;

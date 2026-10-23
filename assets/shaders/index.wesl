@@ -3,8 +3,8 @@ import bevy_ui_render::ui_vertex_output::UiVertexOutput;
 @group(1) @binding(0) var<uniform> viewport: vec4<f32>;
 @group(1) @binding(1) var<uniform> cubes: vec4<f32>;
 
-// 与 Rust MenuPalette 对齐；保留 sRGB 分量，不在 uniform 上传时转线性。
-struct MenuPalette {
+// 与 Rust IndexPalette 对齐；保留 sRGB 分量，不在 uniform 上传时转线性。
+struct IndexPalette {
     background: vec4<f32>,
     warm: vec4<f32>,
     mint: vec4<f32>,
@@ -16,7 +16,7 @@ struct MenuPalette {
     lefts: array<vec4<f32>, 4>,
     rights: array<vec4<f32>, 4>,
 }
-@group(1) @binding(2) var<uniform> colors: MenuPalette;
+@group(1) @binding(2) var<uniform> colors: IndexPalette;
 
 fn over(base: vec3<f32>, color: vec3<f32>, alpha: f32) -> vec3<f32> {
     return mix(base, color, clamp(alpha, 0.0, 1.0));

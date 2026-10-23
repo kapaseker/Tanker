@@ -42,7 +42,7 @@ pub(crate) mod gallery {
 
 /// 首页设计参数；全部为 1280×720 参考分辨率下的固定设计常量（以网页原型
 /// `web/style.css` 为基准），窗口适配由整体等比缩放承担，不再有断点与逐控件缩小。
-pub(crate) mod menu {
+pub(crate) mod index {
     /// 标题设计字号（网页 `.title` 的 154px）。
     pub(crate) const TITLE_SIZE: f32 = 154.0;
     /// 标题美术资源的导出参考字号；TITLE_SIZE / 本值 = 标题纹理缩放。

@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const { pathToFileURL } = require('node:url');
 (async () => {
   const browser = await chromium.launch({ headless: true,
-    ...(process.env.MENU_BROWSER ? { executablePath: process.env.MENU_BROWSER } : {}) });
+    ...(process.env.INDEX_BROWSER ? { executablePath: process.env.INDEX_BROWSER } : {}) });
   try {
     const page = await browser.newPage({ viewport: { width: 1200, height: 400 }, deviceScaleFactor: 2 });
     await page.goto(pathToFileURL(path.resolve('web/index.html')).href);
@@ -21,8 +21,8 @@ const { pathToFileURL } = require('node:url');
       return { width:r.width, height:r.height };
     });
     assert(Math.abs(bounds.width - 736.046875) < 1, '标题字宽异常：请确认 MiSans 已实际加载');
-    fs.mkdirSync('assets/menu', { recursive:true });
-    await page.screenshot({ path:'assets/menu/title.png', omitBackground:true,
+    fs.mkdirSync('assets/index', { recursive:true });
+    await page.screenshot({ path:'assets/index/title.png', omitBackground:true,
       clip:{ x:0, y:0, width:Math.ceil(bounds.width+160), height:Math.ceil(bounds.height+130) } });
     console.log(bounds);
   } finally { await browser.close(); }

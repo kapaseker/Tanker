@@ -19,8 +19,8 @@ pub(crate) struct UiFontPlugin;
 
 impl Plugin for UiFontPlugin {
     fn build(&self, app: &mut App) {
-        // 构建期直接发起加载并插入资源：初始 OnEnter(Menu) 发生在启动期
-        // StateTransition（早于 Startup），spawn_menu 依赖本资源必须提前就位。
+        // 构建期直接发起加载并插入资源：初始 OnEnter(Index) 发生在启动期
+        // StateTransition（早于 Startup），spawn_index 依赖本资源必须提前就位。
         let handle = app.world().resource::<AssetServer>().load(UI_FONT_PATH);
         app.insert_resource(UiFont(handle))
             .add_systems(Update, report_ui_font);

@@ -23,7 +23,7 @@ pub(crate) mod gallery {
 }
 
 /// 首页专用配色与渲染补偿值；保留当前实际画面，不套用通用透明度。
-pub(crate) mod menu {
+pub(crate) mod index {
     use super::*;
 
     /// 页面底色。
