@@ -107,7 +107,7 @@ pub(crate) fn reset_session(world: &mut World) {
 fn spawn_enemies(
     mut commands: Commands,
     spawned: Option<Res<EnemyAsset>>,
-    ready: Option<Res<crate::ground::TerrainReady>>,
+    ready: Option<Res<crate::terrain::TerrainReady>>,
     assets: Res<AssetServer>,
     config: Res<crate::gameplay::session::SpawnConfig>,
 ) {
@@ -193,7 +193,7 @@ mod tests {
             1.0 / 64.0,
         )))
         .add_systems(Startup, |mut commands: Commands| {
-            crate::ground::spawn_arena(&mut commands)
+            crate::terrain::spawn_arena(&mut commands)
         });
         app.finish();
         app.cleanup();
@@ -292,7 +292,7 @@ mod tests {
                     for z in [-1.0, 1.0] {
                         let corner =
                             transform.transform_point(ENEMY_SIZE * Vec3::new(x, 0.0, z) / 2.0);
-                        let half_side = crate::ground::FIELD_SIDE / 2.0;
+                        let half_side = crate::terrain::FIELD_SIDE / 2.0;
                         assert!(corner.x.abs() < half_side);
                         assert!(corner.z.abs() < half_side);
                     }

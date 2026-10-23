@@ -1,7 +1,7 @@
 //! 对局生命周期：场景生成、业务就绪汇总与退出清理的集中入口。
 //!
 //! `app::transition` 只协调页面切换并调用 [`content_ready`] / [`cleanup`]，
-//! 不再逐项读取战斗、地形或履带细节；地形实体由 `ground::reset_session`
+//! 不再逐项读取战斗、地形或履带细节；地形实体由 `terrain::reset_session`
 //! 按地形模块自有的标记回收，本模块不直接了解地形内部结构。
 
 use bevy::{
@@ -12,7 +12,7 @@ use bevy::{
 
 use crate::app::transition;
 use crate::gameplay::{camera, combat, enemy, player};
-use crate::ground;
+use crate::terrain;
 use crate::tank;
 
 /// 当前加载的 MagicaVoxel 场景资源路径（相对 `assets/`）。
@@ -90,7 +90,7 @@ pub(crate) fn setup(
     commands.insert_resource(VoxScene(scene));
 
     // 地形入口由地形模块拥有：此处只负责在对局生成时调用其加载登记。
-    ground::load_ground(&mut commands, &assets);
+    terrain::load_ground(&mut commands, &assets);
 }
 
 /// 加载状态汇报：成功与失败各打一行中文日志，作为无人值守验证的判据。
@@ -123,7 +123,7 @@ pub(crate) fn report_load(
 /// 对局业务就绪汇总：地形、武器资源、坦克与履带数量、场景实例全部到位。
 /// 渲染/GPU 管线的真实就绪仍由过渡流程（及离屏入口）另行检查，不在此处替代。
 pub(crate) fn content_ready(world: &mut World) -> bool {
-    if !world.contains_resource::<ground::TerrainReady>()
+    if !world.contains_resource::<terrain::TerrainReady>()
         || !combat::firing::assets_ready(world)
         || !combat::explosion::assets_ready(world)
     {
@@ -160,7 +160,7 @@ pub(crate) fn cleanup(world: &mut World) {
     for entity in entities {
         world.despawn(entity);
     }
-    ground::reset_session(world);
+    terrain::reset_session(world);
     enemy::reset_session(world);
     combat::firing::reset_session(world);
     world.remove_resource::<VoxScene>();

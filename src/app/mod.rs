@@ -7,7 +7,7 @@ use avian3d::prelude::PhysicsPlugins;
 use bevy::prelude::*;
 use bevy_vox_scene::{VoxLoaderSettings, VoxScenePlugin};
 
-use crate::{gameplay, ground, offscreen, pages, tank, ui};
+use crate::{gameplay, offscreen, pages, tank, terrain, ui};
 use state::GameState;
 
 /// 全局灯光的亮度（cd/m²）。场景不使用 `DirectionalLight`，全部光照由全局环境光
@@ -43,7 +43,7 @@ pub(super) fn run(options: Option<offscreen::Options>) -> Result<(), String> {
         },
         gameplay::combat::firing::FiringPlugin,
         PhysicsPlugins::default(),
-        ground::GroundPlugin,
+        terrain::GroundPlugin,
         gameplay::enemy::EnemyPlugin,
         gameplay::combat::explosion::ExplosionPlugin,
         gameplay::player::PlayerPlugin,

@@ -8,7 +8,7 @@
 
 - 世界单位：1 世界单位 = 1 米，由 `VoxScenePlugin` 的全局 `VoxLoaderSettings` 统一设定（`src/app/mod.rs`）。
 - 体素格：MagicaVoxel 单格边长 = 0.1 米（`VOXEL_SIZE`，`src/tank/model/mod.rs`）；所有 `.vox` 模型尺寸都按“格数 × 0.1”换算。
-- 地形栅格：地形图按 0.5 米采样作者化，视觉网格与碰撞体统一量化到 0.1 米台阶（`AUTHOR_RES` / `TERRAIN_STEP`，`src/ground.rs`）。
+- 地形栅格：地形图按 0.5 米采样作者化，视觉网格与碰撞体统一量化到 0.1 米台阶（`AUTHOR_RES` / `TERRAIN_STEP`，`src/terrain/mod.rs`）。
 - VOX 轴向映射：VOX 的 Z 为高度（→ Bevy +Y），VOX 的 Y 为宽度（→ Bevy Z），VOX 的 +X 为车头方向（→ Bevy −X）。
 - 尺寸约定：下表 X 为车长方向、Y 为高度、Z 为车宽方向；坦克车头朝局部 −X（`src/tank/driving.rs`）。
 
@@ -37,14 +37,14 @@
 
 | 部件 | 尺寸 | 权威定义 |
 |---|---|---|
-| 场地落地尺寸 | 600 × 600 m，面积 360000 m² | `FIELD_SIDE` / `AREA`（`src/ground.rs`） |
-| 地形高度图 / 土色图 | 各 1200 × 1200 采样，作者化间距 0.5 m/采样；高度图 1440000 字节，土色图另含文件自带调色板（`[数量 u8][数量×3 RGB][索引矩阵]`） | `MAP_SIDE` / `AUTHOR_RES` / `parse_albedo()`（`src/ground.rs`）；产物 `assets/terrain/ground/ground.ht`、`assets/terrain/ground/ground.abd` |
+| 场地落地尺寸 | 600 × 600 m，面积 360000 m² | `FIELD_SIDE` / `AREA`（`src/terrain/mod.rs`） |
+| 地形高度图 / 土色图 | 各 1200 × 1200 采样，作者化间距 0.5 m/采样；高度图 1440000 字节，土色图另含文件自带调色板（`[数量 u8][数量×3 RGB][索引矩阵]`） | `MAP_SIDE` / `AUTHOR_RES`（`src/terrain/mod.rs`）/ `parse_albedo()`（`src/terrain/map.rs`）；产物 `assets/terrain/ground/ground.ht`、`assets/terrain/ground/ground.abd` |
 | 地形数据来源 | 标准库脚本按固定种子生成两张紧凑字节图 | `scripts/generate_ground.py`（`PALETTE` 随 `.abd` 文件写出，Rust 侧从文件读取） |
-| 地形起伏 | ±1 m，量化到 0.1 m 一级（平地字节值 10，0/20 对应 −1.0/+1.0 m） | `TERRAIN_HALF_RANGE` / `TERRAIN_STEP` / `FLAT`（`src/ground.rs`） |
-| 地形视觉网格 | 600 m 场地按 10 × 10 块编译（每块 60 m / 120 采样），顶面贪心合并、边界生成 0.1 m 台阶竖直面 | `CHUNK_SIDE` / `CHUNK_COUNT` / `CHUNK_CELLS` / `build_chunk()`（`src/ground.rs`） |
+| 地形起伏 | ±1 m，量化到 0.1 m 一级（平地字节值 10，0/20 对应 −1.0/+1.0 m） | `TERRAIN_HALF_RANGE` / `TERRAIN_STEP` / `FLAT`（`src/terrain/mod.rs`） |
+| 地形视觉网格 | 600 m 场地按 10 × 10 块编译（每块 60 m / 120 采样），顶面贪心合并、边界生成 0.1 m 台阶竖直面 | `CHUNK_SIDE` / `CHUNK_COUNT` / `CHUNK_CELLS`（`src/terrain/mod.rs`）/ `build_chunk()`（`src/terrain/mesh.rs`） |
 | 地形分布 | 少量大片区 + 若干小片区，往返旋转椭圆；非平地覆盖 25%–45%（目标 26%–34%）；出生点周围 8 m 强制平地 | `COVER_RANGE` / `BIG_DIAMETER` / `SMALL_DIAMETER` / `SPAWN_PAD_M`（`scripts/generate_ground.py`） |
-| 地形物理表面 | 体素台阶复合碰撞体：每 60 m 分块一个 Avian compound，cuboid 由同档位（忽略颜色）贪心合并矩形生成，顶面量化 0.1 m、底面统一 −1.1 m，侧面即竖直坎；无高度场插值隐形斜坡 | `Collider::compound` + `collider_cuboids()` / `COLLIDER_BASE_Y`（`src/ground.rs`） |
-| 竞技场围墙 | 四面；厚 2 m、高 8 m，横竖墙长 = 边长 + 4 m，内侧与场地边缘对齐 | `WALL_THICKNESS` / `WALL_HEIGHT`（`src/ground.rs`） |
+| 地形物理表面 | 体素台阶复合碰撞体：每 60 m 分块一个 Avian compound，cuboid 由同档位（忽略颜色）贪心合并矩形生成，顶面量化 0.1 m、底面统一 −1.1 m，侧面即竖直坎；无高度场插值隐形斜坡 | `Collider::compound` + `collider_cuboids()` / `COLLIDER_BASE_Y`（`src/terrain/collider.rs`） |
+| 竞技场围墙 | 四面；厚 2 m、高 8 m，横竖墙长 = 边长 + 4 m，内侧与场地边缘对齐 | `WALL_THICKNESS` / `WALL_HEIGHT`（`src/terrain/collider.rs`） |
 
 地形不再来自 `.vox` 模型：`assets/ground.vox` 已退役删除，视觉与物理均由 `ground.ht` 编译而来，两者同源，因此坑洼与坡道既可见也可开上去。地形资产按 `assets/terrain/<地形名>/` 组织，每个地形目录含 `ground.ht`（高度）与 `ground.abd`（土色）。
 
@@ -58,7 +58,7 @@
 | 相机水平后退距离 / 竖直高度 | 16 / 9 | `CAMERA_DISTANCE` / `CAMERA_HEIGHT`（`src/gameplay/camera.rs`） |
 | 相机视线相对车身的上抬角 | 8° | `CAMERA_PITCH_UP_DEGREES`（`src/gameplay/camera.rs`） |
 | 敌人数量 / 出生中心半径、与玩家及彼此最小中心距 | 10 / ±120 / 约8.87 / 约8.42 | `ENEMY_COUNT` / `SPAWN_LIMIT` / `spawn_clearance`（双方水平外接半径之和+`SPAWN_GAP` 1 m，`src/gameplay/enemy.rs`） |
-| 场地面积、子弹射程 | 360000 m² / 2000 m | `AREA`（`src/ground.rs`）/ `BULLET_RANGE`（`src/gameplay/combat/firing.rs`） |
+| 场地面积、子弹射程 | 360000 m² / 2000 m | `AREA`（`src/terrain/mod.rs`）/ `BULLET_RANGE`（`src/gameplay/combat/firing.rs`） |
 
 ## 术语对照
 
@@ -67,6 +67,6 @@
 | 玩家坦克 | `Tank`（`src/gameplay/player.rs`）、`tank_body()`（`src/tank/driving.rs`） |
 | 敌人坦克（靶车） | `EnemyTank`、`ENEMY_COUNT`（`src/gameplay/enemy.rs`） |
 | 子弹 | `Bullet`、`Gun`（`src/gameplay/combat/firing.rs`） |
-| 场地 / 地形 | `GroundPlugin`、`GroundMap`、`TerrainChunk`、`TerrainSurface`（`src/ground.rs`）；地形数据由 `scripts/generate_ground.py` 生成 |
-| 竞技场边界 | `spawn_walls()`（`src/ground.rs`）：四面围墙；`spawn_arena()` 另加一块平坦物理地面，仅供测试 |
+| 场地 / 地形 | `GroundPlugin`、`TerrainChunk`、`TerrainSurface`（`src/terrain/mod.rs`）、`GroundMap`（`src/terrain/map.rs`）；地形数据由 `scripts/generate_ground.py` 生成 |
+| 竞技场边界 | `spawn_walls()`（`src/terrain/collider.rs`）：四面围墙；`spawn_arena()` 另加一块平坦物理地面，仅供测试 |
 | 跟随相机 | `FollowCamera`、`camera_transform()`（`src/gameplay/camera.rs`） |

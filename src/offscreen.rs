@@ -583,7 +583,7 @@ fn validate_scene(world: &mut World) -> Result<(), String> {
 /// 从上方向实际地形碰撞体投射射线，检查车体底面，不能只用全局高度范围判断穿地。
 fn validate_scene_state(
     spatial: SpatialQuery,
-    terrain: Query<(), With<crate::ground::TerrainSurface>>,
+    terrain: Query<(), With<crate::terrain::TerrainSurface>>,
     tanks: Query<
         (&Transform, Has<crate::gameplay::player::Tank>),
         Or<(With<crate::gameplay::player::Tank>, With<crate::gameplay::enemy::EnemyTank>)>,
@@ -1356,7 +1356,7 @@ fn run_menu_scenario(app: &mut App, options: &Options, report: &mut String) -> R
                     "返回首页后场景实例未注销",
                 )?;
                 ensure(
-                    !world.contains_resource::<crate::ground::TerrainReady>(),
+                    !world.contains_resource::<crate::terrain::TerrainReady>(),
                     "地形生成标志未清除",
                 )?;
                 report.push_str(&format!(
@@ -1834,7 +1834,7 @@ mod tests {
         .insert_resource(Time::<Fixed>::from_duration(STEP))
         .add_systems(PreUpdate, inject_input.after(InputSystems))
         .add_systems(Startup, |mut commands: Commands| {
-            crate::ground::spawn_arena(&mut commands)
+            crate::terrain::spawn_arena(&mut commands)
         });
         app.finish();
         app.cleanup();
@@ -1891,7 +1891,7 @@ mod tests {
         app.finish();
         app.cleanup();
         app.world_mut().spawn((
-            crate::ground::TerrainSurface,
+            crate::terrain::TerrainSurface,
             RigidBody::Static,
             Collider::cuboid(200.0, 1.0, 200.0),
             Transform::from_xyz(0.0, -0.5, 0.0),

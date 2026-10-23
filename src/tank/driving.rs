@@ -293,7 +293,7 @@ mod tests {
         ))
         .insert_resource(TimeUpdateStrategy::ManualDuration(step))
         .add_systems(Startup, |mut commands: Commands| {
-            crate::ground::spawn_arena(&mut commands)
+            crate::terrain::spawn_arena(&mut commands)
         });
         // 手动逐帧测试也需完成 Avian 在 finish 阶段注册的求解器资源。
         app.finish();
@@ -364,7 +364,7 @@ mod tests {
         let forward = transform.rotation * Vec3::NEG_X;
         let side = transform.rotation * Vec3::Z;
         let extent_z = forward.z.abs() * TANK_SIZE.x / 2.0 + side.z.abs() * TANK_SIZE.z / 2.0;
-        let wall = crate::ground::FIELD_SIDE / 2.0;
+        let wall = crate::terrain::FIELD_SIDE / 2.0;
         let stop = transform.translation.z + extent_z;
         assert!((stop - wall).abs() < 0.03, "未到达墙：{transform:?}");
         assert!(stop <= wall + 0.03, "穿墙：stop={stop} wall={wall}");

@@ -211,7 +211,7 @@ fn move_bullets(
     let shape = Collider::cuboid(BULLET_SIZE, BULLET_SIZE, BULLET_SIZE);
     // 子弹投射只认敌人，不会撞墙；越过场地边界（±FIELD_SIDE/2）即视为失效，
     // 防止穿墙飞满射程。单帧最大位移约 0.7 米，越界误差可忽略。
-    let half_field = crate::ground::FIELD_SIDE / 2.0;
+    let half_field = crate::terrain::FIELD_SIDE / 2.0;
     // Commands 在系统结束后才删除实体，同帧后续弹体必须主动跳过已击毁目标。
     let mut destroyed = Vec::new();
     let enemy_count = enemies.iter().count();
@@ -586,7 +586,7 @@ mod tests {
                 }),
             },
             FiringPlugin,
-            crate::ground::GroundPlugin,
+            crate::terrain::GroundPlugin,
             crate::tank::track::TrackAnimationPlugin,
         ))
         .init_resource::<avian3d::collider_tree::ColliderTrees>()
@@ -606,7 +606,7 @@ mod tests {
         .add_message::<EnemyDestroyed>()
         .add_systems(Update, crate::gameplay::enemy::spawn_enemy_barrels)
         .add_systems(Startup, |mut commands: Commands, assets: Res<AssetServer>| {
-            crate::ground::load_ground(&mut commands, &assets)
+            crate::terrain::load_ground(&mut commands, &assets)
         })
         .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f32(
             0.25,
@@ -643,10 +643,10 @@ mod tests {
         // 真实资源异步加载；这里使用现实时间限制等待，避免失败时测试无限循环。
         let mut terrain_surface = app
             .world_mut()
-            .query_filtered::<Entity, With<crate::ground::TerrainSurface>>();
+            .query_filtered::<Entity, With<crate::terrain::TerrainSurface>>();
         let mut terrain_chunks = app
             .world_mut()
-            .query_filtered::<Entity, With<crate::ground::TerrainChunk>>();
+            .query_filtered::<Entity, With<crate::terrain::TerrainChunk>>();
         let deadline = Instant::now() + Duration::from_secs(20);
         loop {
             app.update();
@@ -800,7 +800,7 @@ mod tests {
         }
         let (mesh_count, minimum, maximum) = merged;
         assert_eq!(mesh_count, 100, "地形应分成 10×10 块网格");
-        let half_side = crate::ground::FIELD_SIDE / 2.0;
+        let half_side = crate::terrain::FIELD_SIDE / 2.0;
         assert!(
             minimum.x <= -half_side && maximum.x >= half_side,
             "地形应铺满 X 方向 {half_side} 米：{minimum:?}～{maximum:?}"

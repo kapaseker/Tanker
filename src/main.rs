@@ -5,10 +5,10 @@
 
 mod app;
 mod gameplay;
-mod ground;
 mod offscreen;
 mod pages;
 mod tank;
+mod terrain;
 mod ui;
 
 /// 先校验命令行，再创建渲染器；参数错误不会意外打开窗口。

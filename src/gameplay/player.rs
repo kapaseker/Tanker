@@ -54,7 +54,7 @@ fn read_player_input(
 mod tests {
     use super::*;
     use crate::gameplay::enemy::EnemyTank;
-    use crate::ground;
+    use crate::terrain;
     use crate::tank::driving::{DrivingPlugin, TANK_SIZE, TurnRate, tank_body};
     use bevy::time::TimeUpdateStrategy;
     use std::time::Duration;
@@ -178,7 +178,7 @@ mod tests {
         .init_resource::<ButtonInput<KeyCode>>()
         .insert_resource(TimeUpdateStrategy::ManualDuration(step))
         .add_systems(Startup, |mut commands: Commands| {
-            ground::spawn_arena(&mut commands)
+            terrain::spawn_arena(&mut commands)
         });
         // 手动逐帧测试也需完成 Avian 在 finish 阶段注册的求解器资源。
         app.finish();
@@ -227,7 +227,7 @@ mod tests {
         let forward = transform.rotation * Vec3::NEG_X;
         let side = transform.rotation * Vec3::Z;
         let extent_x = forward.x.abs() * TANK_SIZE.x / 2.0 + side.x.abs() * TANK_SIZE.z / 2.0;
-        let wall = ground::FIELD_SIDE / 2.0;
+        let wall = terrain::FIELD_SIDE / 2.0;
         let stop = transform.translation.x - extent_x;
         assert!((stop + wall).abs() < 0.03, "未到达墙：{transform:?}");
         assert!(stop >= -wall - 0.03, "穿墙：stop={stop} wall={wall}");
