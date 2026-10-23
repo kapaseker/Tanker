@@ -1,5 +1,7 @@
 # 模型画廊验收
 
+当前入口为 `src/pages/gallery/mod.rs`，预览归 `preview.rs`，交互归 `ui.rs`；无窗口预设在 `src/validation/scenarios/gallery.rs`。目录迁移后的最终回归见 [任务 10](architecture-step10-20261023.md)。
+
 ## 页面约定
 
 首页第二项进入模型画廊。炮管、履带、车身、坦克各两项；型号直接取真实资产变体目录，整车使用车身型号。卡片只展示、悬停和16秒一周的自转，不提供详情或换装。

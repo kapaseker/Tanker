@@ -1,5 +1,7 @@
 # 玩家坦克模型契约
 
+模块导航：共享体素尺度和 `WheelSpec` 位于 `src/tank/model/mod.rs`；生成器 `scripts/generate_player.rs` 复用车型契约。驾驶、履带、炮管挂载归 `src/tank/`，对局生成归 `src/gameplay/session.rs`。目录整理验收见 [任务 10](testing/architecture-step10-20261023.md)。
+
 默认玩家为原创现代主战坦克体素造型：橄榄绿倾斜首上、低矮棱角炮塔、侧裙板和深灰履带。保持现有驾驶速度、整车朝向开炮，不支持独立瞄准或游戏内换装。
 
 ## 尺寸和坐标

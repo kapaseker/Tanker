@@ -1,5 +1,7 @@
 # 敌方坦克模型契约
 
+模块导航：`scripts/generate_enemy.py` 读取 `src/tank/model/enemy.rs`，共用轮型契约在 `src/tank/model/mod.rs`；生成与销毁消息归 `src/gameplay/enemy.rs`，共用驾驶与表现归 `src/tank/`，战斗归 `src/gameplay/combat/`。目录整理验收见 [任务 10](testing/architecture-step10-20261023.md)。
+
 默认敌人为原创现代坦克：暗红倾斜首上、紧凑削角炮塔、短尾舱、分段侧裙和深灰透空履带。敌人仍是开局生成的10辆静止靶车，不新增AI、开火或补充生成。
 
 ## 尺寸与坐标

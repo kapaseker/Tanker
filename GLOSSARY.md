@@ -52,7 +52,7 @@
 
 | 含义 | 数值 | 权威定义 |
 |---|---|---|
-| 玩家坦克出生中心 Y | 1.3（= `TANK_SIZE.y / 2`） | `src/app/mod.rs` `setup_scene` |
+| 玩家坦克出生中心 Y | 1.3（= `TANK_SIZE.y / 2`） | `src/gameplay/session.rs` `setup` |
 | 敌人坦克出生中心 Y | 3.0（落地后平地中心约 1.3） | `SPAWN_DROP_Y`（`src/gameplay/enemy.rs`） |
 | 炮口局部坐标（车体根节点下，车头为 −X） | (−6.95, 0.7, 0) | `MUZZLE_POSITION`（`src/gameplay/combat/firing.rs`） |
 | 相机水平后退距离 / 竖直高度 | 16 / 9 | `CAMERA_DISTANCE` / `CAMERA_HEIGHT`（`src/gameplay/camera.rs`） |
@@ -70,3 +70,12 @@
 | 场地 / 地形 | `GroundPlugin`、`TerrainChunk`、`TerrainSurface`（`src/terrain/mod.rs`）、`GroundMap`（`src/terrain/map.rs`）；地形数据由 `scripts/generate_ground.py` 生成 |
 | 竞技场边界 | `spawn_walls()`（`src/terrain/collider.rs`）：四面围墙；`spawn_arena()` 另加一块平坦物理地面，仅供测试 |
 | 跟随相机 | `FollowCamera`、`camera_transform()`（`src/gameplay/camera.rs`） |
+
+## 模块导航
+
+- `app`：启动组装、页面状态、过渡和 GPU 就绪；`main` 解析参数并返回退出码。
+- `pages`：首页与画廊；画廊 `preview` 管纯视觉实例，`ui` 管布局与操作。
+- `gameplay`：玩家、敌人、相机、战斗；`session` 汇总对局生成、业务就绪与清理。
+- `tank`：共用驾驶、炮管挂载、履带与轮组；`model` 为运行时与生成器提供纯标准库契约。
+- `terrain`：地图、网格、碰撞和自身生命周期；`ui`：字体及编译期文案、颜色、尺寸。
+- `validation`：CLI、离屏运行、截图和场景断言，复用真实游戏系统。依赖规则见 [ADR-0002](docs/adr/0002-module-boundaries.md)。
