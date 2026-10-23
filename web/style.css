@@ -562,22 +562,17 @@
     gap: 6px;
   }
 
+  /* 型号（如 BR-01）作为卡片主行 */
   .card__index {
-    font-family: var(--font-mono);
-    font-size: 12px;
-    letter-spacing: 2px;
-    color: var(--mint-deep);
-  }
-
-  .card__name {
     font-family: var(--font-display);
     font-size: 18px;
     font-weight: 700;
+    letter-spacing: 2px;
     transition: color 220ms ease;
   }
 
-  .card:hover .card__name,
-  .card:focus-visible .card__name {
+  .card:hover .card__index,
+  .card:focus-visible .card__index {
     color: var(--mint-bright);
   }
 
@@ -712,7 +707,7 @@
     .screen.is-active { animation: none; }
     .card,
     .card::after,
-    .card .card__name,
+    .card .card__index,
     .back,
     .back kbd { transition: none; }
     .menu__item,

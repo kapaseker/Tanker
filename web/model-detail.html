@@ -27,7 +27,7 @@
       <div class="detail">
         <div class="backbar">
           <!-- 返回地址由脚本补上 #编号，保证回画廊后聚焦原卡片 -->
-          <a class="back" href="gallery.html" id="detail-back" aria-label="返回模型画廊">
+          <a class="back" href="model-gallery.html" id="detail-back" aria-label="返回模型画廊">
             <span class="back__arrow" aria-hidden="true">←</span> <kbd>ESC</kbd>
           </a>
           <h1 class="backbar__title" id="detail-name">—</h1>
@@ -74,17 +74,19 @@
       const model = category?.models[Number.isInteger(mi) ? mi : -1];
       // 参数缺失或非法（含直接打开裸链接）时回画廊
       if (!model) {
-        location.replace('gallery.html');
+        location.replace('model-gallery.html');
         return;
       }
 
       const back = document.getElementById('detail-back');
+      // 型号 = 分类代码-编号（如 BR-01），与画廊卡片编号一致
+      const modelCode = modelCardId(category, mi);
       // 带锚点返回画廊，画廊据此聚焦原卡片；同时更新标签页标题
-      back.href = `gallery.html#${modelCardId(category, mi)}`;
-      document.title = `${model.name} · V-Tank`;
+      back.href = `model-gallery.html#${modelCode}`;
+      document.title = `${modelCode} · V-Tank`;
 
       document.getElementById('detail-cat').textContent = category.name;
-      document.getElementById('detail-name').textContent = model.name;
+      document.getElementById('detail-name').textContent = modelCode;
       model.dims.forEach((value, i) => {
         document.getElementById(['detail-len', 'detail-w', 'detail-h'][i]).textContent = value;
       });
@@ -146,8 +148,7 @@
         renderDetailModel();
       }, { passive: false });
 
-      // 进入详情默认聚焦返回键，ESC 与点击走同一返回路径
-      back.focus();
+      // ESC 与点击走同一返回路径；不主动聚焦返回键，避免进场出现选中态
       document.addEventListener('keydown', (event) => {
         if (event.key !== 'Escape') return;
         location.href = back.href;
