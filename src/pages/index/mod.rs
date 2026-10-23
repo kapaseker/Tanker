@@ -10,6 +10,7 @@ use crate::{
     ui::resources::{
         colors::index as palette, dimens::index as dims, strings, strings_cn::index as labels,
     },
+    ui::widgets::{self, CornerOrientation},
 };
 use bevy::{
     camera::RenderTarget,
@@ -49,8 +50,6 @@ enum Part {
     Label(usize),
     Arrow(usize),
     Hint,
-    Build,
-    Corner(bool),
     Background,
 }
 
@@ -425,22 +424,7 @@ fn spawn_index(
                     }
                 });
             }
-            root.spawn((
-                Part::Build,
-                Text::new(labels::BUILD),
-                TextFont {
-                    font: font.0.clone().into(),
-                    font_size: FontSize::Px(dims::BUILD_SIZE),
-                    ..default()
-                },
-                LetterSpacing::Px(dims::BUILD_SPACING),
-                LineHeight::RelativeToFont(dimens::LINE_HEIGHT),
-                TextColor(colors::ON_SURFACE_MUTED),
-                Node {
-                    position_type: PositionType::Absolute,
-                    ..default()
-                },
-            ));
+            widgets::spawn_frame_corner(root, CornerOrientation::TopLeft, palette::CORNER);
             // 提示行复刻网页的 inline 键帽，顺序为 ↑ ↓ 选择 · ENTER 确认。
             // 说明：设计稿要求键帽与说明文字按基线对齐，但 Bevy 0.20 的 UI 布局
             // 不向 Taffy 提供文本基线，AlignItems::Baseline 会退化为底边对齐，
@@ -498,31 +482,7 @@ fn spawn_index(
                 keycap(hint, strings::KEY_ENTER);
                 caption(hint, labels::HINT_CONFIRM);
             });
-            for upper in [true, false] {
-                root.spawn((
-                    Part::Corner(upper),
-                    Node {
-                        position_type: PositionType::Absolute,
-                        width: px(dims::CORNER_SIZE),
-                        height: px(dims::CORNER_SIZE),
-                        border: if upper {
-                            UiRect {
-                                top: px(dimens::BORDER_WIDTH),
-                                left: px(dimens::BORDER_WIDTH),
-                                ..default()
-                            }
-                        } else {
-                            UiRect {
-                                bottom: px(dimens::BORDER_WIDTH),
-                                right: px(dimens::BORDER_WIDTH),
-                                ..default()
-                            }
-                        },
-                        ..default()
-                    },
-                    BorderColor::all(palette::CORNER),
-                ));
-            }
+            widgets::spawn_version_badge(root, &font, palette::CORNER);
         });
 }
 
@@ -720,20 +680,6 @@ fn update_visual(
                 node.left = px(l.hero.x);
                 node.top =
                     px(l.menu_y + dimens::BORDER_WIDTH + l.row_height * 2.0 + dims::HINT_GAP);
-            }
-            Part::Build => {
-                node.bottom = px(dims::BUILD_BOTTOM);
-                node.right = px(dims::BUILD_RIGHT);
-                node.left = Val::Auto;
-            }
-            Part::Corner(upper) => {
-                if upper {
-                    node.top = px(dims::CORNER_INSET);
-                    node.left = px(dims::CORNER_INSET);
-                } else {
-                    node.bottom = px(dims::CORNER_INSET);
-                    node.right = px(dims::CORNER_INSET);
-                }
             }
         }
         if let Some((x, y, w, h)) = rect {

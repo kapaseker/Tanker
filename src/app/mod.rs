@@ -51,6 +51,7 @@ pub(super) fn run(options: Option<validation::Options>) -> Result<(), String> {
         tank::track::TrackAnimationPlugin,
         gameplay::camera::FollowCameraPlugin,
         ui::font::UiFontPlugin,
+        ui::widgets::WidgetsPlugin,
         transition::TransitionPlugin,
         pages::index::IndexPlugin,
         pages::gallery::GalleryPlugin,

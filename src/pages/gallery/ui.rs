@@ -7,8 +7,9 @@ use crate::{
         resources::{
             colors,
             dimens::gallery as dims,
-            strings_cn::{gallery as labels, index as index_labels},
+            strings_cn::gallery as labels,
         },
+        widgets::{self, CornerOrientation},
     },
 };
 use bevy::{
@@ -48,8 +49,6 @@ pub(super) enum Part {
     Name(usize),
     Meta(usize),
     Line(usize),
-    Build,
-    Corner(bool),
 }
 
 /// 卡片有两项仍占固定四列中的前两列，不按数据量拉伸。
@@ -248,20 +247,12 @@ pub(super) fn spawn(
                     absolute(),
                 ));
             });
-            root.spawn((
-                Part::Build,
-                Text::new(index_labels::BUILD),
-                text_font(&font, 10.0, 400.0),
-                TextColor(colors::ON_SURFACE_MUTED),
-                absolute(),
-            ));
-            for bottom in [false, true] {
-                root.spawn((
-                    Part::Corner(bottom),
-                    absolute(),
-                    BorderColor::all(colors::gallery::OUTLINE_ACTIVE),
-                ));
-            }
+            widgets::spawn_frame_corner(
+                root,
+                CornerOrientation::TopLeft,
+                colors::gallery::OUTLINE_ACTIVE,
+            );
+            widgets::spawn_version_badge(root, &font, colors::gallery::OUTLINE_ACTIVE);
         });
 }
 /// UI 节点使用固定逻辑像素，窗口适配只通过页面相机统一缩放。
@@ -552,29 +543,6 @@ pub(super) fn update(
                 (dims::CARD_WIDTH - 2.0) * eased(view.line[i], 0.2, 0.8, 0.2, 1.0),
                 2.0,
             ),
-            Part::Build => (size.x - 148.0, size.y - 38.0, 110.0, 20.0),
-            Part::Corner(bottom) => {
-                let inset = crate::ui::resources::dimens::index::CORNER_INSET;
-                let side = crate::ui::resources::dimens::index::CORNER_SIZE;
-                node.border = if bottom {
-                    UiRect {
-                        right: px(1.0),
-                        bottom: px(1.0),
-                        ..default()
-                    }
-                } else {
-                    UiRect {
-                        left: px(1.0),
-                        top: px(1.0),
-                        ..default()
-                    }
-                };
-                if bottom {
-                    (size.x - inset - side, size.y - inset - side, side, side)
-                } else {
-                    (inset, inset, side, side)
-                }
-            }
         };
         node.left = px(rect.0);
         node.top = px(rect.1);
