@@ -38,13 +38,13 @@ fn spawn_barrels(
     tanks: Query<Entity, Added<Tank>>,
 ) {
     for tank in &tanks {
-        let barrel = commands
-            .spawn((
-                PlayerBarrel,
-                WorldAssetRoot(assets.load("tank/barrels/player/lance/barrel.vox")),
-            ))
-            .id();
-        commands.entity(tank).add_child(barrel);
+        let barrel = crate::tank_visual::mount_barrel(
+            &mut commands,
+            &assets,
+            tank,
+            crate::tank_visual::PLAYER_BARREL,
+        );
+        commands.entity(barrel).insert(PlayerBarrel);
     }
 }
 

@@ -507,8 +507,10 @@
     gap: 24px;
   }
 
+  /* 画廊卡片仅展示，型号来自真实目录，不翻译。 */
   /* ---------- 模型卡片 ---------- */
   .card {
+    cursor: default;
     position: relative;
     display: flex;
     flex-direction: column;
@@ -518,7 +520,6 @@
     color: var(--ink);
     background: var(--dark);
     border: 1px solid var(--line);
-    cursor: pointer;
     overflow: hidden;
     transition: border-color 220ms ease;
   }

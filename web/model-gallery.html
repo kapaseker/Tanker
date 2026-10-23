@@ -66,15 +66,14 @@
         grid.className = 'grid';
 
         category.models.forEach((model, mi) => {
-          const card = document.createElement('button');
-          card.type = 'button';
+          const card = document.createElement('div');
           card.className = 'card';
           // 锚点编号与详情页返回定位共用，例如 BR-01
           card.id = modelCardId(category, mi);
           card.innerHTML =
             `<span class="card__stage"></span>` +
             `<span class="card__info">` +
-            `<span class="card__index">${modelCardId(category, mi)}</span>` +
+            `<span class="card__index">${model.name}</span>` +
             `<span class="card__meta">${model.dims.join(' × ')} 米</span>` +
             `</span>`;
 
@@ -85,10 +84,7 @@
           spin.style.animationDelay = `${-3 - mi * 2.6}s`;
           card.querySelector('.card__stage').append(spin);
 
-          // 详情页用 URL 参数 c/m（分类与模型下标）定位模型
-          card.addEventListener('click', () => {
-            location.href = `model-detail.html?c=${ci}&m=${mi}`;
-          });
+          // 本阶段卡片仅展示与悬停，不进入详情、不加入键盘焦点流。
           grid.append(card);
         });
 
@@ -96,8 +92,7 @@
         gallerySections.append(section);
       });
 
-      // 返回画廊时靠 #编号 锚点由浏览器自动滚动定位原卡片；
-      // 不主动聚焦卡片，避免进场出现选中态，键盘用户可用 Tab 进入焦点流
+      // 型号原样使用目录名称，整车使用车身型号；卡片不提供确认动作。
 
       // ESC 返回主菜单，与返回键同一目标
       document.addEventListener('keydown', (event) => {

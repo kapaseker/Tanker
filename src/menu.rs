@@ -65,6 +65,10 @@ pub(crate) struct MenuInput {
     animation: [HoverAnimation; 2],
 }
 
+/// 独立页面返回首页时才恢复入口焦点，首次启动仍无选中项。
+#[derive(Resource, Default)]
+pub(crate) struct ReturnFocus(pub bool);
+
 /// 三种 CSS duration 独立计时，反向时从当前进度继续。
 #[derive(Clone, Copy, Default)]
 struct HoverAnimation {
@@ -148,12 +152,9 @@ impl Layout {
             + row_height * 2.0
             + dims::HINT_GAP
             + dims::HINT_HEIGHT;
-        let content_height = (size.y
-            - dims::TOP
-            - dims::BOTTOM
-            - dims::PADDING_TOP
-            - dims::PADDING_BOTTOM)
-            .max(hero_height);
+        let content_height =
+            (size.y - dims::TOP - dims::BOTTOM - dims::PADDING_TOP - dims::PADDING_BOTTOM)
+                .max(hero_height);
         let hero = Vec2::new(
             (size.x - hero_width - gap - cube_width) * 0.5,
             dims::TOP + dims::PADDING_TOP + (content_height - hero_height) * 0.5,
@@ -191,7 +192,7 @@ impl Layout {
 
 /// 与 menu.wesl 的 MenuPalette 同布局；Vec4 的 RGB 为 sRGB，W 为合成强度。
 #[derive(ShaderType, Clone, Debug)]
-struct MenuPalette {
+pub(crate) struct MenuPalette {
     /// 页面底色。
     background: Vec4,
     /// 暖色与薄荷环境光。
@@ -233,15 +234,15 @@ impl Default for MenuPalette {
 
 /// 背景材质包含实际可见的 glow/floor/scan/vignette 和九个 SVG 方块。
 #[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
-struct MenuBackground {
+pub(crate) struct MenuBackground {
     /// XY 为逻辑视口尺寸，Z 为秒数，W 为装饰漂浮距离（逻辑像素）。
     #[uniform(0)]
-    viewport: Vec4,
+    pub(crate) viewport: Vec4,
     #[uniform(1)]
-    cubes: Vec4,
+    pub(crate) cubes: Vec4,
     /// 静态配色只在创建材质时由 UI 常量构建。
     #[uniform(2)]
-    palette: MenuPalette,
+    pub(crate) palette: MenuPalette,
 }
 impl UiMaterial for MenuBackground {
     fn fragment_shader() -> ShaderRef {
@@ -254,6 +255,7 @@ pub(crate) struct MenuPlugin;
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MenuInput>()
+            .init_resource::<ReturnFocus>()
             .insert_resource(Layout::new(Vec2::new(
                 dimens::REFERENCE_WIDTH,
                 dimens::REFERENCE_HEIGHT,
@@ -261,12 +263,16 @@ impl Plugin for MenuPlugin {
             .add_plugins(UiMaterialPlugin::<MenuBackground>::default())
             .add_systems(OnEnter(GameState::Menu), spawn_menu)
             .add_systems(OnEnter(GameState::InGame), despawn_menu)
+            .add_systems(OnEnter(GameState::Gallery), despawn_menu)
             .add_systems(
                 Update,
                 (menu_input, update_visual)
                     .chain()
                     .run_if(|state: Res<State<GameState>>| {
-                        matches!(state.get(), GameState::Menu | GameState::ToGame)
+                        matches!(
+                            state.get(),
+                            GameState::Menu | GameState::ToGame | GameState::ToGallery
+                        )
                     }),
             );
     }
@@ -280,8 +286,14 @@ fn spawn_menu(
     font: Res<UiFont>,
     mut input: ResMut<MenuInput>,
     mut materials: ResMut<Assets<MenuBackground>>,
+    mut return_focus: ResMut<ReturnFocus>,
 ) {
     *input = MenuInput::default();
+    if return_focus.0 {
+        input.focus = Some(1);
+        input.keyboard_focus = true;
+        return_focus.0 = false;
+    }
     let camera = commands
         .spawn((
             Camera3d::default(),
@@ -457,10 +469,7 @@ fn spawn_menu(
                         Node {
                             border: UiRect::all(px(dimens::BORDER_WIDTH)),
                             border_radius: BorderRadius::all(px(dims::KBD_RADIUS)),
-                            padding: UiRect::axes(
-                                px(dims::KBD_PADDING_X),
-                                px(dims::KBD_PADDING_Y),
-                            ),
+                            padding: UiRect::axes(px(dims::KBD_PADDING_X), px(dims::KBD_PADDING_Y)),
                             ..default()
                         },
                         BorderColor::all(palette::SEPARATOR),
@@ -575,6 +584,9 @@ fn menu_input(
     if confirmed == Some(0) && fade.begin(GameState::InGame) {
         next.set(GameState::ToGame);
     }
+    if confirmed == Some(1) && fade.begin(GameState::Gallery) {
+        next.set(GameState::ToGallery);
+    }
 }
 
 /// 依照 CSS 更新布局和缓动，鼠标离开后悬停效果自动反向收回。
@@ -672,10 +684,7 @@ fn update_visual(
                         colors::ON_SURFACE,
                     ),
                     _ => (
-                        l.menu_width
-                            - dims::ROW_INSET
-                            - dims::ARROW_INSET
-                            - dims::ARROW_SIZE
+                        l.menu_width - dims::ROW_INSET - dims::ARROW_INSET - dims::ARROW_SIZE
                             + dims::ARROW_TRAVEL * p[1],
                         dims::ARROW_SIZE,
                         0.0,
@@ -801,8 +810,9 @@ mod tests {
         press(&mut world, KeyCode::Enter);
         assert_eq!(
             world.resource::<Fade>().phase,
-            crate::transition::Phase::Idle
+            crate::transition::Phase::Out
         );
+        world.insert_resource(Fade::default());
         press(&mut world, KeyCode::Tab);
         assert_eq!(world.resource::<MenuInput>().focus, Some(0));
         press(&mut world, KeyCode::Enter);

@@ -204,11 +204,18 @@ fn resize_target(
     windows: Query<&Window>,
     target: Res<SceneTarget>,
     mut images: ResMut<Assets<Image>>,
-    mut menu_cameras: Query<&mut RenderTarget, With<crate::menu::MenuCamera>>,
+    mut menu_cameras: Query<
+        &mut RenderTarget,
+        Or<(
+            With<crate::menu::MenuCamera>,
+            With<crate::gallery::GalleryCamera>,
+        )>,
+    >,
     mut scene_cameras: Query<
         &mut RenderTarget,
         (
             Without<crate::menu::MenuCamera>,
+            Without<crate::gallery::GalleryCamera>,
             With<crate::driving::FollowCamera>,
         ),
     >,
@@ -277,11 +284,15 @@ fn return_to_menu(
 fn report_asset_failure(
     mut failures: MessageReader<UntypedAssetLoadFailedEvent>,
     readiness: Res<RenderReadiness>,
+    state: Res<State<GameState>>,
 ) {
     for event in failures.read() {
         let message = format!("页面资源加载失败：{}：{}", event.path, event.error);
         error!("{message}");
-        *readiness.failure.lock().unwrap() = Some(message);
+        // 画廊以错误卡片结束加载，保留返回入口；战斗资源错误仍阻止揭幕。
+        if !matches!(state.get(), GameState::Gallery | GameState::GalleryToMenu) {
+            *readiness.failure.lock().unwrap() = Some(message);
+        }
     }
 }
 
@@ -292,6 +303,9 @@ pub(crate) fn content_ready(world: &mut World) -> bool {
     }
     if *world.resource::<State<GameState>>().get() == GameState::Menu {
         return crate::menu::assets_ready(world);
+    }
+    if *world.resource::<State<GameState>>().get() == GameState::Gallery {
+        return crate::gallery::assets_ready(world);
     }
     if !world.contains_resource::<crate::ground::TerrainReady>()
         || !crate::firing::assets_ready(world)

@@ -13,6 +13,15 @@ pub(crate) const PRIMARY_DEEP: Color = Color::srgb_u8(157, 182, 126);
 /// 强调色背景上的文字色。
 pub(crate) const ON_PRIMARY: Color = Color::srgb_u8(18, 17, 13);
 
+/// 画廊面板和细边框；不透明色取 CSS 在暗底合成后的色值。
+pub(crate) mod gallery {
+    use super::*;
+    pub(crate) const SURFACE: Color = ON_PRIMARY;
+    pub(crate) const OUTLINE: Color = Color::srgb_u8(48, 46, 41);
+    pub(crate) const OUTLINE_ACTIVE: Color = Color::srgb_u8(87, 100, 73);
+    pub(crate) const NAME_ACTIVE: Color = Color::srgb_u8(234, 244, 218);
+}
+
 /// 首页专用配色与渲染补偿值；保留当前实际画面，不套用通用透明度。
 pub(crate) mod menu {
     use super::*;

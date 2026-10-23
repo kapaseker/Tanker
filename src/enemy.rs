@@ -62,13 +62,13 @@ pub(super) fn spawn_enemy_barrels(
     enemies: Query<Entity, Added<EnemyTank>>,
 ) {
     for enemy in &enemies {
-        let barrel = commands
-            .spawn((
-                Name::new("enemy_barrel"),
-                WorldAssetRoot(assets.load("tank/barrels/enemy/spit/barrel.vox")),
-            ))
-            .id();
-        commands.entity(enemy).add_child(barrel);
+        let barrel = crate::tank_visual::mount_barrel(
+            &mut commands,
+            &assets,
+            enemy,
+            crate::tank_visual::ENEMY_BARREL,
+        );
+        commands.entity(barrel).insert(Name::new("enemy_barrel"));
     }
 }
 

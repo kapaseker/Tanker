@@ -20,7 +20,7 @@ function face(w, h, transform, color) {
   return el;
 }
 
-// 组合模型：返回以模型中心为原点的 3D 盒子组合节点
+// 组合模型：整车示意以 body 中心为原点，与游戏内的旋转轴约定一致。
 function buildModel(model) {
   const el = document.createElement('div');
   el.className = 'model';
@@ -50,171 +50,25 @@ function buildModel(model) {
 }
 
 // 分类与模型数据；ci/mi 为分类与模型下标，用于页面间 URL 传递
+// 与游戏当前八项真实清单同步；尺寸为可见几何长宽高（米）。
+// 网页盒子仅表达构图，游戏必须通过 VOX 加载器渲染真实资产。
 const CATEGORIES = [
-  {
-    name: '炮管', code: 'BR',
-    models: [
-      {
-        name: '长管加农', tone: 'gray', dims: [7, 1, 1],
-        parts: [
-          { w: 170, h: 16, d: 16 },
-          { w: 30, h: 28, d: 28, x: -86, tone: 'dark' },
-          { w: 12, h: 22, d: 22, x: 88, tone: 'dark' },
-        ],
-      },
-      {
-        name: '短管榴弹', tone: 'gray', dims: [4, 1.5, 1.5],
-        parts: [
-          { w: 96, h: 24, d: 24 },
-          { w: 18, h: 32, d: 32, x: 46, tone: 'dark' },
-          { w: 34, h: 36, d: 36, x: -52, tone: 'dark' },
-        ],
-      },
-      {
-        name: '双联机炮', tone: 'mint', dims: [4, 2, 1.5],
-        parts: [
-          { w: 116, h: 12, d: 12, z: 15 },
-          { w: 116, h: 12, d: 12, z: -15 },
-          { w: 30, h: 30, d: 52, x: -60, tone: 'dark' },
-        ],
-      },
-    ],
-  },
-  {
-    name: '履带', code: 'TR',
-    models: [
-      {
-        name: '标准履带', tone: 'sand', dims: [4.5, 3, 1.5],
-        parts: [
-          { w: 168, h: 30, d: 24, z: 36 },
-          { w: 168, h: 30, d: 24, z: -36 },
-          { w: 120, h: 10, d: 60, y: -20, tone: 'dark' },
-        ],
-      },
-      {
-        name: '宽履带', tone: 'sand', dims: [4.5, 3.5, 1.5],
-        parts: [
-          { w: 168, h: 26, d: 34, z: 46 },
-          { w: 168, h: 26, d: 34, z: -46 },
-          { w: 110, h: 10, d: 70, y: -18, tone: 'dark' },
-        ],
-      },
-      {
-        name: '轻型履带', tone: 'gray', dims: [3.5, 2.5, 1],
-        parts: [
-          { w: 128, h: 22, d: 18, z: 28 },
-          { w: 128, h: 22, d: 18, z: -28 },
-        ],
-      },
-      // 以下为布局示例占位模型，非实际游戏资源
-      {
-        name: '窄履带', tone: 'sand', dims: [3.5, 2, 1],
-        parts: [
-          { w: 120, h: 20, d: 14, z: 22 },
-          { w: 120, h: 20, d: 14, z: -22 },
-        ],
-      },
-    ],
-  },
-  {
-    name: '车身', code: 'CH',
-    models: [
-      {
-        name: '标准底盘', tone: 'gray', dims: [4, 2.5, 1.5],
-        parts: [
-          { w: 150, h: 38, d: 92 },
-          { w: 112, h: 12, d: 66, y: -25, tone: 'dark' },
-          { w: 16, h: 24, d: 88, x: 80, tone: 'dark' },
-        ],
-      },
-      {
-        name: '装甲底盘', tone: 'sand', dims: [4.5, 3, 2],
-        parts: [
-          { w: 150, h: 48, d: 98 },
-          { w: 116, h: 16, d: 72, y: -30, tone: 'dark' },
-          { w: 18, h: 30, d: 92, x: 80, tone: 'dark' },
-        ],
-      },
-      // 以下为布局示例占位模型，非实际游戏资源
-      {
-        name: '轻型底盘', tone: 'mint', dims: [3.5, 2, 1],
-        parts: [
-          { w: 120, h: 26, d: 72 },
-          { w: 90, h: 10, d: 50, y: -18, tone: 'dark' },
-        ],
-      },
-      {
-        name: '加长底盘', tone: 'gray', dims: [5.5, 2.5, 1.5],
-        parts: [
-          { w: 190, h: 38, d: 92 },
-          { w: 150, h: 12, d: 66, y: -25, tone: 'dark' },
-        ],
-      },
-      {
-        name: '低矮底盘', tone: 'dark', dims: [4, 2.5, 1],
-        parts: [
-          { w: 150, h: 24, d: 92 },
-          { w: 112, h: 10, d: 66, y: -17, tone: 'gray' },
-        ],
-      },
-    ],
-  },
-  {
-    name: '坦克', code: 'TK',
-    models: [
-      {
-        name: '侦察型', tone: 'mint', dims: [4.5, 2.5, 2],
-        parts: [
-          { w: 132, h: 32, d: 84 },
-          { w: 58, h: 24, d: 52, y: -28, tone: 'gray' },
-          { w: 84, h: 10, d: 10, x: 70, y: -28, tone: 'dark' },
-        ],
-      },
-      {
-        name: '主战型', tone: 'gray', dims: [7, 3.5, 2.5],
-        parts: [
-          { w: 156, h: 40, d: 100 },
-          { w: 76, h: 30, d: 66, y: -35, tone: 'mint' },
-          { w: 104, h: 13, d: 13, x: 92, y: -35, tone: 'dark' },
-          { w: 14, h: 18, d: 18, x: 142, y: -35, tone: 'dark' },
-        ],
-      },
-      {
-        name: '重装型', tone: 'sand', dims: [7.5, 4, 3],
-        parts: [
-          { w: 164, h: 48, d: 112 },
-          { w: 88, h: 36, d: 78, y: -42, tone: 'dark' },
-          { w: 108, h: 12, d: 12, x: 96, y: -46, z: 12, tone: 'dark' },
-          { w: 108, h: 12, d: 12, x: 96, y: -46, z: -12, tone: 'dark' },
-        ],
-      },
-      // 以下为布局示例占位模型，非实际游戏资源
-      {
-        name: '轻型坦克', tone: 'mint', dims: [4, 2.5, 1.5],
-        parts: [
-          { w: 110, h: 28, d: 72 },
-          { w: 48, h: 20, d: 44, y: -24, tone: 'gray' },
-          { w: 66, h: 9, d: 9, x: 60, y: -24, tone: 'dark' },
-        ],
-      },
-      {
-        name: '自行火炮', tone: 'sand', dims: [6.5, 3, 2],
-        parts: [
-          { w: 150, h: 34, d: 92 },
-          { w: 70, h: 28, d: 60, y: -31, tone: 'gray' },
-          { w: 120, h: 10, d: 10, x: 100, y: -31, tone: 'dark' },
-        ],
-      },
-      {
-        name: '坦克歼击车', tone: 'dark', dims: [6, 3, 2],
-        parts: [
-          { w: 140, h: 30, d: 88 },
-          { w: 60, h: 24, d: 52, y: -27, tone: 'sand' },
-          { w: 96, h: 11, d: 11, x: 82, y: -27, tone: 'gray' },
-        ],
-      },
-    ],
-  },
+  { name: '炮管', code: 'BR', models: [
+    { name: 'lance', tone: 'mint', dims: [4.5, 0.4, 0.4], parts: [{ w: 170, h: 16, d: 16 }] },
+    { name: 'spit', tone: 'sand', dims: [3.8, 0.4, 0.4], parts: [{ w: 144, h: 16, d: 16 }] },
+  ] },
+  { name: '履带', code: 'TR', models: [
+    { name: 'cleat', tone: 'dark', dims: [7.5, 3.6, 1.3], parts: [{ w: 180, h: 31, d: 20, z: 33 }, { w: 180, h: 31, d: 20, z: -33 }] },
+    { name: 'crawl', tone: 'sand', dims: [6.6, 3.4, 1.4], parts: [{ w: 158, h: 34, d: 20, z: 31 }, { w: 158, h: 34, d: 20, z: -31 }] },
+  ] },
+  { name: '车身', code: 'CH', models: [
+    { name: 'anvil', tone: 'mint', dims: [7.5, 3.4, 2.2], parts: [{ w: 180, h: 30, d: 82 }, { w: 76, h: 23, d: 60, y: -26 }] },
+    { name: 'carapace', tone: 'sand', dims: [6.5, 3.2, 2.1], parts: [{ w: 156, h: 30, d: 77 }, { w: 68, h: 20, d: 52, y: -25 }] },
+  ] },
+  { name: '坦克', code: 'TK', models: [
+    { name: 'anvil', tone: 'mint', dims: [10.5, 3.6, 2.6], parts: [{ w: 150, h: 30, d: 72 }, { w: 60, h: 22, d: 48, y: -26 }, { w: 90, h: 8, d: 8, x: 90, y: -26 }, { w: 150, h: 20, d: 16, y: 20, z: 28, tone: 'dark' }, { w: 150, h: 20, d: 16, y: 20, z: -28, tone: 'dark' }] },
+    { name: 'carapace', tone: 'sand', dims: [9, 3.4, 2.6], parts: [{ w: 132, h: 30, d: 68 }, { w: 54, h: 22, d: 46, y: -26 }, { w: 76, h: 8, d: 8, x: 78, y: -26 }, { w: 132, h: 20, d: 16, y: 20, z: 26, tone: 'dark' }, { w: 132, h: 20, d: 16, y: 20, z: -26, tone: 'dark' }] },
+  ] },
 ];
 
 // 模型卡片/详情页锚点编号，例如 BR-01；画廊与详情页用它互相对应

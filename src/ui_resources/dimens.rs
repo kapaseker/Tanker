@@ -9,6 +9,37 @@ pub(crate) const LINE_HEIGHT: f32 = 4.0 / 3.0;
 /// UI 细边框宽度。
 pub(crate) const BORDER_WIDTH: f32 = 1.0;
 
+/// 画廊逻辑像素，与固定四列的网页设计稿保持一致。
+pub(crate) mod gallery {
+    /// 页面内容宽度，以及卡片和网格的固定尺寸。
+    pub(crate) const WIDTH: f32 = 1152.0;
+    pub(crate) const CARD_WIDTH: f32 = 270.0;
+    pub(crate) const CARD_HEIGHT: f32 = 282.0;
+    pub(crate) const GAP: f32 = 24.0;
+    pub(crate) const SECTION_GAP: f32 = 60.0;
+    pub(crate) const HEADER_HEIGHT: f32 = 88.0;
+    pub(crate) const FOOTER_HEIGHT: f32 = 60.0;
+    pub(crate) const PREVIEW_HEIGHT: f32 = 180.0;
+    pub(crate) const CARD_PADDING: f32 = 20.0;
+    pub(crate) const HEADING_SIZE: f32 = 24.0;
+    pub(crate) const NAME_SIZE: f32 = 18.0;
+    pub(crate) const META_SIZE: f32 = 12.0;
+    pub(crate) const SCROLL_STEP: f32 = 64.0;
+    /// 以下矩形依次为左、上、宽、高，单位为所属父节点内的逻辑像素。
+    pub(crate) const BACK_RECT: (f32, f32, f32, f32) = (64.0, 20.0, 102.0, 48.0);
+    pub(crate) const BACK_TEXT_RECT: (f32, f32, f32, f32) = (18.0, 15.0, 70.0, 20.0);
+    pub(crate) const TITLE_RECT: (f32, f32, f32, f32) = (182.0, 30.0, 300.0, 30.0);
+    pub(crate) const NAME_RECT: (f32, f32, f32, f32) = (20.0, 216.0, 228.0, 26.0);
+    pub(crate) const META_RECT: (f32, f32, f32, f32) = (20.0, 248.0, 228.0, 20.0);
+    /// 分类标题到卡片的距离，以及页面末尾留白。
+    pub(crate) const SECTION_TO_CARD: f32 = 56.0;
+    pub(crate) const CONTENT_BOTTOM: f32 = 40.0;
+    /// 页面标题字号、型号字距与悬停底线高度。
+    pub(crate) const TITLE_SIZE: f32 = 20.0;
+    pub(crate) const LETTER_SPACING: f32 = 2.0;
+    pub(crate) const HOVER_LINE_HEIGHT: f32 = 2.0;
+}
+
 /// 首页设计参数；全部为 1280×720 参考分辨率下的固定设计常量（以网页原型
 /// `web/style.css` 为基准），窗口适配由整体等比缩放承担，不再有断点与逐控件缩小。
 pub(crate) mod menu {

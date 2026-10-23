@@ -20,10 +20,12 @@ mod enemy_model;
 mod explosion;
 mod firing;
 mod font;
+mod gallery;
 mod ground;
 mod menu;
 mod offscreen;
 mod player_model;
+mod tank_visual;
 mod track;
 mod transition;
 mod ui_resources;
@@ -39,6 +41,12 @@ pub(crate) enum GameState {
     Menu,
     /// Start Game 确认后：黑幕淡出，淡至全黑时生成场景并切 InGame。
     ToGame,
+    /// 首页渐出后进入模型画廊。
+    ToGallery,
+    /// 真实模型的只读展示页。
+    Gallery,
+    /// 画廊渐出，黑场时回到首页。
+    GalleryToMenu,
     /// Esc 返回首页，先保持当前场景并渐出。
     ToMenu,
     /// 游戏内：黑幕淡入完成后的正常 gameplay。
@@ -110,6 +118,7 @@ fn run_game(options: Option<offscreen::Options>) -> Result<(), String> {
         font::UiFontPlugin,
         transition::TransitionPlugin,
         menu::MenuPlugin,
+        gallery::GalleryPlugin,
     ))
     .insert_resource(GlobalAmbientLight {
         brightness: GLOBAL_AMBIENT_BRIGHTNESS,
