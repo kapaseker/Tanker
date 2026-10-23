@@ -464,7 +464,7 @@
   }
 
   .gallery__section {
-    margin-top: 56px;
+    margin-top: 60px;
   }
 
   /* 栏目之间只靠间距区分，不画分割线 */
@@ -477,7 +477,7 @@
 
   .gallery__index {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: 18px;
     letter-spacing: 2px;
     color: var(--mint-deep);
   }
