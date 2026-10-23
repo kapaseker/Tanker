@@ -6,7 +6,7 @@ use crate::{
         state::GameState,
         transition::{Fade, SceneTarget},
     },
-    tank_visual, track,
+    tank::{track, visual},
 };
 use bevy::{
     asset::LoadState,
@@ -36,12 +36,12 @@ impl Entry {
 pub(crate) const ENTRIES: [Entry; 8] = [
     Entry {
         category: 0,
-        path: tank_visual::PLAYER_BARREL,
+        path: visual::PLAYER_BARREL,
         enemy: false,
     },
     Entry {
         category: 0,
-        path: tank_visual::ENEMY_BARREL,
+        path: visual::ENEMY_BARREL,
         enemy: true,
     },
     Entry {
@@ -151,14 +151,14 @@ fn spawn_previews(
             });
         }
         if entry.category == 3 {
-            tank_visual::mount_barrel(
+            visual::mount_barrel(
                 &mut commands,
                 &assets,
                 content,
                 if entry.enemy {
-                    tank_visual::ENEMY_BARREL
+                    visual::ENEMY_BARREL
                 } else {
-                    tank_visual::PLAYER_BARREL
+                    visual::PLAYER_BARREL
                 },
             );
         }
@@ -402,7 +402,7 @@ pub(crate) fn validate(world: &World) -> Result<String, String> {
         let mut visible_phases = 0;
         let mut wheels = 0;
         for (entity, _, visible) in nodes {
-            if world.get::<crate::firing::Tank>(entity).is_some()
+            if world.get::<crate::gameplay::player::Tank>(entity).is_some()
                 || world.get::<crate::enemy::EnemyTank>(entity).is_some()
                 || world.get::<avian3d::prelude::RigidBody>(entity).is_some()
             {
@@ -512,7 +512,7 @@ mod tests {
             TransformPlugin,
             bevy_vox_scene::VoxScenePlugin {
                 global_settings: Some(bevy_vox_scene::VoxLoaderSettings {
-                    voxel_size: crate::app::VOXEL_SIZE,
+                    voxel_size: crate::tank::model::VOXEL_SIZE,
                     ..default()
                 }),
             },

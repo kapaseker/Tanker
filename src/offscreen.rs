@@ -304,7 +304,7 @@ fn inject_input(
     frame: Res<InputFrame>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     target: Option<Res<WheelTarget>>,
-    mut inputs: Query<&mut crate::driving::DrivingInput>,
+    mut inputs: Query<&mut crate::tank::driving::DrivingInput>,
     mouse_script: Option<Res<MenuMouse>>,
     mouse: Option<ResMut<ButtonInput<MouseButton>>>,
 ) {
@@ -428,7 +428,7 @@ fn update(app: &mut App, duration: Duration, frame: Option<u32>) -> Result<(), S
     )?;
     let world = app.world_mut();
     if let Some(failure) = world
-        .query::<&crate::track::TracksFailed>()
+        .query::<&crate::tank::track::TracksFailed>()
         .iter(world)
         .next()
     {
@@ -487,11 +487,11 @@ fn scene_ready(app: &mut App) -> bool {
         return false;
     }
     let tank_count = world
-        .query_filtered::<(), Or<(With<crate::firing::Tank>, With<crate::enemy::EnemyTank>)>>()
+        .query_filtered::<(), Or<(With<crate::gameplay::player::Tank>, With<crate::enemy::EnemyTank>)>>()
         .iter(world)
         .count();
     let validated = world
-        .query_filtered::<(), With<crate::track::TracksValidated>>()
+        .query_filtered::<(), With<crate::tank::track::TracksValidated>>()
         .iter(world)
         .count();
     if tank_count != crate::enemy::ENEMY_COUNT + 1 || validated != tank_count {
@@ -582,12 +582,12 @@ fn subject_state(world: &mut World) -> Result<(Transform, [f32; 2]), String> {
         let entity = world.entity(target.0);
         return entity
             .get::<Transform>()
-            .zip(entity.get::<crate::track::TrackAnim>())
+            .zip(entity.get::<crate::tank::track::TrackAnim>())
             .map(|(transform, tracks)| (*transform, tracks.distances()))
             .ok_or_else(|| "敌人轮组状态异常".into());
     }
     let mut query =
-        world.query_filtered::<(&Transform, &crate::track::TrackAnim), With<crate::firing::Tank>>();
+        world.query_filtered::<(&Transform, &crate::tank::track::TrackAnim), With<crate::gameplay::player::Tank>>();
     query
         .single(world)
         .map(|(transform, tracks)| (*transform, tracks.distances()))
@@ -606,11 +606,11 @@ fn validate_scene_state(
     spatial: SpatialQuery,
     terrain: Query<(), With<crate::ground::TerrainSurface>>,
     tanks: Query<
-        (&Transform, Has<crate::firing::Tank>),
-        Or<(With<crate::firing::Tank>, With<crate::enemy::EnemyTank>)>,
+        (&Transform, Has<crate::gameplay::player::Tank>),
+        Or<(With<crate::gameplay::player::Tank>, With<crate::enemy::EnemyTank>)>,
     >,
-    players: Query<&Transform, With<crate::firing::Tank>>,
-    cameras: Query<&Transform, With<crate::driving::FollowCamera>>,
+    players: Query<&Transform, With<crate::gameplay::player::Tank>>,
+    cameras: Query<&Transform, With<crate::gameplay::camera::FollowCamera>>,
 ) -> Result<(), String> {
     let player = players.single().map_err(|e| format!("玩家状态异常：{e}"))?;
     for (tank, is_player) in &tanks {
@@ -630,7 +630,7 @@ fn validate_scene_state(
             )
             .ok_or("坦克下方未找到地形碰撞体")?;
         let half_height = if is_player {
-            crate::driving::TANK_SIZE.y
+            crate::tank::driving::TANK_SIZE.y
         } else {
             crate::enemy::ENEMY_SIZE.y
         } / 2.0;
@@ -640,7 +640,7 @@ fn validate_scene_state(
         )?;
     }
     let camera = cameras.single().map_err(|e| format!("跟随相机异常：{e}"))?;
-    let expected = crate::driving::camera_transform(&player);
+    let expected = crate::gameplay::camera::camera_transform(&player);
     // 直接比较分量，避免 acos 将同一姿态的归一化舍入误差放大成角度误差。
     ensure(
         camera.translation.distance(expected.translation) < 0.01
@@ -1339,7 +1339,7 @@ fn run_menu_scenario(app: &mut App, options: &Options, report: &mut String) -> R
                 )?;
                 let follows = app
                     .world_mut()
-                    .query_filtered::<(), With<crate::driving::FollowCamera>>()
+                    .query_filtered::<(), With<crate::gameplay::camera::FollowCamera>>()
                     .iter(app.world())
                     .count();
                 ensure(follows == 1, "游戏相机重复生成")?;
@@ -1400,14 +1400,14 @@ fn capture_view(app: &mut App, path: &Path, offset: Vec3) -> Result<(), String> 
     let (player, _) = subject_state(app.world_mut())?;
     let world = app.world_mut();
     let (camera, saved) = world
-        .query_filtered::<(Entity, &Transform), With<crate::driving::FollowCamera>>()
+        .query_filtered::<(Entity, &Transform), With<crate::gameplay::camera::FollowCamera>>()
         .single(world)
         .map(|(entity, transform)| (entity, *transform))
         .map_err(|e| e.to_string())?;
     let target = player.translation + Vec3::Y * -0.15;
     world
         .entity_mut(camera)
-        .remove::<crate::driving::FollowCamera>()
+        .remove::<crate::gameplay::camera::FollowCamera>()
         .insert(
             Transform::from_translation(target + player.rotation * offset)
                 .looking_at(target, Vec3::Y),
@@ -1415,7 +1415,7 @@ fn capture_view(app: &mut App, path: &Path, offset: Vec3) -> Result<(), String> 
     let result = capture(app, path);
     app.world_mut()
         .entity_mut(camera)
-        .insert((crate::driving::FollowCamera, saved));
+        .insert((crate::gameplay::camera::FollowCamera, saved));
     result
 }
 
@@ -1446,7 +1446,7 @@ fn capture_wheel_views(app: &mut App, output: &Path) -> Result<(), String> {
     let half = if app.world().contains_resource::<WheelTarget>() {
         crate::enemy::ENEMY_SIZE
     } else {
-        crate::driving::TANK_SIZE
+        crate::tank::driving::TANK_SIZE
     } / 2.0;
     let mut edges = Vec::new();
     for axis in 0..3 {
@@ -1721,11 +1721,11 @@ mod tests {
         let mut app = App::new();
         let target = app
             .world_mut()
-            .spawn(crate::driving::DrivingInput::default())
+            .spawn(crate::tank::driving::DrivingInput::default())
             .id();
         let idle = app
             .world_mut()
-            .spawn(crate::driving::DrivingInput::default())
+            .spawn(crate::tank::driving::DrivingInput::default())
             .id();
         app.insert_resource(WheelTarget(target))
             .insert_resource(InputFrame(Scenario::Wheels, None))
@@ -1742,12 +1742,12 @@ mod tests {
             app.update();
             let input = app
                 .world()
-                .get::<crate::driving::DrivingInput>(target)
+                .get::<crate::tank::driving::DrivingInput>(target)
                 .unwrap();
             assert_eq!((input.throttle, input.turn), (throttle, turn));
             let input = app
                 .world()
-                .get::<crate::driving::DrivingInput>(idle)
+                .get::<crate::tank::driving::DrivingInput>(idle)
                 .unwrap();
             assert_eq!((input.throttle, input.turn), (0.0, 0.0));
             assert_eq!(
@@ -1847,7 +1847,8 @@ mod tests {
             TransformPlugin,
             bevy::input::InputPlugin,
             avian3d::prelude::PhysicsPlugins::default(),
-            crate::driving::DrivingPlugin,
+            crate::tank::driving::DrivingPlugin,
+            crate::gameplay::player::PlayerPlugin,
         ))
         .insert_resource(InputFrame(Scenario::Drive, None))
         .insert_resource(TimeUpdateStrategy::ManualDuration(STEP))
@@ -1861,8 +1862,8 @@ mod tests {
         let player = app
             .world_mut()
             .spawn((
-                crate::firing::Tank,
-                crate::driving::tank_body(),
+                crate::gameplay::player::Tank,
+                crate::tank::driving::tank_body(),
                 Transform::from_xyz(0.0, 0.75, 0.0),
             ))
             .id();
@@ -1902,7 +1903,9 @@ mod tests {
             MinimalPlugins,
             TransformPlugin,
             PhysicsPlugins::default(),
-            crate::driving::DrivingPlugin,
+            crate::tank::driving::DrivingPlugin,
+            crate::gameplay::player::PlayerPlugin,
+            crate::gameplay::camera::FollowCameraPlugin,
         ))
         .init_resource::<ButtonInput<KeyCode>>()
         .insert_resource(TimeUpdateStrategy::ManualDuration(STEP));
@@ -1917,13 +1920,13 @@ mod tests {
         let player = app
             .world_mut()
             .spawn((
-                crate::firing::Tank,
-                crate::driving::tank_body(),
+                crate::gameplay::player::Tank,
+                crate::tank::driving::tank_body(),
                 Transform::from_xyz(0.0, 0.75, 0.0),
             ))
             .id();
         app.world_mut()
-            .spawn((crate::driving::FollowCamera, Transform::default()));
+            .spawn((crate::gameplay::camera::FollowCamera, Transform::default()));
         for _ in 0..10 {
             app.update();
         }

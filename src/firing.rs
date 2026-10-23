@@ -1,6 +1,8 @@
 //! 坦克空格连发：按炮口世界方向发射，沿飞行路径检测敌人，命中或射程耗尽时清理。
 
 use crate::enemy::{EnemyDestroyed, EnemyTank};
+use crate::gameplay::player::Tank;
+use crate::tank::visual;
 use avian3d::prelude::{Collider, ShapeCastConfig, SpatialQuery, SpatialQueryFilter};
 use bevy::{
     asset::LoadState,
@@ -19,11 +21,11 @@ const BULLET_SIZE: f32 = 0.4;
 const BULLET_RANGE: f32 = 2000.0;
 /// 炮口与作者化炮管共用格坐标；子弹中心前移半边长，避免与炮口重叠。
 const MUZZLE_POSITION: Vec3 = Vec3::new(
-    -(crate::player_model::BARREL_X.1 as f32 - crate::player_model::CANVAS.0 as f32 / 2.0)
-        * crate::app::VOXEL_SIZE
+    -(crate::tank::model::player::BARREL_X.1 as f32 - crate::tank::model::player::CANVAS.0 as f32 / 2.0)
+        * crate::tank::model::VOXEL_SIZE
         - BULLET_SIZE / 2.0,
-    (crate::player_model::BORE_HEIGHT - crate::player_model::CANVAS.2 as f32 / 2.0)
-        * crate::app::VOXEL_SIZE,
+    (crate::tank::model::player::BORE_HEIGHT - crate::tank::model::player::CANVAS.2 as f32 / 2.0)
+        * crate::tank::model::VOXEL_SIZE,
     0.0,
 );
 
@@ -38,19 +40,10 @@ fn spawn_barrels(
     tanks: Query<Entity, Added<Tank>>,
 ) {
     for tank in &tanks {
-        let barrel = crate::tank_visual::mount_barrel(
-            &mut commands,
-            &assets,
-            tank,
-            crate::tank_visual::PLAYER_BARREL,
-        );
+        let barrel = visual::mount_barrel(&mut commands, &assets, tank, visual::PLAYER_BARREL);
         commands.entity(barrel).insert(PlayerBarrel);
     }
 }
-
-/// 标记坦克场景根节点，供发射系统定位炮口的世界变换。
-#[derive(Component)]
-pub(super) struct Tank;
 
 /// 子弹根节点的飞行状态；独立于坦克场景层级，发射后保持原方向。
 #[derive(Component)]
@@ -437,7 +430,7 @@ mod tests {
     /// 玩家真实炮口水平命中平地敌人；目标底部远高于弹道时仍应掠过。
     #[test]
     fn modern_muzzle_hits_ground_level_enemy_without_platform() {
-        let origin = MUZZLE_POSITION + Vec3::Y * crate::driving::TANK_SIZE.y / 2.0;
+        let origin = MUZZLE_POSITION + Vec3::Y * crate::tank::driving::TANK_SIZE.y / 2.0;
         for (height, should_hit) in [(crate::enemy::ENEMY_SIZE.y / 2.0, true), (4.0, false)] {
             let (mut app, enemies) = hit_test_app(&[(Vec3::new(-12.0, height, 0.0), 0.0)]);
             let bullet = test_bullet(&mut app, origin, Vec3::NEG_X, 0.0);
@@ -588,13 +581,13 @@ mod tests {
             TransformPlugin,
             VoxScenePlugin {
                 global_settings: Some(VoxLoaderSettings {
-                    voxel_size: crate::app::VOXEL_SIZE,
+                    voxel_size: crate::tank::model::VOXEL_SIZE,
                     ..default()
                 }),
             },
             FiringPlugin,
             crate::ground::GroundPlugin,
-            crate::track::TrackAnimationPlugin,
+            crate::tank::track::TrackAnimationPlugin,
         ))
         .init_resource::<avian3d::collider_tree::ColliderTrees>()
         .init_asset::<StandardMaterial>()
@@ -628,7 +621,7 @@ mod tests {
             .world_mut()
             .spawn((
                 Tank,
-                crate::track::PLAYER_TRACKS,
+                crate::tank::track::PLAYER_TRACKS,
                 WorldAssetRoot(tank_asset),
             ))
             .id();
@@ -640,7 +633,7 @@ mod tests {
             .world_mut()
             .spawn((
                 WorldAssetRoot(enemy_asset.clone()),
-                crate::track::ENEMY_TRACKS,
+                crate::tank::track::ENEMY_TRACKS,
                 EnemyTank,
                 Transform::from_xyz(15.0, crate::enemy::ENEMY_SIZE.y / 2.0, 0.0),
             ))
@@ -667,7 +660,7 @@ mod tests {
                 .filter(|e| {
                     e.contains::<WorldAssetRoot>()
                         && e.contains::<ChildOf>()
-                        && !e.contains::<crate::track::TracksValidated>()
+                        && !e.contains::<crate::tank::track::TracksValidated>()
                 })
                 .all(|e| {
                     e.get::<WorldInstance>().is_some_and(|i| {
@@ -678,10 +671,10 @@ mod tests {
                 });
             if ready
                 && barrel_ready
-                && world.get::<crate::track::TracksValidated>(tank).is_some()
+                && world.get::<crate::tank::track::TracksValidated>(tank).is_some()
                 && assets.is_loaded_with_dependencies(&world.resource::<Gun>().bullet_scene)
                 && assets.is_loaded_with_dependencies(&enemy_asset)
-                && world.get::<crate::track::TracksValidated>(enemy).is_some()
+                && world.get::<crate::tank::track::TracksValidated>(enemy).is_some()
                 && world.get::<WorldInstance>(enemy).is_some_and(|instance| {
                     world
                         .resource::<WorldInstanceSpawner>()
@@ -726,7 +719,7 @@ mod tests {
             "车身与炮管组合尺寸：{tank_minimum:?}～{tank_maximum:?}"
         );
         assert!((MUZZLE_POSITION.x + BULLET_SIZE / 2.0 - tank_minimum.x).abs() < 1e-4);
-        assert!(tank_minimum.x < -crate::driving::TANK_SIZE.x / 2.0);
+        assert!(tank_minimum.x < -crate::tank::driving::TANK_SIZE.x / 2.0);
 
         // 多色车身仍须通过 UV 采样到生成器中的三种装甲色，不能退化成单色材质。
         let armor_colors = [[83, 99, 55, 255], [108, 121, 72, 255], [58, 70, 40, 255]];

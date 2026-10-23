@@ -1,5 +1,5 @@
 //! 敌方原创现代坦克的作者化契约；Python 生成器读取这些字面量，单位为体素格。
-use crate::player_model::WheelSpec;
+use super::WheelSpec;
 
 /// 三包共同画布；车体中心 X=57，尾部留白使炮管零偏移安装。
 pub const CANVAS: (u32, u32, u32) = (114, 34, 26);
@@ -13,6 +13,15 @@ pub const BORE_HEIGHT: f32 = 20.0;
 pub const COLLISION_MIN: [i32; 3] = [HULL_X.0, 0, 0];
 /// 宽度与高度来自共同画布，炮管不扩大碰撞框。
 pub const COLLISION_MAX: [i32; 3] = [HULL_X.1, CANVAS.1 as i32, CANVAS.2 as i32];
+
+/// 非炮管碰撞尺寸（长、高、宽），单位：米。长度与宽度由本车型碰撞边界推导，
+/// 高度复用玩家底盘的权威值；运行时驾驶刚体、履带规格与敌人生成共同读取，
+/// 避免在业务模块复制常量。
+pub const COLLISION_SIZE: [f32; 3] = [
+    (COLLISION_MAX[0] - COLLISION_MIN[0]) as f32 * super::VOXEL_SIZE,
+    (super::player::COLLISION_MAX[2] - super::player::COLLISION_MIN[2]) as f32 * super::VOXEL_SIZE,
+    (COLLISION_MAX[1] - COLLISION_MIN[1]) as f32 * super::VOXEL_SIZE,
+];
 
 /// 履带内腔的竖直净空，供轮组完整旋转包络校验。
 pub const WHEEL_CLEARANCE: (f32, f32) = (1.0, 12.0);

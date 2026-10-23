@@ -798,7 +798,8 @@ mod tests {
             MinimalPlugins,
             TransformPlugin,
             PhysicsPlugins::default(),
-            crate::driving::DrivingPlugin,
+            crate::tank::driving::DrivingPlugin,
+            crate::gameplay::player::PlayerPlugin,
         ))
         .init_resource::<ButtonInput<KeyCode>>()
         .insert_resource(TimeUpdateStrategy::ManualDuration(step));
@@ -822,8 +823,8 @@ mod tests {
         let tank = app
             .world_mut()
             .spawn((
-                crate::firing::Tank,
-                crate::driving::tank_body(),
+                crate::gameplay::player::Tank,
+                crate::tank::driving::tank_body(),
                 Transform::from_xyz(0.0, 4.0, 0.0),
             ))
             .id();
@@ -832,7 +833,7 @@ mod tests {
             app.update();
         }
         let settled = app.world().get::<Transform>(tank).unwrap().translation;
-        assert!((settled.y - crate::driving::TANK_SIZE.y / 2.0).abs() < 0.05, "落地高度异常：{settled:?}");
+        assert!((settled.y - crate::tank::driving::TANK_SIZE.y / 2.0).abs() < 0.05, "落地高度异常：{settled:?}");
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::ArrowUp);
@@ -898,7 +899,8 @@ mod tests {
             MinimalPlugins,
             TransformPlugin,
             PhysicsPlugins::default(),
-            crate::driving::DrivingPlugin,
+            crate::tank::driving::DrivingPlugin,
+            crate::gameplay::player::PlayerPlugin,
         ))
         .init_resource::<ButtonInput<KeyCode>>()
         .insert_resource(TimeUpdateStrategy::ManualDuration(step));
@@ -919,8 +921,8 @@ mod tests {
         let tank = app
             .world_mut()
             .spawn((
-                crate::firing::Tank,
-                crate::driving::tank_body(),
+                crate::gameplay::player::Tank,
+                crate::tank::driving::tank_body(),
                 Transform::from_xyz(8.0, 4.0, 0.0),
             ))
             .id();
@@ -940,9 +942,9 @@ mod tests {
             "坦克应翻过一档坎并继续行驶：{moved:?}"
         );
         assert!(
-            (moved.y - (crate::driving::TANK_SIZE.y / 2.0 + TERRAIN_STEP)).abs() < 0.05,
+            (moved.y - (crate::tank::driving::TANK_SIZE.y / 2.0 + TERRAIN_STEP)).abs() < 0.05,
             "坦克应停在坎顶高度 {}：{moved:?}",
-            crate::driving::TANK_SIZE.y / 2.0 + TERRAIN_STEP
+            crate::tank::driving::TANK_SIZE.y / 2.0 + TERRAIN_STEP
         );
     }
 

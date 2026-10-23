@@ -1,5 +1,7 @@
 //! 玩家模型的作者化尺寸契约；生成器与运行时共同读取，单位为体素格。
 
+use super::WheelSpec;
+
 /// 每包共用的对称画布；车体中心在 X=67.5，车尾空白保证加载后零偏移对齐。
 pub const CANVAS: (u32, u32, u32) = (135, 36, 26);
 /// 底盘后缘（包含）与前缘（不包含），不包含炮管。
@@ -13,21 +15,6 @@ pub const BORE_HEIGHT: f32 = 20.0;
 pub const COLLISION_MIN: [i32; 3] = [HULL_X.0, 0, 0];
 /// 碰撞框上界；区别于含大量空白和炮管的统一画布尺寸。
 pub const COLLISION_MAX: [i32; 3] = [HULL_X.1, 36, 26];
-
-/// 单轮安装契约；VOX 坐标用体素格，允许半格轴心。
-#[derive(Clone, Copy)]
-pub struct WheelSpec {
-    /// 包内命名节点，左右侧顺序与履带里程一致。
-    pub name: &'static str,
-    /// VOX 全局轴心（长、宽、高），加载时映射为（−X、Z、Y）。
-    pub center: [f32; 3],
-    /// 局部画布：静止外包络直径、轮宽、直径。
-    pub size: (u32, u32, u32),
-    /// 名义滚动半径，单位为体素格。
-    pub radius: f32,
-    /// 全部体素顶点旋转后的最大半径，单位为体素格。
-    pub envelope: f32,
-}
 
 /// 左右各五个负重轮和两个端轮；生成器和运行时共享节点名及安装位置。
 pub const WHEELS: [[WheelSpec; 7]; 2] = [

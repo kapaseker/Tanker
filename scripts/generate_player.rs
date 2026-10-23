@@ -3,9 +3,11 @@
 //! 车体与履带共享画布；局部轮模型以轴心居中，运行时按共享契约安装。
 
 use std::{collections::BTreeMap, env, fs, path::PathBuf};
-#[path = "../src/player_model.rs"]
-mod player_model;
-use player_model::{BARREL_X, BORE_HEIGHT, CANVAS as SIZE, HULL_X};
+// 生成器只消费契约的一部分；未用到的车型数据在主工程运行时使用，不在此告警。
+#[allow(dead_code)]
+#[path = "../src/tank/model/mod.rs"]
+mod model;
+use model::player::{BARREL_X, BORE_HEIGHT, CANVAS as SIZE, HULL_X};
 
 /// 三相位每次推进一格，闭环周长必须被齿距整除。
 const PITCH: i32 = 3;
@@ -182,14 +184,14 @@ fn tracks() -> Vec<(String, Vec<Voxel>)> {
             models.push((format!("track_{side}_{phase}"), voxels(cells)));
         }
     }
-    for spec in player_model::WHEELS.iter().flatten() {
+    for spec in model::player::WHEELS.iter().flatten() {
         models.push((spec.name.into(), wheel_model(spec)));
     }
     models
 }
 
 /// 仅保留四角都在旋转包络内的体素；轴心等于局部 SIZE 中心。
-fn wheel_model(spec: &player_model::WheelSpec) -> Vec<Voxel> {
+fn wheel_model(spec: &model::WheelSpec) -> Vec<Voxel> {
     let mut cells = Cells::new();
     let half = spec.size.0 as f32 / 2.0;
     for x in 0..spec.size.0 as i32 {
@@ -227,7 +229,7 @@ fn wheel_model(spec: &player_model::WheelSpec) -> Vec<Voxel> {
 fn package(models: &[(String, Vec<Voxel>)]) -> Vec<u8> {
     let mut children = Vec::new();
     for (name, m) in models {
-        let size = player_model::WHEELS
+        let size = model::player::WHEELS
             .iter()
             .flatten()
             .find(|wheel| wheel.name == name)
@@ -421,8 +423,8 @@ mod tests {
                 high[axis] = high[axis].max(value + 1);
             }
         }
-        assert_eq!(low, player_model::COLLISION_MIN);
-        assert_eq!(high, player_model::COLLISION_MAX);
+        assert_eq!(low, model::player::COLLISION_MIN);
+        assert_eq!(high, model::player::COLLISION_MAX);
         assert_eq!(
             [low[0] + high[0], low[1] + high[1], low[2] + high[2]],
             [SIZE.0 as i32, SIZE.1 as i32, SIZE.2 as i32],
@@ -437,15 +439,15 @@ mod tests {
     /// 轮子独立画布不能直接并入全局边界；按安装轴心核对整个旋转包络。
     #[test]
     fn wheel_envelopes_fit_collision_and_track_clearance() {
-        for spec in player_model::WHEELS.iter().flatten() {
+        for spec in model::player::WHEELS.iter().flatten() {
             for axis in 0..3 {
                 let extent = if axis == 1 {
                     spec.size.1 as f32 / 2.0
                 } else {
                     spec.envelope
                 };
-                assert!(spec.center[axis] - extent >= player_model::COLLISION_MIN[axis] as f32);
-                assert!(spec.center[axis] + extent <= player_model::COLLISION_MAX[axis] as f32);
+                assert!(spec.center[axis] - extent >= model::player::COLLISION_MIN[axis] as f32);
+                assert!(spec.center[axis] + extent <= model::player::COLLISION_MAX[axis] as f32);
             }
             assert!(spec.center[2] - spec.envelope > 1.0);
             assert!(spec.center[2] + spec.envelope < 11.0);

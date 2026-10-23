@@ -5,14 +5,11 @@
 
 use bevy::{asset::LoadState, prelude::*, world_serialization::WorldAsset};
 
-/// 非炮管碰撞尺寸（长、高、宽），单位米；高度直接复用玩家权威值。
-pub(super) const ENEMY_SIZE: Vec3 = Vec3::new(
-    (crate::enemy_model::COLLISION_MAX[0] - crate::enemy_model::COLLISION_MIN[0]) as f32
-        * crate::app::VOXEL_SIZE,
-    crate::driving::TANK_SIZE.y,
-    (crate::enemy_model::COLLISION_MAX[1] - crate::enemy_model::COLLISION_MIN[1]) as f32
-        * crate::app::VOXEL_SIZE,
-);
+use crate::tank::{driving, track, visual};
+
+/// 非炮管碰撞尺寸（长、高、宽），单位米；尺寸契约统一由敌人模型推导，
+/// 高度复用玩家底盘的权威值，避免与玩家驾驶刚体出现两套数据源。
+pub(super) const ENEMY_SIZE: Vec3 = Vec3::from_array(crate::tank::model::enemy::COLLISION_SIZE);
 /// 单轮敌人数；被击毁后不补充。
 pub(super) const ENEMY_COUNT: usize = 10;
 /// 交战区半径，单位：米；出生中心在该半径内均匀采样，离 300 米场地边缘留有充足余量。
@@ -62,12 +59,7 @@ pub(super) fn spawn_enemy_barrels(
     enemies: Query<Entity, Added<EnemyTank>>,
 ) {
     for enemy in &enemies {
-        let barrel = crate::tank_visual::mount_barrel(
-            &mut commands,
-            &assets,
-            enemy,
-            crate::tank_visual::ENEMY_BARREL,
-        );
+        let barrel = visual::mount_barrel(&mut commands, &assets, enemy, visual::ENEMY_BARREL);
         commands.entity(barrel).insert(Name::new("enemy_barrel"));
     }
 }
@@ -80,7 +72,7 @@ fn spawn_transforms(rng: &mut fastrand::Rng, player: Vec2) -> Result<Vec<Transfo
             (rng.f32() * 2.0 - 1.0) * SPAWN_LIMIT,
             (rng.f32() * 2.0 - 1.0) * SPAWN_LIMIT,
         );
-        if position.distance(player) < spawn_clearance(ENEMY_SIZE, crate::driving::TANK_SIZE)
+        if position.distance(player) < spawn_clearance(ENEMY_SIZE, driving::TANK_SIZE)
             || transforms.iter().any(|other| {
                 position.distance(other.translation.xz()) < spawn_clearance(ENEMY_SIZE, ENEMY_SIZE)
             })
@@ -102,7 +94,7 @@ fn spawn_transforms(rng: &mut fastrand::Rng, player: Vec2) -> Result<Vec<Transfo
 /// 零输入控制器停止水平驱动；保留重力和接触求解，允许碰撞导致短暂位移。
 // shortcut: 整车圆角框包含装甲间空隙，需要逐部件命中时再拆分；炮管不参与碰撞。
 fn enemy_body() -> impl Bundle {
-    crate::driving::body_for_size(ENEMY_SIZE)
+    driving::body_for_size(ENEMY_SIZE)
 }
 
 /// 清除本局生成标志；共享资产缓存仍由 AssetServer 复用。
@@ -139,7 +131,7 @@ fn spawn_enemies(
         commands.spawn((
             EnemyTank,
             crate::app::transition::SessionEntity,
-            crate::track::ENEMY_TRACKS,
+            track::ENEMY_TRACKS,
             WorldAssetRoot(scene.clone()),
             enemy_body(),
             transform,
@@ -148,9 +140,9 @@ fn spawn_enemies(
     commands.insert_resource(EnemyAsset(scene));
     info!(
         "已随机放置 {ENEMY_COUNT} 辆敌人坦克；碰撞尺寸 {ENEMY_SIZE:?} 米，炮管 {:.1} 米、轴高 {:.1} 米",
-        (crate::enemy_model::BARREL_X.1 - crate::enemy_model::BARREL_X.0) as f32
-            * crate::app::VOXEL_SIZE,
-        crate::enemy_model::BORE_HEIGHT * crate::app::VOXEL_SIZE
+        (crate::tank::model::enemy::BARREL_X.1 - crate::tank::model::enemy::BARREL_X.0) as f32
+            * crate::tank::model::VOXEL_SIZE,
+        crate::tank::model::enemy::BORE_HEIGHT * crate::tank::model::VOXEL_SIZE
     );
 }
 
@@ -185,7 +177,7 @@ mod tests {
     /// 玩家撞上静止敌人会停下，击毁后原来的通路恢复。
     #[test]
     fn static_enemy_blocks_driving_until_removed() {
-        use crate::{driving, firing::Tank};
+        use crate::gameplay::player::Tank;
         use bevy::time::TimeUpdateStrategy;
         use std::time::Duration;
         let mut app = App::new();
@@ -194,6 +186,7 @@ mod tests {
             TransformPlugin,
             PhysicsPlugins::default(),
             driving::DrivingPlugin,
+            crate::gameplay::player::PlayerPlugin,
         ))
         .init_resource::<ButtonInput<KeyCode>>()
         .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f64(
@@ -255,8 +248,8 @@ mod tests {
     #[test]
     fn enemy_collision_matches_player_height_and_rotated_contract() {
         use avian3d::prelude::Collider;
-        assert_eq!(ENEMY_SIZE.y, crate::driving::TANK_SIZE.y);
-        assert_eq!(crate::enemy_model::CANVAS.2, crate::player_model::CANVAS.2);
+        assert_eq!(ENEMY_SIZE.y, driving::TANK_SIZE.y);
+        assert_eq!(crate::tank::model::enemy::CANVAS.2, crate::tank::model::player::CANVAS.2);
         assert!(ENEMY_SIZE.abs_diff_eq(Vec3::new(6.6, 2.6, 3.4), 1e-5));
         let mut world = World::new();
         let entity = world.spawn(enemy_body()).id();
@@ -287,7 +280,7 @@ mod tests {
             assert_eq!(transforms.len(), ENEMY_COUNT);
             for (index, transform) in transforms.iter().enumerate() {
                 let p = transform.translation.xz();
-                assert!(p.length() >= spawn_clearance(ENEMY_SIZE, crate::driving::TANK_SIZE));
+                assert!(p.length() >= spawn_clearance(ENEMY_SIZE, driving::TANK_SIZE));
                 assert_eq!(transform.translation.y, SPAWN_DROP_Y);
                 for other in &transforms[..index] {
                     assert!(

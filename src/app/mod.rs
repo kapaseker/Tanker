@@ -15,12 +15,9 @@ use bevy::{
 use bevy_vox_scene::{VoxLoaderSettings, VoxScenePlugin};
 
 use crate::{
-    driving, enemy, explosion, firing, font, gallery, ground, menu, offscreen, track, ui_resources,
+    enemy, explosion, firing, font, gallery, gameplay, ground, menu, offscreen, tank, ui_resources,
 };
 use state::GameState;
-
-/// MagicaVoxel 单格边长，单位：米；运行时和真实资源测试共用。
-pub(crate) const VOXEL_SIZE: f32 = 0.1;
 
 /// 当前加载的 MagicaVoxel 场景资源路径（相对 `assets/`）。
 /// 三部件按 `tank/<部件>/<车型>/<变体>/` 分包，共用画布；炮管与履带挂载到玩家根实体。
@@ -57,7 +54,7 @@ pub(super) fn run(options: Option<offscreen::Options>) -> Result<(), String> {
         // 统一资源尺寸：1 世界单位 = 1 米。
         VoxScenePlugin {
             global_settings: Some(VoxLoaderSettings {
-                voxel_size: VOXEL_SIZE,
+                voxel_size: crate::tank::model::VOXEL_SIZE,
                 ..default()
             }),
         },
@@ -66,8 +63,10 @@ pub(super) fn run(options: Option<offscreen::Options>) -> Result<(), String> {
         ground::GroundPlugin,
         enemy::EnemyPlugin,
         explosion::ExplosionPlugin,
-        driving::DrivingPlugin,
-        track::TrackAnimationPlugin,
+        gameplay::player::PlayerPlugin,
+        tank::driving::DrivingPlugin,
+        tank::track::TrackAnimationPlugin,
+        gameplay::camera::FollowCameraPlugin,
         font::UiFontPlugin,
         transition::TransitionPlugin,
         menu::MenuPlugin,
@@ -99,10 +98,10 @@ fn setup_scene(
     assets: Res<AssetServer>,
     target: Res<transition::SceneTarget>,
 ) {
-    let tank_transform = Transform::from_xyz(0.0, driving::TANK_SIZE.y / 2.0, 0.0);
+    let tank_transform = Transform::from_xyz(0.0, tank::driving::TANK_SIZE.y / 2.0, 0.0);
     commands.spawn((
         Camera3d::default(),
-        driving::FollowCamera,
+        gameplay::camera::FollowCamera,
         transition::SessionEntity,
         Camera {
             order: -1,
@@ -116,7 +115,7 @@ fn setup_scene(
             steps: 1,
             quality: ScreenSpaceTransmissionQuality::High,
         },
-        driving::camera_transform(&tank_transform),
+        gameplay::camera::camera_transform(&tank_transform),
         Tonemapping::BlenderFilmic,
         Bloom {
             intensity: 0.3,
@@ -134,11 +133,11 @@ fn setup_scene(
     // 加载整个 MagicaVoxel 场景为 Bevy 场景图
     let scene = assets.load(VOX_SCENE_PATH);
     commands.spawn((
-        firing::Tank,
+        gameplay::player::Tank,
         transition::SessionEntity,
-        track::PLAYER_TRACKS,
+        tank::track::PLAYER_TRACKS,
         WorldAssetRoot(scene.clone()),
-        driving::tank_body(),
+        tank::driving::tank_body(),
         tank_transform,
     ));
     commands.insert_resource(VoxScene(scene));

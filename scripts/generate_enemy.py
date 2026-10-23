@@ -1,4 +1,4 @@
-"""确定性生成暗红敌人三包；尺寸和轮位读取 src/enemy_model.rs。"""
+"""确定性生成暗红敌人三包；尺寸和轮位读取 src/tank/model/enemy.rs。"""
 from pathlib import Path
 import ast
 import math
@@ -12,7 +12,7 @@ BODY_OUTPUT = ASSETS / 'bodies/enemy/carapace/body.vox'
 BARREL_OUTPUT = ASSETS / 'barrels/enemy/spit/barrel.vox'
 TRACKS_OUTPUT = ASSETS / 'tracks/enemy/crawl/track.vox'
 OUTPUTS = (BODY_OUTPUT, BARREL_OUTPUT, TRACKS_OUTPUT)
-CONTRACT = (ROOT / 'src/enemy_model.rs').read_text()
+CONTRACT = (ROOT / 'src/tank/model/enemy.rs').read_text()
 
 
 def literal(name):

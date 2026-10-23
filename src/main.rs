@@ -4,19 +4,16 @@
 //! `assets/pisa_diffuse.ktx2` 与 `pisa_specular.ktx2` 仍取自 bevy_vox_scene 官方仓库示例资源（环境贴图）。
 
 mod app;
-mod driving;
 mod enemy;
-mod enemy_model;
 mod explosion;
 mod firing;
 mod font;
 mod gallery;
+mod gameplay;
 mod ground;
 mod menu;
 mod offscreen;
-mod player_model;
-mod tank_visual;
-mod track;
+mod tank;
 mod ui_resources;
 
 /// 先校验命令行，再创建渲染器；参数错误不会意外打开窗口。

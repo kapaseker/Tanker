@@ -216,7 +216,7 @@ fn resize_target(
         (
             Without<crate::menu::MenuCamera>,
             Without<crate::gallery::GalleryCamera>,
-            With<crate::driving::FollowCamera>,
+            With<crate::gameplay::camera::FollowCamera>,
         ),
     >,
 ) {
@@ -314,11 +314,11 @@ pub(crate) fn content_ready(world: &mut World) -> bool {
         return false;
     }
     let tanks = world
-        .query_filtered::<(), Or<(With<crate::firing::Tank>, With<crate::enemy::EnemyTank>)>>()
+        .query_filtered::<(), Or<(With<crate::gameplay::player::Tank>, With<crate::enemy::EnemyTank>)>>()
         .iter(world)
         .count();
     let tracks = world
-        .query_filtered::<(), With<crate::track::TracksValidated>>()
+        .query_filtered::<(), With<crate::tank::track::TracksValidated>>()
         .iter(world)
         .count();
     if tanks != crate::enemy::ENEMY_COUNT + 1 || tracks != tanks {

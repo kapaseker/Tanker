@@ -354,7 +354,7 @@ mod tests {
             TransformPlugin,
             VoxScenePlugin {
                 global_settings: Some(VoxLoaderSettings {
-                    voxel_size: crate::app::VOXEL_SIZE,
+                    voxel_size: crate::tank::model::VOXEL_SIZE,
                     ..default()
                 }),
             },

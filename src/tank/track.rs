@@ -7,10 +7,10 @@ use avian3d::prelude::*;
 use bevy::camera::primitives::MeshAabb;
 use bevy::prelude::*;
 
-use crate::driving::{TANK_SIZE, TurnRate};
+use super::driving::{TANK_SIZE, TurnRate};
 
 /// 每相位沿履带轮廓移动一体素，单位：米；三相位合计为 0.3 米齿距。
-const TRACK_PHASE_STEP: f32 = crate::app::VOXEL_SIZE;
+const TRACK_PHASE_STEP: f32 = crate::tank::model::VOXEL_SIZE;
 /// 相位数（与履带包变体节点数一致）
 const TRACK_PHASES: i64 = 3;
 /// 每辆车的履带资产与整车尺寸契约；添加此组件后自动挂载一次履带。
@@ -21,7 +21,7 @@ pub(crate) struct TrackSpec {
     /// 整车 X 长、Y 高、Z 宽，单位：米；动画差速及几何校验共用。
     size: Vec3,
     /// 各侧独立轮节点，支持不同车型的轮数。
-    wheels: [&'static [crate::player_model::WheelSpec]; 2],
+    wheels: [&'static [crate::tank::model::WheelSpec]; 2],
     /// VOX 画布用于安装轴心，不能用非炮管碰撞尺寸代替。
     canvas: (u32, u32, u32),
     /// 内腔竖直开区间，单位体素格；完整旋转包络必须在其中。
@@ -33,22 +33,23 @@ pub(crate) const PLAYER_TRACKS: TrackSpec = TrackSpec {
     path: "tank/tracks/player/cleat/track.vox",
     size: TANK_SIZE,
     wheels: [
-        &crate::player_model::WHEELS[0],
-        &crate::player_model::WHEELS[1],
+        &crate::tank::model::player::WHEELS[0],
+        &crate::tank::model::player::WHEELS[1],
     ],
-    canvas: crate::player_model::CANVAS,
+    canvas: crate::tank::model::player::CANVAS,
     clearance: (1.0, 11.0),
 };
 /// 默认敌人底盘适配的 crawl 履带，左右各四个负重轮和两个端轮。
+/// 尺寸与敌人生成同源：直接推导自敌人模型契约，不依赖敌人生成模块。
 pub(crate) const ENEMY_TRACKS: TrackSpec = TrackSpec {
     path: "tank/tracks/enemy/crawl/track.vox",
-    size: crate::enemy::ENEMY_SIZE,
+    size: Vec3::from_array(crate::tank::model::enemy::COLLISION_SIZE),
     wheels: [
-        &crate::enemy_model::WHEELS[0],
-        &crate::enemy_model::WHEELS[1],
+        &crate::tank::model::enemy::WHEELS[0],
+        &crate::tank::model::enemy::WHEELS[1],
     ],
-    canvas: crate::enemy_model::CANVAS,
-    clearance: crate::enemy_model::WHEEL_CLEARANCE,
+    canvas: crate::tank::model::enemy::CANVAS,
+    clearance: crate::tank::model::enemy::WHEEL_CLEARANCE,
 };
 /// 相位变体节点名，顺序 [左, 右] × [0, 1, 2]，与履带包场景图一致。
 const VARIANT_NAMES: [[&str; TRACK_PHASES as usize]; 2] = [
@@ -71,7 +72,7 @@ pub(crate) struct TrackAnim {
 
 impl TrackAnim {
     /// 离屏断言读取累计里程；只比较最终相位会漏掉恰好绕回初始相位的运动。
-    pub(super) fn distances(&self) -> [f32; 2] {
+    pub(crate) fn distances(&self) -> [f32; 2] {
         self.dist
     }
 }
@@ -240,7 +241,7 @@ fn validate_tracks(
                             wheel.size.0 as f32,
                             wheel.size.2 as f32,
                             wheel.size.1 as f32,
-                        ) * crate::app::VOXEL_SIZE;
+                        ) * crate::tank::model::VOXEL_SIZE;
                         if !(high - low).abs_diff_eq(size, 1e-4)
                             || (high + low).length() > 1e-4
                             || wheel.center[2] - wheel.envelope <= spec.clearance.0
@@ -313,19 +314,19 @@ fn side_speed(linear: Vec3, angular_y: f32, r_side: Vec3, forward: Vec3) -> f32 
 
 /// VOX 全局中心映射为游戏（−X、Z、Y）；正转角使接地点抵消 −X 前进速度。
 fn wheel_transform(
-    wheel: &crate::player_model::WheelSpec,
+    wheel: &crate::tank::model::WheelSpec,
     canvas: (u32, u32, u32),
     distance: f32,
 ) -> Transform {
     let [x, y, z] = wheel.center;
     let (sx, sy, sz) = canvas;
     Transform::from_xyz(
-        (sx as f32 / 2.0 - x) * crate::app::VOXEL_SIZE,
-        (z - sz as f32 / 2.0) * crate::app::VOXEL_SIZE,
-        (y - sy as f32 / 2.0) * crate::app::VOXEL_SIZE,
+        (sx as f32 / 2.0 - x) * crate::tank::model::VOXEL_SIZE,
+        (z - sz as f32 / 2.0) * crate::tank::model::VOXEL_SIZE,
+        (y - sy as f32 / 2.0) * crate::tank::model::VOXEL_SIZE,
     )
     .with_rotation(Quat::from_rotation_z(
-        distance / (wheel.radius * crate::app::VOXEL_SIZE),
+        distance / (wheel.radius * crate::tank::model::VOXEL_SIZE),
     ))
 }
 
@@ -383,7 +384,7 @@ fn advance_track_phases(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::firing::Tank;
+    use crate::gameplay::player::Tank;
 
     /// 测试所用默认底盘半宽，单位：米；玩家为 3.6 米宽，敌人为 3.4 米宽。
     const HALF_TRACK_WIDTH: f32 = TANK_SIZE.z / 2.0;
@@ -440,7 +441,7 @@ mod tests {
             VisibilityPlugin,
             VoxScenePlugin {
                 global_settings: Some(VoxLoaderSettings {
-                    voxel_size: crate::app::VOXEL_SIZE,
+                    voxel_size: crate::tank::model::VOXEL_SIZE,
                     ..default()
                 }),
             },
@@ -481,7 +482,6 @@ mod tests {
             enemies.push(
                 app.world_mut()
                     .spawn((
-                        crate::enemy::EnemyTank,
                         ENEMY_TRACKS,
                         TurnRate::default(),
                         Transform::default(),
@@ -659,10 +659,10 @@ mod tests {
     /// 前进时接地点沿 +X 抵消车身速度；倒车和两侧反向里程必须反转。
     #[test]
     fn wheel_roll_direction_matches_ground_contact() {
-        let spec = &crate::player_model::WHEELS[0][0];
+        let spec = &crate::tank::model::player::WHEELS[0][0];
         let forward = wheel_transform(spec, PLAYER_TRACKS.canvas, 0.001);
         let reverse = wheel_transform(spec, PLAYER_TRACKS.canvas, -0.001);
-        let bottom = Vec3::NEG_Y * spec.radius * crate::app::VOXEL_SIZE;
+        let bottom = Vec3::NEG_Y * spec.radius * crate::tank::model::VOXEL_SIZE;
         assert!((forward.rotation * bottom).x > 0.0);
         assert!((reverse.rotation * bottom).x < 0.0);
         // 正 Z 角速度叉乘底部 −Y，得到 +X 接触速度。
