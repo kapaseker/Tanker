@@ -6,10 +6,11 @@ use crate::{
         font::UiFont,
         resources::{
             colors,
-            dimens::gallery as dims,
+            dimens::{gallery as dims, title_bar as bar},
             strings_cn::gallery as labels,
         },
-        widgets::{self, CornerOrientation, Keycap},
+        widgets::{self, CornerOrientation, TitleBarBackActivated, eased, text_font},
+        zoom,
     },
 };
 use bevy::{
@@ -21,28 +22,20 @@ use bevy::{
 };
 
 /// 滚动与焦点状态，独立于模型渲染；无窗口验证可注入同一逻辑指针。
+/// 返回框交互（悬停/按下/焦点）已内建于 widgets::title_bar，不再挂在本页状态上。
 #[derive(Resource, Default)]
 pub(crate) struct View {
     pub scroll: f32,
     pub pointer: Option<Vec2>,
     size: Vec2,
-    focus: bool,
-    pressed: bool,
-    /// 返回框高亮进度 0..=1；悬停/聚焦时推进，220ms 缓动后驱动颜色混合。
-    back: f32,
     hover: [f32; 8],
     line: [f32; 8],
 }
-/// 返回箭头 marker；弹性布局管理几何，update 只更新颜色。
-#[derive(Component)]
-pub(super) struct BackArrow;
 /// 节点角色用于窗口变化时更新已有布局，不反复创建实体。
+/// 标题栏（头部/返回框/标题）由 widgets::title_bar 控件负责，不再列入。
 #[derive(Component, Clone, Copy)]
 pub(super) enum Part {
     Background,
-    Header,
-    Back,
-    Title,
     Viewport,
     Content,
     Index(usize),
@@ -59,7 +52,7 @@ pub(super) enum Part {
 fn card_rect(index: usize, left: f32, scroll: f32) -> Rect {
     let row = index / 2;
     let x = left + (index % 2) as f32 * (dims::CARD_WIDTH + dims::GAP);
-    let y = dims::HEADER_HEIGHT
+    let y = bar::HEIGHT
         + dims::SECTION_GAP
         + row as f32 * section_height()
         + dims::SECTION_TO_CARD
@@ -76,7 +69,7 @@ fn section_height() -> f32 {
 /// 滚动最大值由逻辑视口决定，短窗口与窗口缩放共用。
 pub(super) fn max_scroll(height: f32) -> f32 {
     (section_height() * 4.0 + dims::CONTENT_BOTTOM
-        - (height - dims::HEADER_HEIGHT - dims::FOOTER_HEIGHT).max(0.0))
+        - (height - bar::HEIGHT - dims::FOOTER_HEIGHT).max(0.0))
     .max(0.0)
 }
 /// 只提供实际可操作的返回键；卡片没有按钮或焦点组件。
@@ -216,45 +209,8 @@ pub(super) fn spawn(
                         }
                     });
             });
-            root.spawn((
-                Part::Header,
-                absolute(),
-                BackgroundColor(colors::index::BACKGROUND),
-                BorderColor::all(colors::gallery::OUTLINE),
-            ))
-            .with_children(|header| {
-                header
-                    .spawn((
-                        Part::Back,
-                        Node {
-                            position_type: PositionType::Absolute,
-                            // 内容用弹性布局自动排版（对齐设计稿 padding 18 / gap 12），不再手测矩形。
-                            display: Display::Flex,
-                            align_items: AlignItems::Center,
-                            column_gap: px(dims::BACK_GAP),
-                            padding: UiRect::axes(px(dims::BACK_PADDING_X), px(0.0)),
-                            ..default()
-                        },
-                        BackgroundColor(colors::gallery::SURFACE),
-                        BorderColor::all(colors::gallery::OUTLINE),
-                    ))
-                    .with_children(|back| {
-                        back.spawn((
-                            BackArrow,
-                            Text::new(crate::ui::resources::strings::BACK_ARROW),
-                            text_font(&font, dims::BACK_ARROW_SIZE, 400.0),
-                            TextColor(colors::ON_SURFACE),
-                        ));
-                        widgets::spawn_keycap(back, &font, crate::ui::resources::strings::KEY_ESCAPE);
-                    });
-                header.spawn((
-                    Part::Title,
-                    Text::new(labels::TITLE),
-                    text_font(&font, dims::TITLE_SIZE, 700.0),
-                    TextColor(colors::ON_SURFACE),
-                    absolute(),
-                ));
-            });
+            // 统一标题栏控件：头部、ESC 返回框、标题与全宽底部分割线一次生成。
+            widgets::spawn_title_bar(root, &font, labels::TITLE);
             widgets::spawn_frame_corner(
                 root,
                 CornerOrientation::TopLeft,
@@ -270,30 +226,21 @@ fn absolute() -> Node {
         ..default()
     }
 }
-/// 页面字体统一来自现有 MiSans 资源。
-fn text_font(font: &UiFont, size: f32, weight: f32) -> TextFont {
-    TextFont {
-        font: font.0.clone().into(),
-        font_size: size.into(),
-        weight: FontWeight(weight as u16),
-        ..default()
-    }
-}
 /// 当前页面逻辑视口；离屏直接读取内容纹理尺寸。
 fn viewport(windows: &Query<&Window>, images: &Assets<Image>, target: &SceneTarget) -> Vec2 {
     if let Ok(window) = windows.single() {
-        Vec2::new(window.width(), window.height()) / crate::pages::index::zoom(window.width())
+        Vec2::new(window.width(), window.height()) / zoom(window.width())
     } else {
         let size = images.get(&target.0).unwrap().size().as_vec2();
-        size / crate::pages::index::zoom(size.x)
+        size / zoom(size.x)
     }
 }
-/// 输入先经过过渡锁；鼠标按下和松开必须同在返回键内。
+/// 输入先经过过渡锁；返回框激活（点击/ESC/焦点 Enter）由标题栏控件发消息，本页只响应去向。
 pub(super) fn input(
     windows: Query<&Window>,
     keys: Res<ButtonInput<KeyCode>>,
-    mouse: Res<ButtonInput<MouseButton>>,
     mut wheel: MessageReader<MouseWheel>,
+    mut activated: MessageReader<TitleBarBackActivated>,
     mut view: ResMut<View>,
     images: Res<Assets<Image>>,
     target: Res<SceneTarget>,
@@ -304,13 +251,11 @@ pub(super) fn input(
     let size = viewport(&windows, &images, &target);
     view.size = size;
     if let Ok(window) = windows.single() {
-        view.pointer = window
-            .cursor_position()
-            .map(|p| p / crate::pages::index::zoom(window.width()));
+        view.pointer = window.cursor_position().map(|p| p / zoom(window.width()));
     }
     let scale = windows.single().map_or_else(
-        |_| crate::pages::index::zoom(images.get(&target.0).unwrap().size().x as f32),
-        |window| crate::pages::index::zoom(window.width()),
+        |_| zoom(images.get(&target.0).unwrap().size().x as f32),
+        |window| zoom(window.width()),
     );
     let delta: f32 = wheel
         .read()
@@ -324,7 +269,6 @@ pub(super) fn input(
         })
         .sum();
     if !fade.accepts_input() {
-        view.pressed = false;
         return;
     }
     let max = max_scroll(size.y);
@@ -334,12 +278,12 @@ pub(super) fn input(
         (KeyCode::ArrowDown, dims::SCROLL_STEP),
         (
             KeyCode::PageUp,
-            -(size.y - dims::HEADER_HEIGHT - dims::FOOTER_HEIGHT - dims::SCROLL_STEP)
+            -(size.y - bar::HEIGHT - dims::FOOTER_HEIGHT - dims::SCROLL_STEP)
                 .max(dims::SCROLL_STEP),
         ),
         (
             KeyCode::PageDown,
-            (size.y - dims::HEADER_HEIGHT - dims::FOOTER_HEIGHT - dims::SCROLL_STEP)
+            (size.y - bar::HEIGHT - dims::FOOTER_HEIGHT - dims::SCROLL_STEP)
                 .max(dims::SCROLL_STEP),
         ),
     ] {
@@ -354,50 +298,15 @@ pub(super) fn input(
         scroll = max;
     }
     view.scroll = scroll.clamp(0.0, max);
-    if keys.just_pressed(KeyCode::Tab) {
-        view.focus = true;
-    }
-    let inside = view.pointer.is_some_and(|p| back_rect().contains(p));
-    if mouse.just_pressed(MouseButton::Left) {
-        view.pressed = inside;
-        view.focus = false;
-    }
-    let clicked = mouse.just_released(MouseButton::Left) && view.pressed && inside;
-    if mouse.just_released(MouseButton::Left) {
-        view.pressed = false;
-    }
-    if (clicked
-        || keys.just_pressed(KeyCode::Escape)
-        || (view.focus && keys.just_pressed(KeyCode::Enter)))
-        && fade.begin(GameState::Index)
-    {
+    // 激活消息可能比本系统晚一帧被读取（控件与本页同在 Update，顺序未定）。
+    if activated.read().next().is_some() && fade.begin(GameState::Index) {
         return_focus.0 = true;
         next.set(GameState::GalleryToIndex);
     }
 }
-/// 返回键与设计稿保持同一尺寸、位置和命中区域。
-fn back_rect() -> Rect {
-    let (left, top, width, height) = dims::BACK_RECT;
-    Rect::from_corners(Vec2::new(left, top), Vec2::new(left + width, top + height))
-}
-
-/// 三次贝塞尔以二分求时间参数，与网页的缓动曲线一致。
-fn eased(t: f32, x1: f32, y1: f32, x2: f32, y2: f32) -> f32 {
-    let (mut lo, mut hi) = (0.0_f32, 1.0_f32);
-    for _ in 0..12 {
-        let u = (lo + hi) * 0.5;
-        let x = 3.0 * (1.0 - u).powi(2) * u * x1 + 3.0 * (1.0 - u) * u * u * x2 + u * u * u;
-        if x < t {
-            lo = u;
-        } else {
-            hi = u;
-        }
-    }
-    let u = (lo + hi) * 0.5;
-    3.0 * (1.0 - u).powi(2) * u * y1 + 3.0 * (1.0 - u) * u * u * y2 + u * u * u
-}
 
 /// 连续反馈保留反向时的当前位置，边框/文字和底线分别采用220/300毫秒。
+/// 标题栏与返回框的颜色过渡已内建于 widgets::title_bar::interaction，此处只管卡片。
 pub(super) fn update(
     mut view: ResMut<View>,
     time: Res<Time>,
@@ -405,20 +314,10 @@ pub(super) fn update(
     mut nodes: Query<(
         &Part,
         &mut Node,
-        Option<&mut BackgroundColor>,
         Option<&mut BorderColor>,
         Option<&mut TextColor>,
         Option<&mut Text>,
     )>,
-    // 返回框内容（箭头/键帽）不挂 Part、几何交给弹性布局，用 Without<Part> 与 nodes 互斥。
-    mut back_content: Query<
-        (
-            Option<&BackArrow>,
-            &mut TextColor,
-            Option<&mut BorderColor>,
-        ),
-        (Or<(With<BackArrow>, With<Keycap>)>, Without<Part>),
-    >,
     mut materials: ResMut<Assets<IndexBackground>>,
 ) {
     let size = view.size;
@@ -427,7 +326,7 @@ pub(super) fn update(
     let content_height = section_height() * 4.0 + dims::CONTENT_BOTTOM;
     for i in 0..8 {
         let active = view.pointer.is_some_and(|p| {
-            p.y >= dims::HEADER_HEIGHT
+            p.y >= bar::HEIGHT
                 && p.y < size.y - dims::FOOTER_HEIGHT
                 && card_rect(i, left, scroll).contains(p)
         });
@@ -439,34 +338,14 @@ pub(super) fn update(
         material.viewport = Vec4::new(size.x, size.y, time.elapsed_secs(), 0.0);
         material.cubes = Vec4::ZERO;
     }
-    let back_active = view.focus || view.pointer.is_some_and(|p| back_rect().contains(p));
-    // 返回框高亮以 220ms 连续过渡，指针悬停与键盘焦点共用同一进度。
-    let back_dir = if back_active { 1.0 } else { -1.0 };
-    view.back = (view.back + back_dir * time.delta_secs() / 0.22).clamp(0.0, 1.0);
-    let back_t = eased(view.back, 0.25, 0.1, 0.25, 1.0);
-    for (part, mut node, background, border, text_color, text) in &mut nodes {
+    for (part, mut node, border, text_color, text) in &mut nodes {
         let rect = match *part {
             Part::Background => (0.0, 0.0, size.x, size.y),
-            Part::Header => {
-                node.border.bottom = px(1.0);
-                (0.0, 0.0, size.x, dims::HEADER_HEIGHT)
-            }
-            Part::Back => {
-                node.border = UiRect::all(px(1.0));
-                if let Some(mut bg) = background {
-                    bg.0 = colors::gallery::SURFACE.mix(&colors::PRIMARY, back_t);
-                }
-                if let Some(mut border) = border {
-                    *border = BorderColor::all(colors::gallery::OUTLINE.mix(&colors::PRIMARY, back_t));
-                }
-                dims::BACK_RECT
-            }
-            Part::Title => dims::TITLE_RECT,
             Part::Viewport => (
                 left,
-                dims::HEADER_HEIGHT,
+                bar::HEIGHT,
                 dims::WIDTH,
-                (size.y - dims::HEADER_HEIGHT - dims::FOOTER_HEIGHT).max(0.0),
+                (size.y - bar::HEIGHT - dims::FOOTER_HEIGHT).max(0.0),
             ),
             Part::Content => (0.0, -scroll, dims::WIDTH, content_height),
             Part::Index(i) => (
@@ -498,7 +377,7 @@ pub(super) fn update(
                 let r = card_rect(i, 0.0, 0.0);
                 (
                     r.min.x,
-                    r.min.y - dims::HEADER_HEIGHT,
+                    r.min.y - bar::HEIGHT,
                     dims::CARD_WIDTH,
                     dims::CARD_HEIGHT,
                 )
@@ -552,20 +431,15 @@ pub(super) fn update(
         node.width = px(rect.2);
         node.height = px(rect.3);
     }
-    // 返回框内容（箭头与键帽）随同一进度变色；几何由弹性布局管理，不写矩形。
-    for (_, mut text_color, border) in &mut back_content {
-        text_color.0 = colors::ON_SURFACE.mix(&colors::ON_PRIMARY, back_t);
-        if let Some(mut border) = border {
-            *border = BorderColor::all(colors::gallery::OUTLINE.mix(&colors::KBD_BORDER_ACTIVE, back_t));
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ui::widgets::title_bar::{TitleBarBack, TitleBarState};
     use bevy::render::render_resource::TextureFormat;
-    /// 仅安装页面输入需要的资源，不加载渲染器或创建窗口。
+    /// 仅安装页面输入需要的资源与共享控件系统，不加载渲染器或创建窗口；
+    /// 返回框交互在控件内，需提供标题栏 marker 实体与 TitleBarState。
     fn input_app() -> App {
         let mut app = App::new();
         let mut images = Assets::<Image>::default();
@@ -586,6 +460,8 @@ mod tests {
             .init_resource::<ButtonInput<MouseButton>>()
             .add_message::<MouseWheel>()
             .add_systems(Update, input);
+        app.add_plugins(widgets::WidgetsPlugin);
+        app.world_mut().spawn(TitleBarBack);
         app
     }
     /// 一次按键经过实际页面输入系统，避免测试独立模拟逻辑。
@@ -640,16 +516,20 @@ mod tests {
         );
     }
 
-    /// 返回键拖出取消，只有同处按下松开才触发返回。
+    /// 返回键拖出取消，只有同处按下松开才触发返回；指针注入控件状态。
     #[test]
     fn back_requires_matching_mouse_press_and_release() {
         let mut app = input_app();
-        app.world_mut().resource_mut::<View>().pointer = Some(Vec2::new(90.0, 40.0));
+        app.world_mut()
+            .resource_mut::<TitleBarState>()
+            .pointer = Some(Vec2::new(90.0, 40.0));
         app.world_mut()
             .resource_mut::<ButtonInput<MouseButton>>()
             .press(MouseButton::Left);
         app.update();
-        app.world_mut().resource_mut::<View>().pointer = Some(Vec2::new(300.0, 200.0));
+        app.world_mut()
+            .resource_mut::<TitleBarState>()
+            .pointer = Some(Vec2::new(300.0, 200.0));
         app.world_mut()
             .resource_mut::<ButtonInput<MouseButton>>()
             .release(MouseButton::Left);
@@ -661,7 +541,9 @@ mod tests {
         app.world_mut()
             .resource_mut::<ButtonInput<MouseButton>>()
             .reset_all();
-        app.world_mut().resource_mut::<View>().pointer = Some(Vec2::new(90.0, 40.0));
+        app.world_mut()
+            .resource_mut::<TitleBarState>()
+            .pointer = Some(Vec2::new(90.0, 40.0));
         app.world_mut()
             .resource_mut::<ButtonInput<MouseButton>>()
             .press(MouseButton::Left);

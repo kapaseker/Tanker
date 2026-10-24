@@ -7,6 +7,7 @@ use crate::{
     },
     ui::font::UiFont,
     ui::resources::{colors, dimens},
+    ui::zoom,
     ui::resources::{
         colors::index as palette, dimens::index as dims, strings, strings_cn::index as labels,
     },
@@ -114,11 +115,6 @@ fn cubic(t: f32, x1: f32, y1: f32, x2: f32, y2: f32) -> f32 {
         }
     }
     eval((lo + hi) * 0.5, y1, y2)
-}
-
-/// scale.js 的 zoom 语义：可用宽度不足参考宽度时整体等比缩小，只缩不放大，高度不参与。
-pub(crate) fn zoom(available_width: f32) -> f32 {
-    (available_width / dimens::REFERENCE_WIDTH).min(1.0)
 }
 
 /// 给定物理像素与缩放系数，返回整体缩放后的 CSS 像素视口；

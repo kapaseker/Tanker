@@ -178,7 +178,10 @@ pub(super) fn run_gallery_scenario(
             );
         }
         if cycle == 2 {
-            crate::pages::gallery::view_mut(app.world_mut()).pointer = Some(Vec2::new(90.0, 40.0));
+            // 返回框交互内建于标题栏控件，悬停指针直接注入控件状态。
+            app.world_mut()
+                .resource_mut::<crate::ui::widgets::TitleBarState>()
+                .pointer = Some(Vec2::new(90.0, 40.0));
             // 悬停 220ms 过渡完成后截图，验证返回框薄荷高亮与键帽深色描边。
             for _ in 0..16 {
                 update(app, STEP, None)?;

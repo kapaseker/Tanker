@@ -20,6 +20,17 @@ pub(crate) const KBD_BORDER: Color = with_alpha(ON_SURFACE, 0.028);
 /// 键帽悬停边框：CSS rgba(18,17,13,0.4) 在薄荷填充底 (#c8dbb1) 上的不透明合成色，供 mix 过渡。
 pub(crate) const KBD_BORDER_ACTIVE: Color = Color::srgb_u8(127, 138, 111);
 
+/// 统一标题栏配色：共享控件 widgets::title_bar 专用，其余悬停混色用顶层语义色。
+pub(crate) mod title_bar {
+    use super::*;
+    /// 标题栏底色，与首页页面底色同源。
+    pub(crate) const BACKGROUND: Color = index::BACKGROUND;
+    /// 返回框底色（暗面板）。
+    pub(crate) const BOX_SURFACE: Color = ON_PRIMARY;
+    /// 标题栏与返回框的细边框；当前与 gallery::OUTLINE 同值，各自独立演化。
+    pub(crate) const OUTLINE: Color = Color::srgb_u8(48, 46, 41);
+}
+
 /// 画廊面板和细边框；不透明色取 CSS 在暗底合成后的色值。
 pub(crate) mod gallery {
     use super::*;
