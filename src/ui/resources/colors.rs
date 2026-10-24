@@ -13,6 +13,13 @@ pub(crate) const PRIMARY_DEEP: Color = Color::srgb_u8(157, 182, 126);
 /// 强调色背景上的文字色。
 pub(crate) const ON_PRIMARY: Color = Color::srgb_u8(18, 17, 13);
 
+/// 键帽底色：原稿的 rgba(255,255,255,0.03) 换算到线性合成后的等效 alpha。
+pub(crate) const KBD_BACKGROUND: Color = with_alpha(Color::srgb(1.0, 1.0, 1.0), 0.0034);
+/// 键帽边框：与 index::SEPARATOR 同源的线性等效 alpha，对应 CSS rgba(235,232,223,0.15)。
+pub(crate) const KBD_BORDER: Color = with_alpha(ON_SURFACE, 0.028);
+/// 键帽悬停边框：CSS rgba(18,17,13,0.4) 在薄荷填充底 (#c8dbb1) 上的不透明合成色，供 mix 过渡。
+pub(crate) const KBD_BORDER_ACTIVE: Color = Color::srgb_u8(127, 138, 111);
+
 /// 画廊面板和细边框；不透明色取 CSS 在暗底合成后的色值。
 pub(crate) mod gallery {
     use super::*;
@@ -73,8 +80,6 @@ pub(crate) mod index {
     pub(crate) const SEPARATOR: Color = with_alpha(ON_SURFACE, 0.028);
     /// 角标边框。
     pub(crate) const CORNER: Color = with_alpha(PRIMARY, 0.14);
-    /// 键帽底色：原稿的 rgba(255,255,255,0.03) 换算到线性合成后的等效 alpha。
-    pub(crate) const KBD_BACKGROUND: Color = with_alpha(Color::srgb(1.0, 1.0, 1.0), 0.0034);
 }
 
 /// Bevy 的 Alpha trait 不能用于常量求值；本文件的颜色均明确使用 sRGB。

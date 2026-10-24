@@ -179,6 +179,12 @@ pub(super) fn run_gallery_scenario(
         }
         if cycle == 2 {
             crate::pages::gallery::view_mut(app.world_mut()).pointer = Some(Vec2::new(90.0, 40.0));
+            // 悬停 220ms 过渡完成后截图，验证返回框薄荷高亮与键帽深色描边。
+            for _ in 0..16 {
+                update(app, STEP, None)?;
+            }
+            capture(app, &options.output.join("gallery-back-hover.png"))?;
+            report.push_str("返回框悬停高亮与键帽描边已截图\n");
             app.world_mut().resource_mut::<MenuMouse>().0 = true;
             update(app, STEP, None)?;
             app.world_mut().resource_mut::<MenuMouse>().0 = false;

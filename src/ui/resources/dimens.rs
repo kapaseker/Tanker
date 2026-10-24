@@ -27,7 +27,11 @@ pub(crate) mod gallery {
     pub(crate) const SCROLL_STEP: f32 = 64.0;
     /// 以下矩形依次为左、上、宽、高，单位为所属父节点内的逻辑像素。
     pub(crate) const BACK_RECT: (f32, f32, f32, f32) = (64.0, 20.0, 102.0, 48.0);
-    pub(crate) const BACK_TEXT_RECT: (f32, f32, f32, f32) = (18.0, 15.0, 70.0, 20.0);
+    /// 返回框内容水平内边距与子项间距（网页 .back 的 padding 18px / gap 12px）。
+    pub(crate) const BACK_PADDING_X: f32 = 18.0;
+    pub(crate) const BACK_GAP: f32 = 12.0;
+    /// 返回箭头字号（网页 .back__arrow 的 16px）。
+    pub(crate) const BACK_ARROW_SIZE: f32 = 16.0;
     pub(crate) const TITLE_RECT: (f32, f32, f32, f32) = (182.0, 30.0, 300.0, 30.0);
     pub(crate) const NAME_RECT: (f32, f32, f32, f32) = (20.0, 216.0, 228.0, 26.0);
     pub(crate) const META_RECT: (f32, f32, f32, f32) = (20.0, 248.0, 228.0, 20.0);

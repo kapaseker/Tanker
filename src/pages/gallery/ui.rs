@@ -9,7 +9,7 @@ use crate::{
             dimens::gallery as dims,
             strings_cn::gallery as labels,
         },
-        widgets::{self, CornerOrientation},
+        widgets::{self, CornerOrientation, Keycap},
     },
 };
 use bevy::{
@@ -28,16 +28,20 @@ pub(crate) struct View {
     size: Vec2,
     focus: bool,
     pressed: bool,
+    /// 返回框高亮进度 0..=1；悬停/聚焦时推进，220ms 缓动后驱动颜色混合。
+    back: f32,
     hover: [f32; 8],
     line: [f32; 8],
 }
+/// 返回箭头 marker；弹性布局管理几何，update 只更新颜色。
+#[derive(Component)]
+pub(super) struct BackArrow;
 /// 节点角色用于窗口变化时更新已有布局，不反复创建实体。
 #[derive(Component, Clone, Copy)]
 pub(super) enum Part {
     Background,
     Header,
     Back,
-    BackText,
     Title,
     Viewport,
     Content,
@@ -222,22 +226,26 @@ pub(super) fn spawn(
                 header
                     .spawn((
                         Part::Back,
-                        absolute(),
+                        Node {
+                            position_type: PositionType::Absolute,
+                            // 内容用弹性布局自动排版（对齐设计稿 padding 18 / gap 12），不再手测矩形。
+                            display: Display::Flex,
+                            align_items: AlignItems::Center,
+                            column_gap: px(dims::BACK_GAP),
+                            padding: UiRect::axes(px(dims::BACK_PADDING_X), px(0.0)),
+                            ..default()
+                        },
                         BackgroundColor(colors::gallery::SURFACE),
                         BorderColor::all(colors::gallery::OUTLINE),
                     ))
                     .with_children(|back| {
                         back.spawn((
-                            Part::BackText,
-                            Text::new(format!(
-                                "{}   {}",
-                                crate::ui::resources::strings::BACK_ARROW,
-                                crate::ui::resources::strings::KEY_ESCAPE
-                            )),
-                            text_font(&font, dims::META_SIZE, 400.0),
+                            BackArrow,
+                            Text::new(crate::ui::resources::strings::BACK_ARROW),
+                            text_font(&font, dims::BACK_ARROW_SIZE, 400.0),
                             TextColor(colors::ON_SURFACE),
-                            absolute(),
                         ));
+                        widgets::spawn_keycap(back, &font, crate::ui::resources::strings::KEY_ESCAPE);
                     });
                 header.spawn((
                     Part::Title,
@@ -402,6 +410,15 @@ pub(super) fn update(
         Option<&mut TextColor>,
         Option<&mut Text>,
     )>,
+    // 返回框内容（箭头/键帽）不挂 Part、几何交给弹性布局，用 Without<Part> 与 nodes 互斥。
+    mut back_content: Query<
+        (
+            Option<&BackArrow>,
+            &mut TextColor,
+            Option<&mut BorderColor>,
+        ),
+        (Or<(With<BackArrow>, With<Keycap>)>, Without<Part>),
+    >,
     mut materials: ResMut<Assets<IndexBackground>>,
 ) {
     let size = view.size;
@@ -423,6 +440,10 @@ pub(super) fn update(
         material.cubes = Vec4::ZERO;
     }
     let back_active = view.focus || view.pointer.is_some_and(|p| back_rect().contains(p));
+    // 返回框高亮以 220ms 连续过渡，指针悬停与键盘焦点共用同一进度。
+    let back_dir = if back_active { 1.0 } else { -1.0 };
+    view.back = (view.back + back_dir * time.delta_secs() / 0.22).clamp(0.0, 1.0);
+    let back_t = eased(view.back, 0.25, 0.1, 0.25, 1.0);
     for (part, mut node, background, border, text_color, text) in &mut nodes {
         let rect = match *part {
             Part::Background => (0.0, 0.0, size.x, size.y),
@@ -433,30 +454,12 @@ pub(super) fn update(
             Part::Back => {
                 node.border = UiRect::all(px(1.0));
                 if let Some(mut bg) = background {
-                    bg.0 = if back_active {
-                        colors::PRIMARY
-                    } else {
-                        colors::gallery::SURFACE
-                    };
+                    bg.0 = colors::gallery::SURFACE.mix(&colors::PRIMARY, back_t);
                 }
                 if let Some(mut border) = border {
-                    *border = BorderColor::all(if back_active {
-                        colors::PRIMARY
-                    } else {
-                        colors::gallery::OUTLINE
-                    });
+                    *border = BorderColor::all(colors::gallery::OUTLINE.mix(&colors::PRIMARY, back_t));
                 }
                 dims::BACK_RECT
-            }
-            Part::BackText => {
-                if let Some(mut color) = text_color {
-                    color.0 = if back_active {
-                        colors::ON_PRIMARY
-                    } else {
-                        colors::ON_SURFACE
-                    };
-                }
-                dims::BACK_TEXT_RECT
             }
             Part::Title => dims::TITLE_RECT,
             Part::Viewport => (
@@ -548,6 +551,13 @@ pub(super) fn update(
         node.top = px(rect.1);
         node.width = px(rect.2);
         node.height = px(rect.3);
+    }
+    // 返回框内容（箭头与键帽）随同一进度变色；几何由弹性布局管理，不写矩形。
+    for (_, mut text_color, border) in &mut back_content {
+        text_color.0 = colors::ON_SURFACE.mix(&colors::ON_PRIMARY, back_t);
+        if let Some(mut border) = border {
+            *border = BorderColor::all(colors::gallery::OUTLINE.mix(&colors::KBD_BORDER_ACTIVE, back_t));
+        }
     }
 }
 

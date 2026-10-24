@@ -1,7 +1,9 @@
 //! 跨页面复用的 UI 控件；只依赖 bevy 与 ui::resources，不引用页面/游戏状态（见 ADR-0002）。
 pub(crate) mod frame;
+pub(crate) mod keycap;
 
 pub(crate) use frame::{CornerOrientation, spawn_frame_corner, spawn_version_badge};
+pub(crate) use keycap::{Keycap, spawn_keycap};
 
 use bevy::prelude::*;
 use frame::layout_frame;

@@ -440,28 +440,6 @@ fn spawn_index(
                 },
             ))
             .with_children(|hint| {
-                // 生成一个键帽：固定字号、内边距与圆角的行内小方块。
-                let keycap = |hint: &mut RelatedSpawnerCommands<ChildOf>, key: &str| {
-                    hint.spawn((
-                        Text::new(key),
-                        TextFont {
-                            font: font.0.clone().into(),
-                            font_size: FontSize::Px(dims::KBD_SIZE),
-                            ..default()
-                        },
-                        LetterSpacing::Px(dims::KBD_SPACING),
-                        LineHeight::RelativeToFont(dimens::LINE_HEIGHT),
-                        TextColor(colors::ON_SURFACE),
-                        Node {
-                            border: UiRect::all(px(dimens::BORDER_WIDTH)),
-                            border_radius: BorderRadius::all(px(dims::KBD_RADIUS)),
-                            padding: UiRect::axes(px(dims::KBD_PADDING_X), px(dims::KBD_PADDING_Y)),
-                            ..default()
-                        },
-                        BorderColor::all(palette::SEPARATOR),
-                        BackgroundColor(palette::KBD_BACKGROUND),
-                    ));
-                };
                 // 生成一段说明文字。
                 let caption = |hint: &mut RelatedSpawnerCommands<ChildOf>, label: &str| {
                     hint.spawn((
@@ -476,10 +454,10 @@ fn spawn_index(
                         TextColor(colors::ON_SURFACE_MUTED),
                     ));
                 };
-                keycap(hint, strings::KEY_UP);
-                keycap(hint, strings::KEY_DOWN);
+                widgets::spawn_keycap(hint, &font, strings::KEY_UP);
+                widgets::spawn_keycap(hint, &font, strings::KEY_DOWN);
                 caption(hint, labels::HINT_SELECT);
-                keycap(hint, strings::KEY_ENTER);
+                widgets::spawn_keycap(hint, &font, strings::KEY_ENTER);
                 caption(hint, labels::HINT_CONFIRM);
             });
             widgets::spawn_version_badge(root, &font, palette::CORNER);
