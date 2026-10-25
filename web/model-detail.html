@@ -8,6 +8,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230f0e0c'/%3E%3Cpath d='M16 5l11 6-11 6-11-6z' fill='%23e2edcf'/%3E%3Cpath d='M5 11v9l11 6v-9z' fill='%23b7cb9f'/%3E%3Cpath d='M27 11v9l-11 6v-9z' fill='%2391a97a'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
 <script src="scale.js"></script>
+<script src="transition.js"></script>
 </head>
 <body>
   <div class="bg" aria-hidden="true">
@@ -19,20 +20,18 @@
 
   <div class="frame" aria-hidden="true"></div>
 
-  <header class="hud hud--top"></header>
+  <header class="backbar">
+    <!-- 返回地址由脚本补上 #编号，保证回画廊后聚焦原卡片 -->
+    <a class="back" href="model-gallery.html" id="detail-back" aria-label="返回模型画廊">
+      <span class="back__arrow" aria-hidden="true">←</span> <kbd>ESC</kbd>
+    </a>
+    <h1 class="backbar__title" id="detail-name">—</h1>
+  </header>
 
   <main class="stage">
     <!-- 模型详情：鼠标拖拽旋转查看，下方展示三维尺寸 -->
     <div class="screen is-active" id="screen-detail">
       <div class="detail">
-        <div class="backbar">
-          <!-- 返回地址由脚本补上 #编号，保证回画廊后聚焦原卡片 -->
-          <a class="back" href="model-gallery.html" id="detail-back" aria-label="返回模型画廊">
-            <span class="back__arrow" aria-hidden="true">←</span> <kbd>ESC</kbd>
-          </a>
-          <h1 class="backbar__title" id="detail-name">—</h1>
-        </div>
-
         <div class="viewer" id="viewer" aria-label="模型查看区，按住鼠标拖拽可旋转模型"></div>
 
         <div class="specs">
@@ -148,11 +147,6 @@
         renderDetailModel();
       }, { passive: false });
 
-      // ESC 与点击走同一返回路径；不主动聚焦返回键，避免进场出现选中态
-      document.addEventListener('keydown', (event) => {
-        if (event.key !== 'Escape') return;
-        location.href = back.href;
-      });
     })();
   </script>
 

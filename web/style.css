@@ -34,7 +34,7 @@
     /* 相对 ICB 取 100%，不使用 vh：整体 zoom 缩放时保持与视口一致 */
     min-height: 100%;
     display: grid;
-    grid-template-rows: auto 1fr auto;
+    grid-template-rows: 1fr auto;
     background: var(--bg);
     color: var(--ink);
     font-family: var(--font-body);
@@ -112,7 +112,7 @@
   .frame {
     position: fixed;
     inset: 18px;
-    z-index: 2;
+    z-index: 6;
     pointer-events: none;
   }
 
@@ -368,23 +368,36 @@
   }
 
   /* ---------- 页面切换：主菜单 / 模型画廊 / 模型详情 ---------- */
-  /* 非当前页面整体隐藏；激活页面播放统一淡入，节奏对齐 menu.motion */
+  /* 非当前页面整体隐藏；跨文档淡入淡出统一由 transition.js 控制。 */
   .screen:not(.is-active) { display: none; }
 
   /* .stage 是 flex 容器，flex 项默认收缩到内容宽度；
      画廊/详情页的 width:100% 需要相对舞台解析，必须显式撑满，否则容器塌缩、网格退化为单列 */
   .screen { width: 100%; }
 
-  .screen.is-active {
-    animation: screen-in 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* 遮罩只压暗页面内容；角标与标题栏置于其上，不改变 fixed 定位参照。 */
+  .page-fade {
+    position: fixed;
+    inset: 0;
+    z-index: 4;
+    background: #000;
+    opacity: 0;
+    pointer-events: none;
   }
 
-  /* 入场只动透明度：带 transform 的祖先会接管 fixed 子元素的定位参照，
-     导致固定标题栏在动画期间相对 .screen 定位、结束后跳回窗口，产生位移抖动 */
-  @keyframes screen-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
+  html[data-transition="in"] .page-fade,
+  html[data-transition="out"] .page-fade { opacity: 1; }
+
+  html[data-transition="boot"] .bg,
+  html[data-transition="boot"] .stage,
+  html[data-transition="boot"] .hud--bottom { visibility: hidden; }
+
+  html[data-transition="boot"] body { background: #000; }
+
+  .stage--home { padding-top: 104px; }
+  .back--home { visibility: hidden; }
+  html[data-transition="out"] .back--home,
+  html[data-transition="waiting"] .back--home { visibility: visible; }
 
   /* ---------- 返回栏：返回按钮 + 页面标题 ---------- */
   /* 固定在窗口顶部，不随内容滚动；背景与分隔线遮住下方穿过的文字 */
@@ -393,11 +406,12 @@
     top: 0;
     left: 0;
     right: 0;
-    z-index: 3;
+    z-index: 5;
+    height: 88px;
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 16px;
     padding: 20px 64px;
     background: var(--bg);

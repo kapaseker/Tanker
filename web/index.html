@@ -8,6 +8,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230f0e0c'/%3E%3Cpath d='M16 5l11 6-11 6-11-6z' fill='%23e2edcf'/%3E%3Cpath d='M5 11v9l11 6v-9z' fill='%23b7cb9f'/%3E%3Cpath d='M27 11v9l-11 6v-9z' fill='%2391a97a'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
 <script src="scale.js"></script>
+<script src="transition.js"></script>
 </head>
 <body>
   <div class="bg" aria-hidden="true">
@@ -19,12 +20,14 @@
 
   <div class="frame" aria-hidden="true"></div>
 
-  <header class="hud hud--top">
-
-
+  <header class="backbar">
+    <a class="back back--home" href="index.html" aria-label="取消页面切换">
+      <span class="back__arrow" aria-hidden="true">←</span> <kbd>ESC</kbd>
+    </a>
+    <h1 class="backbar__title">主菜单</h1>
   </header>
 
-  <main class="stage">
+  <main class="stage stage--home">
     <!-- 主菜单：标题、菜单与体素装饰 -->
     <div class="layout screen is-active" id="screen-menu">
       <section class="hero">
