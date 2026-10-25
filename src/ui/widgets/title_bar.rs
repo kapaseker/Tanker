@@ -83,6 +83,8 @@ pub(crate) fn spawn_title_bar(
                         top: px(back_top),
                         width: px(back_width),
                         height: px(back_height),
+                        // 1px 四边描边；BorderColor 只管颜色，宽度必须在此声明。
+                        border: UiRect::all(px(dimens::BORDER_WIDTH)),
                         // 内容用弹性布局自动排版（对齐设计稿 padding 18 / gap 12）。
                         display: Display::Flex,
                         align_items: AlignItems::Center,

@@ -66,11 +66,9 @@ fn card_rect(index: usize, left: f32, scroll: f32) -> Rect {
 fn section_height() -> f32 {
     dims::SECTION_GAP + dims::SECTION_TO_CARD + dims::CARD_HEIGHT
 }
-/// 滚动最大值由逻辑视口决定，短窗口与窗口缩放共用。
+/// 标题栏下方一直滚动到窗口底边；页脚留白属于内容，不缩短视口。
 pub(super) fn max_scroll(height: f32) -> f32 {
-    (section_height() * 4.0 + dims::CONTENT_BOTTOM
-        - (height - bar::HEIGHT - dims::FOOTER_HEIGHT).max(0.0))
-    .max(0.0)
+    (section_height() * 4.0 + dims::CONTENT_BOTTOM - (height - bar::HEIGHT).max(0.0)).max(0.0)
 }
 /// 只提供实际可操作的返回键；卡片没有按钮或焦点组件。
 pub(super) fn spawn(
@@ -278,13 +276,11 @@ pub(super) fn input(
         (KeyCode::ArrowDown, dims::SCROLL_STEP),
         (
             KeyCode::PageUp,
-            -(size.y - bar::HEIGHT - dims::FOOTER_HEIGHT - dims::SCROLL_STEP)
-                .max(dims::SCROLL_STEP),
+            -(size.y - bar::HEIGHT - dims::SCROLL_STEP).max(dims::SCROLL_STEP),
         ),
         (
             KeyCode::PageDown,
-            (size.y - bar::HEIGHT - dims::FOOTER_HEIGHT - dims::SCROLL_STEP)
-                .max(dims::SCROLL_STEP),
+            (size.y - bar::HEIGHT - dims::SCROLL_STEP).max(dims::SCROLL_STEP),
         ),
     ] {
         if keys.just_pressed(key) {
@@ -326,9 +322,7 @@ pub(super) fn update(
     let content_height = section_height() * 4.0 + dims::CONTENT_BOTTOM;
     for i in 0..8 {
         let active = view.pointer.is_some_and(|p| {
-            p.y >= bar::HEIGHT
-                && p.y < size.y - dims::FOOTER_HEIGHT
-                && card_rect(i, left, scroll).contains(p)
+            p.y >= bar::HEIGHT && p.y < size.y && card_rect(i, left, scroll).contains(p)
         });
         let direction = if active { 1.0 } else { -1.0 };
         view.hover[i] = (view.hover[i] + direction * time.delta_secs() / 0.22).clamp(0.0, 1.0);
@@ -345,7 +339,7 @@ pub(super) fn update(
                 left,
                 bar::HEIGHT,
                 dims::WIDTH,
-                (size.y - bar::HEIGHT - dims::FOOTER_HEIGHT).max(0.0),
+                (size.y - bar::HEIGHT).max(0.0),
             ),
             Part::Content => (0.0, -scroll, dims::WIDTH, content_height),
             Part::Index(i) => (
@@ -490,6 +484,9 @@ mod tests {
         let mut app = input_app();
         key(&mut app, KeyCode::ArrowDown);
         assert_eq!(app.world().resource::<View>().scroll, 64.0);
+        key(&mut app, KeyCode::Home);
+        key(&mut app, KeyCode::PageDown);
+        assert_eq!(app.world().resource::<View>().scroll, 568.0);
         key(&mut app, KeyCode::End);
         assert_eq!(app.world().resource::<View>().scroll, max_scroll(720.0));
         key(&mut app, KeyCode::Home);

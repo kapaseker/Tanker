@@ -35,7 +35,6 @@ pub(crate) mod gallery {
     pub(crate) const CARD_HEIGHT: f32 = 282.0;
     pub(crate) const GAP: f32 = 24.0;
     pub(crate) const SECTION_GAP: f32 = 60.0;
-    pub(crate) const FOOTER_HEIGHT: f32 = 60.0;
     pub(crate) const PREVIEW_HEIGHT: f32 = 180.0;
     pub(crate) const CARD_PADDING: f32 = 20.0;
     pub(crate) const HEADING_SIZE: f32 = 24.0;
@@ -46,7 +45,8 @@ pub(crate) mod gallery {
     pub(crate) const META_RECT: (f32, f32, f32, f32) = (20.0, 248.0, 228.0, 20.0);
     /// 分类标题到卡片的距离，以及页面末尾留白。
     pub(crate) const SECTION_TO_CARD: f32 = 56.0;
-    pub(crate) const CONTENT_BOTTOM: f32 = 40.0;
+    /// 网页 stage 的 40px 下内边距与 60px 页脚，均随内容滚动。
+    pub(crate) const CONTENT_BOTTOM: f32 = 100.0;
     /// 型号字距与悬停底线高度。
     pub(crate) const LETTER_SPACING: f32 = 2.0;
     pub(crate) const HOVER_LINE_HEIGHT: f32 = 2.0;
