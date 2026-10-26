@@ -10,7 +10,7 @@ mod wheels;
 
 use super::*;
 use super::{
-    capture::{PixelCheck, capture, capture_checked, capture_side, capture_wheel_views},
+    capture::{PixelCheck, capture, capture_checked, capture_concrete, capture_side, capture_wheel_views},
     offscreen::{update, wait_render},
 };
 use avian3d::prelude::{LinearVelocity, Position, Rotation};
@@ -40,9 +40,7 @@ impl Scenario {
     pub(super) fn frames(self) -> &'static [u32] {
         match self {
             Self::Scene => &[0],
-            // 体素地形是有意障碍：直行只模拟 1 秒（60 帧），车头前缘
-            // （半长 3.75 m + 行驶 6 m）仍留在半径 24 m 的出生平区内；
-            // 平区外的台阶全部是可翻越的 1 档坎，不构成驾驶失效判据。
+            // 先直行 1 秒，再持续前进左转；路径不会触及 25 米外的混凝土墩。
             Self::Drive => &[0, 60, 180],
             Self::Combat => &[0, 6, 24, 48, 60, 120],
             Self::Wheels => &[
@@ -127,6 +125,8 @@ pub(super) fn run_scenario(
         update(app, STEP, None)?;
     }
     validate_scene(app.world_mut())?;
+    scene::validate_concrete(app.world_mut())?;
+    report.push_str("断言通过：唯一混凝土墩静态刚体、VOX 实例与实际网格尺寸、贴地位置\n");
     let (start, start_tracks) = subject_state(app.world_mut())?;
     report.push_str(&format!(
         "预热：120 帧；断言通过：地形就绪、坦克位置、相机跟随\n起点：{:?}\n",
@@ -152,6 +152,10 @@ pub(super) fn run_scenario(
         "模拟帧：0；图片：{}\n",
         options.image_path(0).display()
     ));
+    if options.scenario == Scenario::Scene && !options.single_image {
+        capture_concrete(app, &options.output.join("concrete.png"))?;
+        report.push_str("混凝土墩近景：concrete.png（截图等待不推进模拟时间）\n");
+    }
     for frame in 1..=*options.scenario.frames().last().unwrap() {
         update(app, STEP, Some(frame))?;
         validate_scene(app.world_mut())?;

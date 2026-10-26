@@ -41,8 +41,6 @@ const TERRAIN_NAME: &str = "ground";
 pub(super) const FLAT: u8 = 10;
 /// 地形量化粒度，单位：米；也是台阶高度与贴图色块的对齐网格。
 pub(super) const TERRAIN_STEP: f32 = 0.1;
-/// 地形起伏幅度上限，单位：米；对应高度字节区间 [FLAT − 10, FLAT + 10]。
-pub(super) const TERRAIN_HALF_RANGE: f32 = 1.0;
 /// 地形网格分块边长，单位：米。
 const CHUNK_SIDE: f32 = 60.0;
 /// 每块单边采样数（[`CHUNK_SIDE`] ÷ [`AUTHOR_RES`]）。
@@ -54,7 +52,7 @@ const CHUNK_COUNT: usize = 10;
 #[derive(Component)]
 pub(crate) struct TerrainChunk;
 
-/// 标记承载地形高度场的静态物理表面。
+/// 标记承载地形的静态物理表面。
 #[derive(Component)]
 pub(crate) struct TerrainSurface;
 
@@ -63,7 +61,7 @@ pub(crate) struct TerrainSurface;
 #[derive(Component)]
 pub(super) struct TerrainEntity;
 
-/// 标记地形网格与高度场碰撞体已铺设完成，供依赖地形的生成逻辑（敌人）等待。
+/// 标记地形网格与碰撞体已铺设完成，供依赖地形的生成逻辑（敌人）等待。
 #[derive(Resource)]
 pub(crate) struct TerrainReady;
 
@@ -111,7 +109,7 @@ pub(crate) fn load_ground(commands: &mut Commands, assets: &AssetServer) {
 }
 
 /// 地形图就绪后编译与铺设地形：按 60 米分块生成 100 块视觉网格，
-/// 并在同一实体上挂高度场碰撞体。
+/// 并为每块生成独立的静态碰撞实体。
 fn spawn_terrain(
     mut commands: Commands,
     // 主菜单期地形图尚未登记，资源缺失时静默等待。
@@ -137,6 +135,10 @@ fn spawn_terrain(
             heights.0.len()
         );
     }
+    assert!(
+        heights.0.iter().all(|value| *value == FLAT),
+        "地形高度图必须全图为 Y=0；请重新运行 scripts/generate_ground.py"
+    );
     let (palette, indices) = parse_albedo(&colors.0);
 
     let material = materials.add(StandardMaterial {
@@ -148,7 +150,7 @@ fn spawn_terrain(
         cull_mode: None,
         ..default()
     });
-    // 高度字节转成以 0 米为基准的量化档位，供网格与高度场共用。
+    // 高度字节转成以 0 米为基准的量化档位，供网格与碰撞体共用。
     let levels: Vec<i32> = heights
         .0
         .iter()
@@ -228,7 +230,7 @@ fn report_ground(
     }
     info!(
         "地形地图加载完成：{} 米见方 / {:.0} 平方米（高度图 {MAP_SIDE}×{MAP_SIDE} @{AUTHOR_RES} 米，\
-         渲染台阶 {TERRAIN_STEP} 米，起伏 ±{TERRAIN_HALF_RANGE} 米，{CHUNK_COUNT}×{CHUNK_COUNT} 块）",
+         全图 Y=0，{CHUNK_COUNT}×{CHUNK_COUNT} 块）",
         FIELD_SIDE, AREA
     );
     *reported = true;
@@ -245,7 +247,6 @@ mod tests {
         assert!((MAP_SIDE as f32 * AUTHOR_RES - FIELD_SIDE).abs() < 0.001);
         assert_eq!(CHUNK_CELLS * CHUNK_COUNT, MAP_SIDE);
         assert!((CHUNK_SIDE * CHUNK_COUNT as f32 - FIELD_SIDE).abs() < 0.001);
-        assert_eq!(TERRAIN_HALF_RANGE / TERRAIN_STEP, FLAT as f32);
         // 首块与末块的世界原点把场地正好铺满 [−300, 300]。
         assert_eq!(0.0 * CHUNK_SIDE - FIELD_SIDE / 2.0, -300.0);
         assert_eq!(9.0 * CHUNK_SIDE - FIELD_SIDE / 2.0 + CHUNK_SIDE, 300.0);

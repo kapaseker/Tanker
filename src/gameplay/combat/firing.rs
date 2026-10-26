@@ -195,7 +195,7 @@ fn fire_bullets(
     ));
 }
 
-/// 沿完整位移扫掠弹体，仅命中最近敌人；命中或射程耗尽时清理场景根及后代。
+/// 沿完整位移扫掠弹体，命中最近敌人或混凝土墩；仅敌人会被击毁。
 fn move_bullets(
     mut commands: Commands,
     time: Res<Time>,
@@ -203,13 +203,14 @@ fn move_bullets(
     // 用 GlobalTransform 读取敌人位置，避免与子弹的 &mut Transform 查询冲突（B0001）；
     // 敌人都是场景根，两者等值。
     enemies: Query<&GlobalTransform, With<EnemyTank>>,
+    concrete: Query<(), With<crate::gameplay::obstacle::Concrete>>,
     mut bullets: Query<(Entity, &mut Transform, &mut Bullet)>,
     mut destroyed_enemies: MessageWriter<EnemyDestroyed>,
 ) {
     // 本帧前进的世界距离，按游戏时间计算，单位：米。
     let step = BULLET_SPEED * time.delta_secs();
     let shape = Collider::cuboid(BULLET_SIZE, BULLET_SIZE, BULLET_SIZE);
-    // 子弹投射只认敌人，不会撞墙；越过场地边界（±FIELD_SIDE/2）即视为失效，
+    // 子弹投射只认敌人和混凝土墩；越过场地边界（±FIELD_SIDE/2）即视为失效，
     // 防止穿墙飞满射程。单帧最大位移约 0.7 米，越界误差可忽略。
     let half_field = crate::terrain::FIELD_SIDE / 2.0;
     // Commands 在系统结束后才删除实体，同帧后续弹体必须主动跳过已击毁目标。
@@ -232,9 +233,15 @@ fn move_bullets(
             Dir3::new(bullet.direction).expect("子弹方向必须为非零单位向量"),
             &ShapeCastConfig::from_max_distance(travel),
             &SpatialQueryFilter::default(),
-            &|target| enemies.contains(target) && !destroyed.contains(&target),
+            &|target| concrete.contains(target)
+                || (enemies.contains(target) && !destroyed.contains(&target)),
         );
         if let Some(hit) = hit {
+            if concrete.contains(hit.entity) {
+                // 墩体不销毁、不记入已毁敌人，后续同帧炮弹仍须被它阻挡。
+                commands.entity(entity).despawn();
+                continue;
+            }
             destroyed.push(hit.entity);
             // 爆炸中心取被毁车体的世界位置：与 despawn 对象一一对应，且不偏向受击面。
             if let Ok(enemy) = enemies.get(hit.entity) {
@@ -425,6 +432,57 @@ mod tests {
                     .with_rotation(Quat::from_rotation_arc(Vec3::NEG_X, direction)),
             ))
             .id()
+    }
+
+    /// 多发高速弹必须被最近的墩拦下；侧方无墩的射线仍能击毁敌人。
+    #[test]
+    fn concrete_stops_repeated_bullets_and_protects_enemy_behind_it() {
+        let (mut app, enemies) = hit_test_app(&[
+            (Vec3::new(-35.0, 1.3, 0.0), 0.0),
+            (Vec3::new(-35.0, 1.3, 8.0), 0.0),
+        ]);
+        let obstacle = app
+            .world_mut()
+            .spawn((
+                crate::gameplay::obstacle::body(),
+                Transform::from_translation(crate::gameplay::obstacle::POSITION),
+            ))
+            .id();
+        for _ in 0..3 {
+            app.update();
+        }
+        let bullets: Vec<_> = (0..3)
+            .map(|_| test_bullet(&mut app, Vec3::new(-7.0, 2.0, 0.0), Vec3::NEG_X, 0.0))
+            .collect();
+        advance_test_bullets(&mut app, 1.0);
+        assert!(
+            app.world().get_entity(enemies[0]).is_ok(),
+            "墩后的敌人不应被穿透击毁"
+        );
+        assert!(
+            app.world().get_entity(obstacle).is_ok(),
+            "混凝土墩不可被击毁"
+        );
+        assert!(
+            bullets
+                .iter()
+                .all(|&entity| app.world().get_entity(entity).is_err())
+        );
+        assert!(
+            app.world()
+                .resource::<Messages<EnemyDestroyed>>()
+                .is_empty()
+        );
+        let repeated = test_bullet(&mut app, Vec3::new(-7.0, 2.0, 0.0), Vec3::NEG_X, 0.0);
+        advance_test_bullets(&mut app, 1.0);
+        assert!(app.world().get_entity(repeated).is_err());
+        assert!(app.world().get_entity(obstacle).is_ok());
+        assert!(app.world().get_entity(enemies[0]).is_ok());
+        let side = test_bullet(&mut app, Vec3::new(-7.0, 2.0, 8.0), Vec3::NEG_X, 0.0);
+        advance_test_bullets(&mut app, 1.0);
+        assert!(app.world().get_entity(enemies[1]).is_err());
+        assert!(app.world().get_entity(side).is_err());
+        assert_eq!(app.world().resource::<Messages<EnemyDestroyed>>().len(), 1);
     }
 
     /// 玩家真实炮口水平命中平地敌人；目标底部远高于弹道时仍应掠过。
@@ -810,8 +868,8 @@ mod tests {
             "地形应铺满 Z 方向 {half_side} 米：{minimum:?}～{maximum:?}"
         );
         assert!(
-            minimum.y >= -1.001 && maximum.y <= 1.001,
-            "地形起伏应控制在 ±1 米：{minimum:?}～{maximum:?}"
+            minimum.y.abs() < 1e-5 && maximum.y.abs() < 1e-5,
+            "真实地形应全图严格平整：{minimum:?}～{maximum:?}"
         );
 
         app.world_mut()

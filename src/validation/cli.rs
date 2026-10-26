@@ -115,6 +115,9 @@ impl Options {
             .collect();
         if !self.single_image {
             paths.push(self.output.join("report.txt"));
+            if self.scenario == Scenario::Scene {
+                paths.push(self.output.join("concrete.png"));
+            }
             if self.scenario == Scenario::Wheels {
                 for name in ["side", "front", "rear", "bounds", "comparison"] {
                     paths.push(self.output.join(format!("{name}.png")));

@@ -33,8 +33,8 @@ pub(crate) struct View {
     pub restore: bool,
     pressed: Option<usize>,
     size: Vec2,
-    hover: [f32; 8],
-    line: [f32; 8],
+    hover: [f32; ENTRIES.len()],
+    line: [f32; ENTRIES.len()],
 }
 /// 节点角色用于窗口变化时更新已有布局，不反复创建实体。
 /// 标题栏（头部/返回框/标题）由 widgets::title_bar 控件负责，不再列入。
@@ -70,7 +70,9 @@ fn section_height() -> f32 {
 }
 /// 标题栏下方一直滚动到窗口底边；页脚留白属于内容，不缩短视口。
 pub(super) fn max_scroll(height: f32) -> f32 {
-    (section_height() * 4.0 + dims::CONTENT_BOTTOM - (height - bar::HEIGHT).max(0.0)).max(0.0)
+    (section_height() * labels::CATEGORIES.len() as f32 + dims::CONTENT_BOTTOM
+        - (height - bar::HEIGHT).max(0.0))
+    .max(0.0)
 }
 /// 初次进入重置浏览位置；详情返回恢复原卡片与滚动。
 pub(super) fn spawn(
@@ -236,7 +238,7 @@ fn navigate(focus: Option<usize>, key: KeyCode) -> usize {
     };
     match key {
         KeyCode::ArrowLeft => index - index % 2,
-        KeyCode::ArrowRight => index / 2 * 2 + 1,
+        KeyCode::ArrowRight => (index / 2 * 2 + 1).min(ENTRIES.len() - 1),
         KeyCode::ArrowUp => {
             if index >= 2 {
                 index - 2
@@ -244,7 +246,7 @@ fn navigate(focus: Option<usize>, key: KeyCode) -> usize {
                 index
             }
         }
-        KeyCode::ArrowDown => (index + 2).min(6 + index % 2),
+        KeyCode::ArrowDown if index + 2 < ENTRIES.len() => index + 2,
         _ => index,
     }
 }
@@ -339,14 +341,14 @@ pub(super) fn input(
     view.scroll = scroll.clamp(0.0, max);
     let mut changed = false;
     if keys.just_pressed(KeyCode::Tab) {
-        // 0 为返回框，1..=8 为卡片；首次 Tab 进入返回框，Shift+Tab 进入末卡。
+        // 0 为返回框，其后为真实卡片；首次 Tab 进入返回框，Shift+Tab 进入末卡。
         let current = view.focus.map(|i| i + 1).or(title.focus.then_some(0));
         let reverse = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
         let slot = match current {
-            Some(slot) => (slot + if reverse { 8 } else { 1 }) % 9,
+            Some(slot) => (slot + if reverse { ENTRIES.len() } else { 1 }) % (ENTRIES.len() + 1),
             None => {
                 if reverse {
-                    8
+                    ENTRIES.len()
                 } else {
                     0
                 }
@@ -427,8 +429,8 @@ pub(super) fn update(
     let size = view.size;
     let left = (size.x - dims::WIDTH) * 0.5;
     let scroll = view.scroll;
-    let content_height = section_height() * 4.0 + dims::CONTENT_BOTTOM;
-    for i in 0..8 {
+    let content_height = section_height() * labels::CATEGORIES.len() as f32 + dims::CONTENT_BOTTOM;
+    for i in 0..ENTRIES.len() {
         let active = view.focus == Some(i)
             || view.pointer.is_some_and(|p| {
                 p.y >= bar::HEIGHT && p.y < size.y && card_rect(i, left, scroll).contains(p)
@@ -541,6 +543,15 @@ mod tests {
     use super::*;
     use crate::ui::widgets::title_bar::{TitleBarBack, TitleBarState};
     use bevy::render::render_resource::TextureFormat;
+    /// 第五类只有一张卡片：不能移向空位，右列向下也不能跨列跳到它。
+    #[test]
+    fn single_obstacle_card_has_no_phantom_neighbor() {
+        assert_eq!(navigate(Some(6), KeyCode::ArrowDown), 8);
+        assert_eq!(navigate(Some(7), KeyCode::ArrowDown), 7);
+        assert_eq!(navigate(Some(8), KeyCode::ArrowRight), 8);
+        assert_eq!(navigate(Some(8), KeyCode::ArrowDown), 8);
+        assert_eq!(navigate(Some(8), KeyCode::ArrowUp), 6);
+    }
     /// 仅安装页面输入需要的资源与共享控件系统，不加载渲染器或创建窗口；
     /// 返回框交互在控件内，需提供标题栏 marker 实体与 TitleBarState。
     fn input_app() -> App {
@@ -581,24 +592,27 @@ mod tests {
     /// 网格边界不跨列、不环绕；焦点滚入标题栏下方。
     #[test]
     fn navigation_edges_and_focus_reveal() {
-        for i in 0..8 {
+        for i in 0..ENTRIES.len() {
             assert_eq!(navigate(Some(i), KeyCode::ArrowLeft), i / 2 * 2);
-            assert_eq!(navigate(Some(i), KeyCode::ArrowRight), i / 2 * 2 + 1);
+            assert_eq!(
+                navigate(Some(i), KeyCode::ArrowRight),
+                (i / 2 * 2 + 1).min(ENTRIES.len() - 1)
+            );
             assert_eq!(
                 navigate(Some(i), KeyCode::ArrowUp),
                 if i < 2 { i } else { i - 2 }
             );
             assert_eq!(
                 navigate(Some(i), KeyCode::ArrowDown),
-                if i >= 6 { i } else { i + 2 }
+                if i + 2 >= ENTRIES.len() { i } else { i + 2 }
             );
         }
         let mut view = View {
-            focus: Some(7),
+            focus: Some(ENTRIES.len() - 1),
             ..default()
         };
         reveal_focus(&mut view, Vec2::new(1280.0, 720.0));
-        let rect = card_rect(7, 0.0, view.scroll);
+        let rect = card_rect(ENTRIES.len() - 1, 0.0, view.scroll);
         assert!(rect.min.y >= bar::HEIGHT && rect.max.y <= 720.0);
         view.focus = Some(0);
         reveal_focus(&mut view, Vec2::new(1280.0, 720.0));
@@ -611,7 +625,7 @@ mod tests {
         let mut app = input_app();
         key(&mut app, KeyCode::Tab);
         assert!(app.world().resource::<TitleBarState>().focus);
-        for i in 0..8 {
+        for i in 0..ENTRIES.len() {
             key(&mut app, KeyCode::Tab);
             assert_eq!(app.world().resource::<View>().focus, Some(i));
             assert!(!app.world().resource::<TitleBarState>().focus);
@@ -629,13 +643,13 @@ mod tests {
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::Tab);
         app.update();
-        assert_eq!(app.world().resource::<View>().focus, Some(7));
+        assert_eq!(app.world().resource::<View>().focus, Some(ENTRIES.len() - 1));
         key(&mut app, KeyCode::Enter);
         assert_eq!(
             app.world()
                 .resource::<crate::pages::detail::SelectedModel>()
                 .0,
-            7
+            ENTRIES.len() - 1
         );
         assert_eq!(app.world().resource::<Fade>().target, GameState::Detail);
         assert!(!app.world().resource::<crate::pages::index::ReturnFocus>().0);

@@ -86,18 +86,19 @@ mod tests {
         assert_eq!(
             ENTRIES.map(Entry::name),
             [
-                "lance", "spit", "cleat", "crawl", "anvil", "carapace", "anvil", "carapace"
+                "lance", "spit", "cleat", "crawl", "anvil", "carapace", "anvil", "carapace", "concrete"
             ]
         );
         for category in 0..4 {
             assert_eq!(ENTRIES.iter().filter(|e| e.category == category).count(), 2);
         }
+        assert_eq!(ENTRIES.iter().filter(|e| e.category == 4).count(), 1);
         for entry in ENTRIES {
             assert!(std::path::Path::new("assets").join(entry.path).is_file());
         }
     }
 
-    /// 无 GPU 和窗口，使用真实加载器验收八种预览的几何、轮组及资源清理。
+    /// 无 GPU 和窗口，使用真实加载器验收所有预览的几何、轮组及资源清理。
     #[test]
     fn real_previews_measure_visible_geometry_and_clean_instances() {
         use bevy::{
@@ -158,6 +159,7 @@ mod tests {
             Vec3::new(6.5, 2.1, 3.2),
             Vec3::new(10.5, 2.6, 3.6),
             Vec3::new(9.0, 2.6, 3.4),
+            Vec3::new(4.0, 3.0, 1.5),
         ];
         for (index, (preview, size)) in app
             .world()
@@ -247,7 +249,7 @@ mod tests {
             .iter(app.world())
             .map(|i| **i)
             .collect();
-        assert_eq!(instances.len(), 84);
+        assert_eq!(instances.len(), 85);
         // 模拟真实文件缺失，不修改任何资产；失败项必须结束等待并保留返回能力。
         let missing = app
             .world()

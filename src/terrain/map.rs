@@ -115,7 +115,7 @@ pub(super) fn real_heights() -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::terrain::{AUTHOR_RES, FLAT};
+    use crate::terrain::FLAT;
 
     /// 5 色合法 `.abd` 样本：数量字节 + 15 字节调色板 + 全 0 索引矩阵。
     fn valid_albedo() -> Vec<u8> {
@@ -158,43 +158,9 @@ mod tests {
         parse_albedo(&bytes);
     }
 
-    /// 真实地形必须满足两条硬约束（生成器 `scripts/generate_ground.py` 的契约）：
-    /// 1. 全图任意相邻格高度差 ≤ 1 档（0.1 米）——坦克只能翻 1 档坎，
-    ///    任何更大的坎都会成为不可翻越的墙；
-    /// 2. 出生保护区（24 米半径）内绝对平地——玩家直接出生在大平面上，
-    ///    不存在"坑中平地"的圆坑。
+    /// 真实资产必须全图为 Y=0，不能只检查出生点或相邻高度差。
     #[test]
-    fn real_terrain_has_only_one_level_steps_and_flat_spawn() {
-        let bytes = real_heights();
-        let level = |i: usize, j: usize| bytes[j * MAP_SIDE + i] as i32 - FLAT as i32;
-        for j in 0..MAP_SIDE {
-            for i in 0..MAP_SIDE {
-                if i + 1 < MAP_SIDE {
-                    assert!(
-                        (level(i, j) - level(i + 1, j)).abs() <= 1,
-                        "X 向相邻格高度差超过 1 档：(X={i}, Z={j})"
-                    );
-                }
-                if j + 1 < MAP_SIDE {
-                    assert!(
-                        (level(i, j) - level(i, j + 1)).abs() <= 1,
-                        "Z 向相邻格高度差超过 1 档：(X={i}, Z={j})"
-                    );
-                }
-            }
-        }
-        let clear_cells = (24.0 / AUTHOR_RES) as f64;
-        for j in 0..MAP_SIDE as i64 {
-            for i in 0..MAP_SIDE as i64 {
-                let (dx, dz) = (i as f64 + 0.5 - MAP_SIDE as f64 / 2.0, j as f64 + 0.5 - MAP_SIDE as f64 / 2.0);
-                if dx * dx + dz * dz < clear_cells * clear_cells {
-                    assert_eq!(
-                        level(i as usize, j as usize),
-                        0,
-                        "出生保护区内出现非平地：(X={i}, Z={j})"
-                    );
-                }
-            }
-        }
+    fn real_terrain_is_entirely_flat() {
+        assert!(real_heights().iter().all(|value| *value == FLAT));
     }
 }

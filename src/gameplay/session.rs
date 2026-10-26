@@ -20,7 +20,7 @@ use crate::tank;
 const VOX_SCENE_PATH: &str = "tank/bodies/player/anvil/body.vox";
 
 /// 仅对局拥有的根实体标记；删除时连同场景实例与后代一起回收。
-/// 玩家、敌人、炮弹、爆炸与对局相机都挂此标记，[`cleanup`] 统一销毁。
+/// 玩家、敌人、混凝土墩、炮弹、爆炸与对局相机都挂此标记，[`cleanup`] 统一销毁。
 #[derive(Component)]
 pub(crate) struct SessionEntity;
 
@@ -91,6 +91,7 @@ pub(crate) fn setup(
 
     // 地形入口由地形模块拥有：此处只负责在对局生成时调用其加载登记。
     terrain::load_ground(&mut commands, &assets);
+    super::obstacle::spawn(&mut commands, &assets);
 }
 
 /// 加载状态汇报：成功与失败各打一行中文日志，作为无人值守验证的判据。

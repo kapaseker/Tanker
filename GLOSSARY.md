@@ -40,13 +40,20 @@
 | 场地落地尺寸 | 600 × 600 m，面积 360000 m² | `FIELD_SIDE` / `AREA`（`src/terrain/mod.rs`） |
 | 地形高度图 / 土色图 | 各 1200 × 1200 采样，作者化间距 0.5 m/采样；高度图 1440000 字节，土色图另含文件自带调色板（`[数量 u8][数量×3 RGB][索引矩阵]`） | `MAP_SIDE` / `AUTHOR_RES`（`src/terrain/mod.rs`）/ `parse_albedo()`（`src/terrain/map.rs`）；产物 `assets/terrain/ground/ground.ht`、`assets/terrain/ground/ground.abd` |
 | 地形数据来源 | 标准库脚本按固定种子生成两张紧凑字节图 | `scripts/generate_ground.py`（`PALETTE` 随 `.abd` 文件写出，Rust 侧从文件读取） |
-| 地形起伏 | ±1 m，量化到 0.1 m 一级（平地字节值 10，0/20 对应 −1.0/+1.0 m） | `TERRAIN_HALF_RANGE` / `TERRAIN_STEP` / `FLAT`（`src/terrain/mod.rs`） |
-| 地形视觉网格 | 600 m 场地按 10 × 10 块编译（每块 60 m / 120 采样），顶面贪心合并、边界生成 0.1 m 台阶竖直面 | `CHUNK_SIDE` / `CHUNK_COUNT` / `CHUNK_CELLS`（`src/terrain/mod.rs`）/ `build_chunk()`（`src/terrain/mesh.rs`） |
-| 地形分布 | 少量大片区 + 若干小片区，往返旋转椭圆；非平地覆盖 25%–45%（目标 26%–34%）；出生点周围 8 m 强制平地 | `COVER_RANGE` / `BIG_DIAMETER` / `SMALL_DIAMETER` / `SPAWN_PAD_M`（`scripts/generate_ground.py`） |
-| 地形物理表面 | 体素台阶复合碰撞体：每 60 m 分块一个 Avian compound，cuboid 由同档位（忽略颜色）贪心合并矩形生成，顶面量化 0.1 m、底面统一 −1.1 m，侧面即竖直坎；无高度场插值隐形斜坡 | `Collider::compound` + `collider_cuboids()` / `COLLIDER_BASE_Y`（`src/terrain/collider.rs`） |
+| 地形高度 | 全图 Y=0，无坡道、坑洼或台阶；高度字节固定为 10 | `FLAT`（`src/terrain/mod.rs`） |
+| 地形视觉网格 | 600 m 场地按 10 × 10 块编译（每块 60 m / 120 采样），纯平顶面按花色合并，沿用原有土色贴图 | `CHUNK_SIDE` / `CHUNK_COUNT` / `CHUNK_CELLS`（`src/terrain/mod.rs`）/ `build_chunk()`（`src/terrain/mesh.rs`） |
+| 地面花色 | 保留原有土质五色与椭圆斑块，独立固定种子生成 | `PALETTE` / `build_colors()`（`scripts/generate_ground.py`） |
+| 地形物理表面 | 每 60 m 分块一个 Avian compound，纯平块合并为一个 cuboid，顶面 Y=0、底面 −1.1 m | `Collider::compound` + `collider_cuboids()` / `COLLIDER_BASE_Y`（`src/terrain/collider.rs`） |
 | 竞技场围墙 | 四面；厚 2 m、高 8 m，横竖墙长 = 边长 + 4 m，内侧与场地边缘对齐 | `WALL_THICKNESS` / `WALL_HEIGHT`（`src/terrain/collider.rs`） |
 
-地形不再来自 `.vox` 模型：`assets/ground.vox` 已退役删除，视觉与物理均由 `ground.ht` 编译而来，两者同源，因此坑洼与坡道既可见也可开上去。地形资产按 `assets/terrain/<地形名>/` 组织，每个地形目录含 `ground.ht`（高度）与 `ground.abd`（土色）。
+地形不再来自 `.vox` 模型：`assets/ground.vox` 已退役删除，视觉与物理均由 `ground.ht` 编译而来，两者同源，全图保持纯平。地形资产按 `assets/terrain/<地形名>/` 组织，每个地形目录含 `ground.ht`（高度）与 `ground.abd`（土色）。
+
+## 混凝土墩样品
+
+- `assets/obstacles/concrete/obstacle.vox`：长 4 m、底厚 1.5 m、顶厚 0.9 m、高 3 m；灰色哑光梯形，VOX 画布 15×40×30 格。
+- `src/gameplay/obstacle.rs` 的 `SIZE` / `POSITION`：世界 X 为厚度、Y 为高度、Z 为长度，中心 (−25, 1.5, 0)，出生点正前方 25 m 横放，底部贴地。
+- 静态凸刚体不可推动、不可摧毁；炮弹命中仅清除炮弹，不触发敌人爆炸。敌人出生按水平外接半径另留 1 m 净空。
+- `scripts/generate_concrete.py` 使用标准库生成资产；凸碰撞体与分层体素表面允许不超过 0.1 m 的轮廓差。
 
 ## 与尺寸相关的其它常量
 

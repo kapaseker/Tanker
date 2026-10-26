@@ -26,7 +26,7 @@ impl Entry {
 }
 
 /// 当前已接入的真实资源，不枚举 ADR 中的预留型号或炮管附属子弹。
-pub(crate) const ENTRIES: [Entry; 8] = [
+pub(crate) const ENTRIES: [Entry; 9] = [
     Entry {
         category: 0,
         path: visual::PLAYER_BARREL,
@@ -66,6 +66,11 @@ pub(crate) const ENTRIES: [Entry; 8] = [
         category: 3,
         path: "tank/bodies/enemy/carapace/body.vox",
         enemy: true,
+    },
+    Entry {
+        category: 4,
+        path: "obstacles/concrete/obstacle.vox",
+        enemy: false,
     },
 ];
 
@@ -119,7 +124,15 @@ pub(crate) fn spawn(
             .spawn((PreviewEntity, Transform::default(), Visibility::Inherited))
             .id();
         let content = commands
-            .spawn((Transform::default(), Visibility::Inherited))
+            .spawn((
+                // 墩体资产厚度沿 X；预览转向后统一按长、宽、高展示尺寸。
+                Transform::from_rotation(if entry.category == 4 {
+                    Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)
+                } else {
+                    Quat::IDENTITY
+                }),
+                Visibility::Inherited,
+            ))
             .id();
         commands.entity(root).add_child(content);
         if entry.category != 1 {

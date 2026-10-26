@@ -3,5 +3,6 @@
 pub(crate) mod camera;
 pub(crate) mod combat;
 pub(crate) mod enemy;
+pub(crate) mod obstacle;
 pub(crate) mod player;
 pub(crate) mod session;

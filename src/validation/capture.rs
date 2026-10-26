@@ -18,18 +18,23 @@ use std::{
 /// 临时取消跟随以拍摄固定的车体局部视点；截图等待仍不推进模拟。
 fn capture_view(app: &mut App, path: &Path, offset: Vec3) -> Result<(), String> {
     let (player, _) = subject_state(app.world_mut())?;
+    let target = player.translation + Vec3::Y * -0.15;
+    capture_at(app, path, target, player.rotation * offset)
+}
+
+/// 以固定目标拍摄近景；临时机位仅用于离屏取证，不改变游戏相机参数。
+fn capture_at(app: &mut App, path: &Path, target: Vec3, offset: Vec3) -> Result<(), String> {
     let world = app.world_mut();
     let (camera, saved) = world
         .query_filtered::<(Entity, &Transform), With<crate::gameplay::camera::FollowCamera>>()
         .single(world)
         .map(|(entity, transform)| (entity, *transform))
         .map_err(|e| e.to_string())?;
-    let target = player.translation + Vec3::Y * -0.15;
     world
         .entity_mut(camera)
         .remove::<crate::gameplay::camera::FollowCamera>()
         .insert(
-            Transform::from_translation(target + player.rotation * offset)
+            Transform::from_translation(target + offset)
                 .looking_at(target, Vec3::Y),
         );
     let result = capture(app, path);
@@ -37,6 +42,11 @@ fn capture_view(app: &mut App, path: &Path, offset: Vec3) -> Result<(), String> 
         .entity_mut(camera)
         .insert((crate::gameplay::camera::FollowCamera, saved));
     result
+}
+
+/// 混凝土墩前侧近景，能同时看到长边、斜面和贴地关系。
+pub(super) fn capture_concrete(app: &mut App, path: &Path) -> Result<(), String> {
+    capture_at(app, path, crate::gameplay::obstacle::POSITION, Vec3::new(7.0, 3.0, 6.0))
 }
 
 /// 侧面与车体一起移动旋转，使逐帧比较只显示轮组自身动画。

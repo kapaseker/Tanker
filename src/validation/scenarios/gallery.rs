@@ -58,6 +58,38 @@ pub(super) fn run_gallery_scenario(
             crate::pages::gallery::view_mut(app.world_mut()).scroll == 0.0,
             "进入画廊必须从顶部开始",
         )?;
+        if cycle == 3 {
+            // 经真实方向键走到末行单卡，验证新增模型详情及返回位置恢复。
+            let last = crate::pages::gallery::ENTRIES.len() - 1;
+            for _ in 0..=last / 2 {
+                update(app, STEP, Some(14))?;
+                update(app, STEP, None)?;
+            }
+            ensure(
+                crate::pages::gallery::view_mut(app.world_mut()).focus == Some(last),
+                "未选中混凝土墩卡片",
+            )?;
+            let scroll = crate::pages::gallery::view_mut(app.world_mut()).scroll;
+            capture(app, &options.output.join("gallery-concrete.png"))?;
+            update(app, STEP, Some(3))?;
+            update(app, STEP, None)?;
+            finish_gallery_transition(app, options, 2, "concrete-detail", GameState::Detail)?;
+            report.push_str(&crate::pages::model_preview::validate(app.world())?);
+            ensure(
+                app.world().resource::<crate::pages::detail::SelectedModel>().0 == last,
+                "混凝土墩详情选择不匹配",
+            )?;
+            capture(app, &options.output.join("gallery-concrete-detail.png"))?;
+            update(app, STEP, Some(5))?;
+            update(app, STEP, None)?;
+            finish_gallery_transition(app, options, 2, "concrete-return", GameState::Gallery)?;
+            let view = crate::pages::gallery::view_mut(app.world_mut());
+            ensure(
+                view.focus == Some(last) && (view.scroll - scroll).abs() < 0.01,
+                "混凝土墩详情返回未恢复焦点和滚动",
+            )?;
+            report.push_str("混凝土墩卡片、真实详情、纯视觉隔离与返回恢复通过\n");
+        }
         let images: Vec<_> = app
             .world()
             .resource::<crate::pages::gallery::Previews>()

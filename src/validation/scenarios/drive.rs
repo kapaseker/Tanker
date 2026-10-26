@@ -20,7 +20,7 @@ pub(super) fn check(
             app.world().resource::<Time<Fixed>>().elapsed()
         ));
         // 出生平地内 1 秒应前进约 6 米；幽灵接触阻塞时只有约 0.15 米，
-        // 4 米阈值保持强判别力，同时不依赖平地之外的地形起伏。
+        // 4 米阈值保持强判别力，且此段路径远离混凝土墩。
         record_check(
             report,
             failures,

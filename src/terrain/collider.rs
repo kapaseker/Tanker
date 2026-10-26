@@ -6,12 +6,12 @@
 use avian3d::prelude::*;
 use bevy::prelude::*;
 
-use super::{AUTHOR_RES, FIELD_SIDE, TERRAIN_HALF_RANGE, TERRAIN_STEP, TerrainEntity};
+use super::{AUTHOR_RES, FIELD_SIDE, TERRAIN_STEP, TerrainEntity};
 
-/// 碰撞体 cuboid 的统一底面高度，单位：米；比最低档（−1.0 米）再低一级。
+/// 碰撞体 cuboid 的统一底面高度，单位：米；保留地下厚度及合成台阶测试范围。
 /// 所有 cuboid 统一延伸到此底面：静态碰撞体在地下互相重叠无副作用，
 /// 同时保证最低档的 cuboid 仍有 0.1 米厚度而不退化为零厚度。
-const COLLIDER_BASE_Y: f32 = -TERRAIN_HALF_RANGE - TERRAIN_STEP;
+const COLLIDER_BASE_Y: f32 = -1.1;
 /// 不可见边界的厚度和高度，单位：米。
 const WALL_THICKNESS: f32 = 2.0;
 const WALL_HEIGHT: f32 = 8.0;
@@ -184,9 +184,7 @@ mod tests {
         }
     }
 
-    /// 真实高度图的体素复合碰撞体不得出现幽灵接触：出生保护区是 24 米半径的
-    /// 绝对平地，坦克直行 1 秒（6 米）加车长仍留在平区内；平区外即使有台阶，
-    /// 也全部是可翻越的 1 档坎（见 map 测试 `real_terrain_has_only_one_level_steps_and_flat_spawn`）。
+    /// 真实纯平高度图的复合碰撞体不得产生阻止坦克直行的幽灵接触。
     #[test]
     fn voxel_collider_keeps_straight_driving_on_real_terrain() {
         use bevy::time::TimeUpdateStrategy;

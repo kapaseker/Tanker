@@ -6,7 +6,7 @@ pub(crate) const WINDOW_TITLE: &str = "V-Tank";
 /// 画廊固定文案；型号来自真实资产路径，不参与翻译。
 pub(crate) mod gallery {
     pub(crate) const TITLE: &str = "模型画廊";
-    pub(crate) const CATEGORIES: [&str; 4] = ["炮管", "履带", "车身", "坦克"];
+    pub(crate) const CATEGORIES: [&str; 5] = ["炮管", "履带", "车身", "坦克", "障碍物"];
     pub(crate) const LOADING: &str = "加载中…";
     pub(crate) const FAILED: &str = "模型加载失败";
     pub(crate) const UNIT: &str = "米";

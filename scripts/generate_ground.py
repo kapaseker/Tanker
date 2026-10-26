@@ -1,14 +1,13 @@
 """用标准库生成 600×600 米场地的地形图（高度 + 土色）：python3 scripts/generate_ground.py。
 
 输出两张紧凑地图（高度图 1200×1200 字节，土色图含文件自带调色板），由 Rust 侧编译成体素风格网格与体素台阶碰撞体：
-- assets/terrain/ground/ground.ht：高度值，10 为平地，0 / 20 对应 −1.0 / +1.0 米（每级 0.1 米）
+- assets/terrain/ground/ground.ht：高度值，全图固定为 10（Y=0 米）
 - assets/terrain/ground/ground.abd：调色板 + 索引（[数量 u8][数量×3 RGB][1200×1200 索引]，索引指向文件自带调色板）
 
 行列约定：行沿 Bevy X、列沿 Bevy Z；格 (row, col) 的世界中心为
 x = (row + 0.5 − SIZE/2) × AUTHOR_RES，z = (col + 0.5 − SIZE/2) × AUTHOR_RES。
 
-地形分布：少量大片区 + 若干小片区，坑洼与坡道混合；非平地覆盖 25%–45%，其余为绝对平地。
-全图经过坡度限制：相邻格高度差不超过 1 级（0.1 米），与坦克翻坎能力匹配。
+全图纯平；花色沿用原来的独立固定种子，不随高度改变。
 """
 import math
 from pathlib import Path
@@ -31,33 +30,14 @@ def dictionary(entries):
         data += struct.pack('<I', len(value_bytes)) + value_bytes
     return data
 
-# 地图按 0.5 米采样作者化，渲染时由 Rust 量化成 0.1 米的体素台阶。
+# 地图花色按 0.5 米采样，地面高度统一为零。
 AUTHOR_RES = .5
 SIDE_M = 600.
 SIZE = int(SIDE_M / AUTHOR_RES)
-HALF = SIZE / 2
-
-# 起伏幅度与量化单位：±1.0 米 = 10 级，每级 0.1 米；平地值为 10。
-VOXEL = .1
-RELIEF_MAX = 1.
-LEVEL_MAX = int(RELIEF_MAX / VOXEL)
-FLAT = LEVEL_MAX
-
+# 保留高度文件的既有编码：10 表示 Y=0 米。
+FLAT = 10
 SEED = 20261018
-SEED_TRIES = 24
-# 覆盖率目标与硬上限（上限用于及时收手，避免落进重抽区间）。
-COVER_TARGET = (.26, .34)
-COVER_LIMIT = .38
-COVER_RANGE = (.25, .45)
-# 出生保护区半径（米）：区域内不铺任何地形片区，玩家直接出生在大平面上，
-# 与场地其他绝对平地同高（0.0），不存在"坑中平地"的圆坑。
-SPAWN_CLEAR_M = 24.
-# 片区尺度（米）、数量上限与调色板斑块数量；大片区刻意少而大，保证大片留白。
-BIG_DIAMETER = (140., 260.)
-SMALL_DIAMETER = (12., 32.)
-BIG_REGIONS_MAX = 10
-SMALL_REGIONS_MAX = 30
-BIG_REGIONS_CHANCE = .6
+# 土色斑块数量与尺度保持不变，确保花色字节一致。
 COLOR_PATCHES = 2500
 COLOR_DIAMETER = (6., 30.)
 
@@ -70,18 +50,13 @@ ALBEDO_OUTPUT = TERRAIN_DIR / 'ground.abd'
 PALETTE = ((87, 65, 43), (102, 79, 52), (111, 85, 57), (119, 93, 63), (126, 99, 68))
 
 
-def region_cells(rng, center, diameter, direction):
-    """随机旋转的椭圆片区，边界用双向正弦扰动打散；尺寸单位为米。
-
-    产出 (cell, r, tau, side)：r 为归一化半径（0 中心、1 边界），tau 为沿 direction
-    归一化投影（0/1 为片区两端），side 为垂直方向的归一化距离（边缘收边用）。
-    """
+def region_cells(rng, center, diameter):
+    """产出随机旋转椭圆内的格子索引，正弦扰动打散边界；尺寸单位米。"""
     cx, cy = center
     radius = diameter / 2 / AUTHOR_RES
     aspect, angle = rng.uniform(.6, 1), rng.uniform(0, math.tau)
     cos_a, sin_a = math.cos(angle), math.sin(angle)
     phase_u, phase_v = rng.uniform(0, math.tau), rng.uniform(0, math.tau)
-    cos_d, sin_d = math.cos(direction), math.sin(direction)
     x0, x1 = max(0, math.floor(cx - radius)), min(SIZE, math.ceil(cx + radius))
     y0, y1 = max(0, math.floor(cy - radius)), min(SIZE, math.ceil(cy + radius))
     for y in range(y0, y1):
@@ -94,154 +69,24 @@ def region_cells(rng, center, diameter, direction):
             r = math.sqrt(r2)
             if r > 1 + .2*math.sin(2.7*u + phase_u)*math.cos(3.1*v + phase_v):
                 continue
-            tau = .5 + .5*(dx*cos_d + dy*sin_d)/radius
-            yield y*SIZE + x, min(1., r), min(1., max(0., tau)), min(1., abs(v))
-
-
-def apply_region(values, rng, diameter, pit, nonflat):
-    """把一个片区写进高度图；返回更新后的非平地格数。
-
-    坑洼用余弦径向 falloff 从边缘的 0 平滑降到中心 −RELIEF_MAX；坡道沿随机方向
-    做单向单调坡（落差 ≤ 2×RELIEF_MAX），只在垂直于坡向的两侧收边，使坡顶与坡底
-    真正达到 ±RELIEF_MAX。片区重叠时取形变更强的一方，避免叠加出超深坑或超高山包。
-    出生保护区内不铺任何形变，保证玩家直接出生在绝对平面上。
-    """
-    center = (rng.uniform(0, SIZE), rng.uniform(0, SIZE))
-    direction = rng.uniform(0, math.tau)
-    clear_cells = SPAWN_CLEAR_M / AUTHOR_RES
-    added = 0
-    for cell, r, tau, side in region_cells(rng, center, diameter, direction):
-        x, y = cell % SIZE, cell // SIZE
-        if math.hypot(x + .5 - HALF, y + .5 - HALF) < clear_cells:
-            continue
-        falloff = .5 + .5*math.cos(math.pi*(r if pit else side))
-        relief = -falloff if pit else (1 - 2*tau)*falloff
-        level = max(-LEVEL_MAX, min(LEVEL_MAX, round(relief*RELIEF_MAX/VOXEL)))
-        # 只接受更强形变，因此这里不会把非平地写回平地。
-        if abs(level) <= abs(values[cell] - FLAT):
-            continue
-        if values[cell] == FLAT:
-            added += 1
-        values[cell] = FLAT + level
-    return nonflat + added
-
-
-def limit_slopes(values):
-    """坡度限制：把相邻格高度差压到 1 级（0.1 米）以内。
-
-    体素碰撞的坦克只能翻 1 档坎，因此整图不允许出现跳 2 级以上的坎。这里取
-    原地形的 1-Lipschitz 下包络：每格高度收到"不超过任一邻居 +1 级"（带权
-    chamfer 松弛，正反两遍扫描直到稳定）。只削不填——绝对平地保持平地，
-    陡坎与坡面陡处被削成逐格 1 级的台阶，坑底与坡顶的极值不变，
-    非平地的分布（哪些片区存在）也不变。
-    """
-    for _ in range(16):
-        changed = False
-        for reverse in (False, True):
-            cells = range(SIZE * SIZE)
-            if reverse:
-                cells = reversed(cells)
-            for cell in cells:
-                v = values[cell]
-                x, y = cell % SIZE, cell // SIZE
-                if not reverse:
-                    # 正向扫描：已定值的上、左邻居把当前格向下收紧。
-                    if x > 0:
-                        v = min(v, values[cell - 1] + 1)
-                    if y > 0:
-                        v = min(v, values[cell - SIZE] + 1)
-                else:
-                    # 反向扫描：已定值的下、右邻居继续向下收紧。
-                    if x < SIZE - 1:
-                        v = min(v, values[cell + 1] + 1)
-                    if y < SIZE - 1:
-                        v = min(v, values[cell + SIZE] + 1)
-                if v != values[cell]:
-                    values[cell] = v
-                    changed = True
-        if not changed:
-            return
-
-
-def component_stats(values):
-    """按四邻接扫描非平坦区域，返回 [(格数, (x0, x1, y0, y1), 触及的边)]。"""
-    visited = bytearray(len(values))
-    components = []
-    for start, value in enumerate(values):
-        if value == FLAT or visited[start]:
-            continue
-        stack, size = [start], 0
-        x0 = y0 = SIZE
-        x1 = y1 = -1
-        edges = set()
-        visited[start] = 1
-        while stack:
-            cell = stack.pop()
-            x, y = cell % SIZE, cell // SIZE
-            size += 1
-            x0, x1 = min(x0, x), max(x1, x)
-            y0, y1 = min(y0, y), max(y1, y)
-            if x == 0:
-                edges.add('left')
-            if x == SIZE - 1:
-                edges.add('right')
-            if y == 0:
-                edges.add('top')
-            if y == SIZE - 1:
-                edges.add('bottom')
-            for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
-                if 0 <= nx < SIZE and 0 <= ny < SIZE:
-                    neighbor = ny*SIZE + nx
-                    if not visited[neighbor] and values[neighbor] != FLAT:
-                        visited[neighbor] = 1
-                        stack.append(neighbor)
-        components.append((size, (x0, x1, y0, y1), edges))
-    return components
+            yield y*SIZE + x
 
 
 def build_colors():
-    """固定种子撒独立土色斑块；比地形更宽，不勾起伏轮廓。"""
+    """固定种子撒独立土色斑块，保留铺平之前的形状、随机序列和调色板。"""
     colors = bytearray([2])*(SIZE*SIZE)
     rng = random.Random(SEED + 1)
     for _ in range(COLOR_PATCHES):
         color = rng.choice([1, 2, 3, 4])
-        for cell, *_ in region_cells(rng, (rng.uniform(0, SIZE), rng.uniform(0, SIZE)),
-                                     rng.uniform(*COLOR_DIAMETER), 0.):
+        for cell in region_cells(rng, (rng.uniform(0, SIZE), rng.uniform(0, SIZE)),
+                                     rng.uniform(*COLOR_DIAMETER)):
             colors[cell] = color
     return colors
 
 
 def generate_maps():
-    """固定种子生成高度图与土色图；不满足覆盖率或连通性约束时换种子重抽。"""
-    for attempt in range(SEED_TRIES):
-        rng = random.Random(SEED + attempt)
-        values = bytearray([FLAT])*(SIZE*SIZE)
-        nonflat, target = 0, rng.uniform(*COVER_TARGET)
-        big = small = 0
-        # 大小片区交错铺开，凑够目标覆盖率即收手；上限用于兜底防呆。
-        while (nonflat/len(values) < target
-               and (big < BIG_REGIONS_MAX or small < SMALL_REGIONS_MAX)):
-            if big < BIG_REGIONS_MAX and (small >= SMALL_REGIONS_MAX
-                                          or rng.random() < BIG_REGIONS_CHANCE):
-                diameter, big = rng.uniform(*BIG_DIAMETER), big + 1
-            else:
-                diameter, small = rng.uniform(*SMALL_DIAMETER), small + 1
-            nonflat = apply_region(values, rng, diameter, rng.random() < .5, nonflat)
-            if nonflat/len(values) >= COVER_LIMIT:
-                break
-        limit_slopes(values)
-        ratio = nonflat/len(values)
-        if not COVER_RANGE[0] <= ratio <= COVER_RANGE[1]:
-            continue
-        components = component_stats(values)
-        # 没有任何地形片区横穿场地的相对两边，保证地图留有绕行空间。
-        if any({'left', 'right'} <= edges or {'top', 'bottom'} <= edges
-               for _, _, edges in components):
-            continue
-        print(f'地形：非平地 {ratio:.1%}，片区 {len(components)} 个'
-              f'（大 {big} / 小 {small}），种子偏移 {attempt}')
-        return values, build_colors()
-    raise RuntimeError(f'{SEED_TRIES} 次重抽仍未生成满足约束的地形')
+    """生成全图 Y=0 的高度图，保留原有独立种子花色。"""
+    return bytearray([FLAT]) * (SIZE * SIZE), build_colors()
 
 
 def encode_height(values):

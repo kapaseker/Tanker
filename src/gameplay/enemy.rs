@@ -23,7 +23,7 @@ fn spawn_clearance(a: Vec3, b: Vec3) -> f32 {
 }
 /// 拒绝采样总次数上限，防止地图或间距变动后卡住启动。
 const SPAWN_ATTEMPTS: usize = 1000;
-/// 出生下落起点高度，单位：米；高于全场最高地形（+1.0）加半车高（1.3），
+/// 出生下落起点高度，单位：米；高于纯平地面加半车高（1.3），
 /// 落体由物理引擎沉降到地形表面，无需采样高度图。
 const SPAWN_DROP_Y: f32 = 3.0;
 
@@ -73,6 +73,8 @@ fn spawn_transforms(rng: &mut fastrand::Rng, player: Vec2) -> Result<Vec<Transfo
             (rng.f32() * 2.0 - 1.0) * SPAWN_LIMIT,
         );
         if position.distance(player) < spawn_clearance(ENEMY_SIZE, driving::TANK_SIZE)
+            || position.distance(super::obstacle::POSITION.xz())
+                < spawn_clearance(ENEMY_SIZE, super::obstacle::SIZE)
             || transforms.iter().any(|other| {
                 position.distance(other.translation.xz()) < spawn_clearance(ENEMY_SIZE, ENEMY_SIZE)
             })
@@ -111,7 +113,7 @@ fn spawn_enemies(
     assets: Res<AssetServer>,
     config: Res<crate::gameplay::session::SpawnConfig>,
 ) {
-    // 地形图异步加载，高度场碰撞体就绪前下落会穿透场地，故等待就绪信号。
+    // 地形图异步加载，碰撞体就绪前下落会穿透场地，故等待就绪信号。
     if spawned.is_some() || ready.is_none() {
         return;
     }
@@ -281,6 +283,10 @@ mod tests {
             for (index, transform) in transforms.iter().enumerate() {
                 let p = transform.translation.xz();
                 assert!(p.length() >= spawn_clearance(ENEMY_SIZE, driving::TANK_SIZE));
+                assert!(
+                    p.distance(super::super::obstacle::POSITION.xz())
+                        >= spawn_clearance(ENEMY_SIZE, super::super::obstacle::SIZE)
+                );
                 assert_eq!(transform.translation.y, SPAWN_DROP_Y);
                 for other in &transforms[..index] {
                     assert!(

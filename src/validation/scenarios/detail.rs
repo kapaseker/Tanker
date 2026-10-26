@@ -1,4 +1,4 @@
-//! 详情的真实键鼠输入、八个 VOX 模型、故障返回与资源生命周期验收。
+//! 详情的真实键鼠输入、全部 VOX 模型、故障返回与资源生命周期验收。
 use super::*;
 use crate::{
     app::{
@@ -106,15 +106,16 @@ pub(super) fn run_detail_scenario(
         "detail-gallery",
         GameState::Gallery,
     )?;
-    for index in 0..8 {
+    for index in 0..preview::ENTRIES.len() {
         // 初次方向键落首卡；其后左右/上下沿真实网格走到下一项。
         if index == 0 {
             key(app, 14)?;
         } else if index % 2 == 1 {
             key(app, 16)?;
         } else {
-            key(app, 14)?;
+            // 先回左列再下移，才能进入末行只有左卡的障碍物分类。
             key(app, 18)?;
+            key(app, 14)?;
         }
         ensure(
             gallery::view_mut(app.world_mut()).focus == Some(index),

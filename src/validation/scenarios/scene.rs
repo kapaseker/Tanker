@@ -134,3 +134,67 @@ mod tests {
         );
     }
 }
+
+/// 检查实际加载后的墩体几何，防止 VOX 画布、原点或轴向与刚体尺寸不一致。
+pub(super) fn validate_concrete(world: &mut World) -> Result<(), String> {
+    use crate::gameplay::obstacle::{Concrete, POSITION, SIZE};
+    use avian3d::prelude::{Collider, RigidBody, SimpleCollider};
+    use bevy::{
+        camera::primitives::MeshAabb,
+        world_serialization::{WorldInstance, WorldInstanceSpawner},
+    };
+    let (entity, transform, body, collider, instance) = world
+        .query_filtered::<(Entity, &Transform, &RigidBody, &Collider, &WorldInstance), With<Concrete>>()
+        .single(world)
+        .map_err(|e| format!("混凝土墩数量或组件异常：{e}"))?;
+    ensure(
+        *body == RigidBody::Static && transform.translation.abs_diff_eq(POSITION, 1e-5),
+        "混凝土墩必须固定在指定位置",
+    )?;
+    ensure(
+        world
+            .resource::<WorldInstanceSpawner>()
+            .instance_is_ready(**instance),
+        "混凝土墩实例尚未就绪",
+    )?;
+    let bounds = collider.aabb(transform.translation, transform.rotation, 0.0);
+    ensure(
+        (bounds.max - bounds.min).abs_diff_eq(SIZE, 1e-4),
+        "混凝土墩碰撞尺寸不匹配",
+    )?;
+    let mut pending = vec![entity];
+    let mut minimum = Vec3::splat(f32::INFINITY);
+    let mut maximum = Vec3::splat(f32::NEG_INFINITY);
+    while let Some(entity) = pending.pop() {
+        if let Some(children) = world.get::<Children>(entity) {
+            pending.extend(children.iter());
+        }
+        if let Some(mesh) = world.get::<Mesh3d>(entity) {
+            let aabb = world
+                .resource::<Assets<Mesh>>()
+                .get(&mesh.0)
+                .and_then(|mesh| mesh.get_aabb())
+                .ok_or("混凝土墩网格包围盒缺失")?;
+            let transform = world
+                .get::<GlobalTransform>(entity)
+                .ok_or("混凝土墩网格变换缺失")?;
+            for x in [-1.0, 1.0] {
+                for y in [-1.0, 1.0] {
+                    for z in [-1.0, 1.0] {
+                        let point = transform.transform_point(
+                            Vec3::from(aabb.center)
+                                + Vec3::from(aabb.half_extents) * Vec3::new(x, y, z),
+                        );
+                        minimum = minimum.min(point);
+                        maximum = maximum.max(point);
+                    }
+                }
+            }
+        }
+    }
+    ensure(
+        minimum.abs_diff_eq(POSITION - SIZE / 2.0, 1e-4)
+            && maximum.abs_diff_eq(POSITION + SIZE / 2.0, 1e-4),
+        "混凝土墩 VOX 实际尺寸或贴地位置不匹配",
+    )
+}

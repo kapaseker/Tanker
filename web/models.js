@@ -50,7 +50,7 @@ function buildModel(model) {
 }
 
 // 分类与模型数据；ci/mi 为分类与模型下标，用于页面间 URL 传递
-// 与游戏当前八项真实清单同步；尺寸为可见几何长宽高（米）。
+// 与游戏当前九项真实清单同步；尺寸为可见几何长宽高（米）。
 // 网页盒子仅表达构图，游戏必须通过 VOX 加载器渲染真实资产。
 const CATEGORIES = [
   { name: '炮管', code: 'BR', models: [
@@ -68,6 +68,13 @@ const CATEGORIES = [
   { name: '坦克', code: 'TK', models: [
     { name: 'anvil', tone: 'mint', dims: [10.5, 3.6, 2.6], parts: [{ w: 150, h: 30, d: 72 }, { w: 60, h: 22, d: 48, y: -26 }, { w: 90, h: 8, d: 8, x: 90, y: -26 }, { w: 150, h: 20, d: 16, y: 20, z: 28, tone: 'dark' }, { w: 150, h: 20, d: 16, y: 20, z: -28, tone: 'dark' }] },
     { name: 'carapace', tone: 'sand', dims: [9, 3.4, 2.6], parts: [{ w: 132, h: 30, d: 68 }, { w: 54, h: 22, d: 46, y: -26 }, { w: 76, h: 8, d: 8, x: 78, y: -26 }, { w: 132, h: 20, d: 16, y: 20, z: 26, tone: 'dark' }, { w: 132, h: 20, d: 16, y: 20, z: -26, tone: 'dark' }] },
+  ] },
+  { name: '障碍物', code: 'OB', models: [
+    { name: 'concrete', tone: 'gray', dims: [4, 1.5, 3], parts: [
+      { w: 120, h: 30, d: 45, y: 30 },
+      { w: 120, h: 30, d: 36 },
+      { w: 120, h: 30, d: 27, y: -30 },
+    ] },
   ] },
 ];
 
