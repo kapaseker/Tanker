@@ -23,10 +23,22 @@ const { mkdir, writeFile } = require('node:fs/promises');
     await page.goto(base + 'index.html');
     await idle();
     assert.equal(await title(), '主菜单');
-    assert.equal(await page.locator('.back').isVisible(), false);
-    await page.keyboard.press('Escape');
-    assert.equal(await phase(), 'idle');
+    assert.equal(await page.locator('.back').isVisible(), true);
+    assert.equal(await page.locator('.back').getAttribute('aria-label'), '退出游戏');
+    assert.equal(await page.locator('.back__arrow').count(), 1);
     await screenshot('home');
+    // 首页 ESC 触发退出：淡出黑场后显示提示，再按 ESC 淡入返回主菜单。
+    // 屏蔽真实 window.close，保证不同浏览器下退出流程可复现。
+    await page.evaluate(() => { window.close = () => {}; });
+    await page.keyboard.press('Escape');
+    assert.equal(await phase(), 'exit');
+    await page.waitForSelector('.exit-note');
+    assert.equal(await darkness(), 1);
+    await screenshot('home-exit');
+    await page.keyboard.press('Escape');
+    await idle();
+    assert.equal(await page.locator('.exit-note').count(), 0);
+    assert.equal(await darkness(), 0);
     const corner = await page.screenshot({ clip: { x: 18, y: 18, width: 23, height: 23 } });
     const titleBox = await page.locator('.backbar__title').boundingBox();
 
@@ -34,6 +46,7 @@ const { mkdir, writeFile } = require('node:fs/promises');
     await entry.focus();
     await page.keyboard.press('Enter');
     assert.equal(await title(), '模型画廊');
+    assert.equal(await page.locator('.back').getAttribute('aria-label'), '取消页面切换');
     await page.waitForTimeout(250);
     assert.ok(await darkness() > 0.1 && await darkness() < 0.9);
     await screenshot('fade-out');
@@ -44,6 +57,7 @@ const { mkdir, writeFile } = require('node:fs/promises');
     assert.equal(await phase(), 'idle');
     assert.equal(await darkness(), 0);
     assert.equal(await title(), '主菜单');
+    assert.equal(await page.locator('.back').getAttribute('aria-label'), '退出游戏');
     assert.equal(await entry.evaluate(el => el === document.activeElement), true);
     await page.waitForTimeout(650);
     assert.ok(page.url().endsWith('index.html'));
@@ -130,7 +144,7 @@ const { mkdir, writeFile } = require('node:fs/promises');
     await noScript.locator('.menu__item[href="model-gallery.html"]').click();
     assert.ok(noScript.url().endsWith('model-gallery.html'));
     assert.deepEqual(errors, []);
-    console.log('PASS: 切页、Esc/鼠标取消、淡入中返回、滚动/焦点、详情锚点、刷新/后退、缩放和无JS导航');
+    console.log('PASS: 切页、Esc/鼠标取消、首页退出与返回、淡入中返回、滚动/焦点、详情锚点、刷新/后退、缩放和无JS导航');
   } finally {
     await browser.close();
   }

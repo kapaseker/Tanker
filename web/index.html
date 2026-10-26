@@ -21,8 +21,12 @@
   <div class="frame" aria-hidden="true"></div>
 
   <header class="backbar">
-    <a class="back back--home" href="index.html" aria-label="取消页面切换">
-      <span class="back__arrow" aria-hidden="true">←</span> <kbd>ESC</kbd>
+    <!-- 首页无上级页面：退出框与其余页面返回框同形同位，仅把返回箭头换成电源符号；
+         用内联 SVG 而非字符，避免字体缺字，颜色随按钮文字变化 -->
+    <a class="back back--home" href="index.html" aria-label="退出游戏">
+      <svg class="back__arrow" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 3v8M7.8 6.3a7.4 7.4 0 1 0 8.4 0" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"></path>
+      </svg> <kbd>ESC</kbd>
     </a>
     <h1 class="backbar__title">主菜单</h1>
   </header>

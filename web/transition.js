@@ -20,6 +20,7 @@
     let savedFocus;
     let destination;
     let marker;
+    let exitNote;
     // file:// 或隐私模式可能禁止存储；动画仍可独立工作。
     try {
       marker = JSON.parse(sessionStorage.getItem(markerKey));
@@ -50,8 +51,28 @@
       savedFocus?.focus({ preventScroll: true });
     }
 
+    // 首页退出：沿用切页淡出节奏到黑场后尝试关闭窗口；
+    // 设计稿在浏览器里通常无法关闭窗口，此时留在黑场给出提示，点击或 ESC 可返回主菜单。
+    function exit() {
+      root.dataset.transition = 'exit';
+      fade(1, () => {
+        window.close();
+        exitNote = document.createElement('p');
+        exitNote.className = 'exit-note';
+        exitNote.textContent = '已退出 · 按 ESC 返回主菜单';
+        exitNote.setAttribute('role', 'status');
+        document.body.append(exitNote);
+      });
+    }
+
+    function resume() {
+      exitNote?.remove();
+      exitNote = null;
+      fade(0, restore);
+    }
+
     function navigate(link) {
-      if (['out', 'waiting'].includes(root.dataset.transition)) return;
+      if (['out', 'waiting', 'exit'].includes(root.dataset.transition)) return;
       const url = new URL(link.href);
       const name = url.pathname.split('/').pop();
       const titles = { 'index.html': '主菜单', 'model-gallery.html': '模型画廊', 'model-detail.html': '模型详情' };
@@ -82,6 +103,12 @@
         event.stopImmediatePropagation();
         return;
       }
+      if (root.dataset.transition === 'exit') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (exitNote) resume();
+        return;
+      }
       if (root.dataset.transition === 'out') {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -99,7 +126,8 @@
       if (!['index.html', 'model-gallery.html', 'model-detail.html'].includes(url.pathname.split('/').pop()) || url.origin !== location.origin) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      if (!home || !isBack) navigate(link);
+      if (home && isBack) exit();
+      else navigate(link);
     }, true);
 
     document.addEventListener('keydown', (event) => {
@@ -109,12 +137,19 @@
         event.stopImmediatePropagation();
         return;
       }
+      if (phase === 'exit') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (event.key === 'Escape' && !event.repeat && exitNote) resume();
+        return;
+      }
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopImmediatePropagation();
         if (event.repeat) return;
         if (phase === 'out') cancel();
-        else if (!home) navigate(back);
+        else if (home) exit();
+        else navigate(back);
       } else if (phase !== 'idle') {
         event.preventDefault();
         event.stopImmediatePropagation();

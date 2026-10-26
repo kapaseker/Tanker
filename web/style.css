@@ -395,9 +395,6 @@
   html[data-transition="boot"] body { background: #000; }
 
   .stage--home { padding-top: 104px; }
-  .back--home { visibility: hidden; }
-  html[data-transition="out"] .back--home,
-  html[data-transition="waiting"] .back--home { visibility: visible; }
 
   /* ---------- 返回栏：返回按钮 + 页面标题 ---------- */
   /* 固定在窗口顶部，不随内容滚动；背景与分隔线遮住下方穿过的文字 */
@@ -464,6 +461,20 @@
   .back:focus-visible kbd {
     color: var(--dark);
     border-color: rgba(18, 17, 13, 0.4);
+  }
+
+  /* 首页退出淡出黑场后的提示；盖在遮罩之上，浏览器拒绝关闭窗口时给出返回入口 */
+  .exit-note {
+    position: fixed;
+    inset: 0;
+    z-index: 7;
+    display: grid;
+    place-items: center;
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: var(--muted);
   }
 
   /* ---------- 模型画廊 ---------- */
