@@ -27,10 +27,63 @@ const { mkdir, writeFile } = require('node:fs/promises');
     assert.equal(await page.locator('.back').getAttribute('aria-label'), '退出游戏');
     assert.equal(await page.locator('.back__arrow').count(), 1);
     await screenshot('home');
-    // 首页 ESC 触发退出：淡出黑场后显示提示，再按 ESC 淡入返回主菜单。
+    // 首页 ESC 先弹出退出确认弹框，确认后才进入黑场退出。
     // 屏蔽真实 window.close，保证不同浏览器下退出流程可复现。
     await page.evaluate(() => { window.close = () => {}; });
+    const confirmBtn = page.locator('.exit-dialog [data-role="confirm"]');
+    const cancelBtn = page.locator('.exit-dialog [data-role="cancel"]');
     await page.keyboard.press('Escape');
+    assert.equal(await page.locator('.exit-dialog').count(), 1);
+    assert.equal(await phase(), 'idle');
+    assert.equal(await darkness(), 0);
+    // 初始选中确认按钮
+    assert.equal(await confirmBtn.evaluate(el => el === document.activeElement), true);
+    // 等 120ms 淡入与 220ms 选中色过渡完成再断言/截图
+    await page.waitForFunction(() => {
+      const dialog = document.querySelector('.exit-dialog');
+      return getComputedStyle(dialog).opacity === '1'
+        && getComputedStyle(dialog.querySelector('[data-role="confirm"]')).backgroundColor === 'rgb(200, 219, 177)';
+    });
+    await screenshot('home-exit-dialog');
+    // ←→ 在两按钮间切换选中
+    await page.keyboard.press('ArrowLeft');
+    assert.equal(await cancelBtn.evaluate(el => el === document.activeElement), true);
+    // 选中取消时确认必须回到暗面：任何时刻只有一个按钮呈薄荷填充
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[data-role="cancel"]')).backgroundColor === 'rgb(200, 219, 177)');
+    assert.equal(await confirmBtn.evaluate(el => getComputedStyle(el).backgroundColor), 'rgba(0, 0, 0, 0)');
+    await screenshot('home-exit-dialog-cancel');
+    await page.keyboard.press('ArrowRight');
+    assert.equal(await confirmBtn.evaluate(el => el === document.activeElement), true);
+    // Y/N 只选中不触发
+    await page.keyboard.press('n');
+    assert.equal(await cancelBtn.evaluate(el => el === document.activeElement), true);
+    await page.keyboard.press('y');
+    assert.equal(await confirmBtn.evaluate(el => el === document.activeElement), true);
+    // Esc 取消弹框，焦点归还电源框，页面保持稳态
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('.exit-dialog').count(), 0);
+    assert.equal(await phase(), 'idle');
+    assert.equal(await page.locator('.back').evaluate(el => el === document.activeElement), true);
+    // 点击电源框再次打开；点击面板外（页面中心）取消
+    await page.locator('.back').click();
+    assert.equal(await page.locator('.exit-dialog').count(), 1);
+    await page.mouse.click(640, 600);
+    assert.equal(await page.locator('.exit-dialog').count(), 0);
+    assert.equal(await phase(), 'idle');
+    // N 选中取消后 Enter：关闭弹框且不退出
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('n');
+    await page.keyboard.press('Enter');
+    assert.equal(await page.locator('.exit-dialog').count(), 0);
+    assert.equal(await phase(), 'idle');
+    // 鼠标点击取消按钮：仅关闭弹框
+    await page.keyboard.press('Escape');
+    await cancelBtn.click();
+    assert.equal(await page.locator('.exit-dialog').count(), 0);
+    assert.equal(await phase(), 'idle');
+    // Enter 触发选中的确认按钮：淡出黑场后显示提示，再按 ESC 淡入返回主菜单
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Enter');
     assert.equal(await phase(), 'exit');
     await page.waitForSelector('.exit-note');
     assert.equal(await darkness(), 1);
@@ -39,6 +92,14 @@ const { mkdir, writeFile } = require('node:fs/promises');
     await idle();
     assert.equal(await page.locator('.exit-note').count(), 0);
     assert.equal(await darkness(), 0);
+    // 鼠标点击确认按钮同样进入退出流程
+    await page.keyboard.press('Escape');
+    await confirmBtn.click();
+    assert.equal(await phase(), 'exit');
+    await page.waitForSelector('.exit-note');
+    await page.keyboard.press('Escape');
+    await idle();
+    assert.equal(await page.locator('.exit-dialog').count(), 0);
     const corner = await page.screenshot({ clip: { x: 18, y: 18, width: 23, height: 23 } });
     const titleBox = await page.locator('.backbar__title').boundingBox();
 

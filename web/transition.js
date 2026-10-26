@@ -21,6 +21,8 @@
     let destination;
     let marker;
     let exitNote;
+    // 首页退出确认弹框：存在时所有输入只作用于弹框，页面阶段保持不变。
+    let dialog = null;
     // file:// 或隐私模式可能禁止存储；动画仍可独立工作。
     try {
       marker = JSON.parse(sessionStorage.getItem(markerKey));
@@ -49,6 +51,41 @@
     function cancel() {
       restore();
       savedFocus?.focus({ preventScroll: true });
+    }
+
+    // ---------- 首页退出确认弹框 ----------
+    // 两段式操作：←→/Tab/Y/N 只切换选中按钮，Enter 触发选中按钮，鼠标点击直接触发；
+    // Esc 或点击面板外取消并归还焦点。选中态由焦点表达，确认后沿用 exit() 既有流程。
+    function openExitDialog() {
+      if (dialog) return;
+      dialog = document.createElement('div');
+      dialog.className = 'exit-dialog';
+      // 结构固定，一次生成；kbd 提示与实际绑定一致：Y 选中确认，N 选中取消
+      dialog.innerHTML = `
+        <div class="exit-dialog__panel" role="dialog" aria-modal="true" aria-labelledby="exit-dialog-title">
+          <h2 class="exit-dialog__title" id="exit-dialog-title">确认退出游戏吗？</h2>
+          <div class="exit-dialog__actions">
+            <button type="button" class="exit-dialog__btn" data-role="cancel">取消 <kbd>N</kbd></button>
+            <button type="button" class="exit-dialog__btn" data-role="confirm">确认 <kbd>Y</kbd></button>
+          </div>
+        </div>`;
+      dialog.querySelector('[data-role="cancel"]').addEventListener('click', closeDialog);
+      dialog.querySelector('[data-role="confirm"]').addEventListener('click', () => {
+        // 确认：移除弹框后进入黑场退出流程，焦点不再归还电源框
+        dialog.remove();
+        dialog = null;
+        exit();
+      });
+      document.body.append(dialog);
+      // 初始选中确认按钮：打开即 Enter 可退出
+      dialog.querySelector('[data-role="confirm"]').focus({ preventScroll: true });
+    }
+
+    // 取消路径：移除弹框并把焦点交还触发它的电源框
+    function closeDialog() {
+      dialog?.remove();
+      dialog = null;
+      back.focus({ preventScroll: true });
     }
 
     // 首页退出：沿用切页淡出节奏到黑场后尝试关闭窗口；
@@ -98,6 +135,14 @@
     document.addEventListener('click', (event) => {
       const link = event.target.closest('a');
       const isBack = link === back;
+      // 弹框打开时：面板内点击交给按钮自身的监听（确认/取消），面板外一律取消
+      if (dialog) {
+        if (event.target.closest('.exit-dialog__panel')) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        closeDialog();
+        return;
+      }
       if (root.dataset.transition === 'waiting') {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -126,12 +171,36 @@
       if (!['index.html', 'model-gallery.html', 'model-detail.html'].includes(url.pathname.split('/').pop()) || url.origin !== location.origin) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      if (home && isBack) exit();
+      if (home && isBack) openExitDialog();
       else navigate(link);
     }, true);
 
     document.addEventListener('keydown', (event) => {
       const phase = root.dataset.transition;
+      // 弹框打开时独占键盘：←→/Tab/Y/N 仅切换选中，Enter 触发选中按钮，Esc 取消，
+      // 其余按键一律吞掉，防止穿透到菜单导航或切页逻辑。
+      if (dialog) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (event.repeat) return;
+        const btn = document.activeElement;
+        const switchFocus = (role) => dialog.querySelector(`[data-role="${role}"]`)?.focus({ preventScroll: true });
+        if (event.key === 'Escape') closeDialog();
+        else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight' || event.key === 'Tab') {
+          switchFocus(btn?.dataset?.role === 'cancel' ? 'confirm' : 'cancel');
+        } else if (event.key === 'y' || event.key === 'Y') switchFocus('confirm');
+        else if (event.key === 'n' || event.key === 'N') switchFocus('cancel');
+        else if (event.key === 'Enter') {
+          if (btn?.dataset?.role === 'cancel') closeDialog();
+          else if (btn?.dataset?.role === 'confirm') {
+            // Enter 已被 preventDefault，原生 click 不会触发；显式走确认路径
+            dialog.remove();
+            dialog = null;
+            exit();
+          }
+        }
+        return;
+      }
       if (phase === 'waiting') {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -148,7 +217,7 @@
         event.stopImmediatePropagation();
         if (event.repeat) return;
         if (phase === 'out') cancel();
-        else if (home) exit();
+        else if (home) openExitDialog();
         else navigate(back);
       } else if (phase !== 'idle') {
         event.preventDefault();
@@ -165,6 +234,13 @@
     // 不用 inert：取消时保留正文焦点，返回框的鼠标按下也不抢走它。
     for (const type of ['pointerdown', 'pointermove', 'pointerup', 'wheel']) {
       document.addEventListener(type, (event) => {
+        // 弹框打开时：面板内的指针事件放行给按钮，其余（含滚轮）一律吞掉
+        if (dialog) {
+          if (event.target.closest('.exit-dialog__panel') && type !== 'wheel') return;
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          return;
+        }
         if (root.dataset.transition === 'idle') return;
         if (event.target.closest('.backbar') && type !== 'wheel') {
           if (type === 'pointerdown' && root.dataset.transition === 'out') event.preventDefault();

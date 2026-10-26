@@ -477,6 +477,84 @@
     color: var(--muted);
   }
 
+  /* ---------- 首页退出确认弹框 ---------- */
+  /* 模态遮罩：盖过标题栏（5）与页面淡出层（4）、低于黑场提示（7），
+     靠背景明度变化形成层级；快速出现并接受输入，不做装饰性长过渡 */
+  .exit-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 6;
+    display: grid;
+    place-items: center;
+    background: rgba(15, 14, 12, 0.6);
+    animation: exit-dialog-in 120ms ease-out;
+  }
+
+  @keyframes exit-dialog-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  /* 面板：略亮于背景的色面（surface-raised）+ 弱边界 + 直角；
+     标题与按钮各自留白，按钮行单独贴底，不随标题留白浮动 */
+  .exit-dialog__panel {
+    min-width: 880px;
+    display: grid;
+    background: #1b1913;
+    border: 1px solid var(--line);
+  }
+
+  .exit-dialog__title {
+    margin: 0;
+    padding: 48px 48px 84px;
+    font-family: var(--font-display);
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--ink);
+  }
+
+  /* 取消在左、确认在右；按钮行贴面板右下边沿 */
+  .exit-dialog__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 32px;
+    padding: 0 48px 48px;
+  }
+
+  .exit-dialog__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    font-family: var(--font-body);
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--ink);
+    background: transparent;
+    border: 1px solid var(--line);
+    cursor: pointer;
+    transition: color 220ms ease, background 220ms ease, border-color 220ms ease;
+  }
+
+  /* 选中态复用菜单"焦点即薄荷高亮"语言：任何时刻只有一个按钮呈薄荷填充，
+     避免薄荷主按钮默认态与选中态撞车造成的"双选中"歧义 */
+  .exit-dialog__btn:focus,
+  .exit-dialog__btn:hover {
+    color: var(--dark);
+    background: var(--mint);
+    border-color: var(--mint);
+    outline: none;
+  }
+
+  /* 薄荷底上 kbd 换深色描边与文字，保持可读 */
+  .exit-dialog__btn:hover kbd,
+  .exit-dialog__btn:focus kbd {
+    color: var(--dark);
+    border-color: rgba(18, 17, 13, 0.4);
+    background: transparent;
+  }
+
   /* ---------- 模型画廊 ---------- */
   .gallery {
     width: 100%;
@@ -740,4 +818,7 @@
     .menu__item,
     .menu__item::after,
     .menu__item .menu__arrow { transition: none; }
+    .exit-dialog { animation: none; }
+    .exit-dialog__btn,
+    .exit-dialog__btn kbd { transition: none; }
   }
