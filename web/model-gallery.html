@@ -65,8 +65,10 @@
         grid.className = 'grid';
 
         category.models.forEach((model, mi) => {
-          const card = document.createElement('div');
+          const card = document.createElement('a');
           card.className = 'card';
+          // 详情页用 URL 参数 c/m（栏目与模型下标）定位模型；用 <a> 才能被 transition.js 接管切页动画
+          card.href = `model-detail.html?c=${ci}&m=${mi}`;
           // 锚点编号与详情页返回定位共用，例如 BR-01
           card.id = modelCardId(category, mi);
           card.innerHTML =
@@ -83,7 +85,6 @@
           spin.style.animationDelay = `${-3 - mi * 2.6}s`;
           card.querySelector('.card__stage').append(spin);
 
-          // 本阶段卡片仅展示与悬停，不进入详情、不加入键盘焦点流。
           grid.append(card);
         });
 

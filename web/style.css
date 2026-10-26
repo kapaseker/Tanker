@@ -521,16 +521,17 @@
     gap: 24px;
   }
 
-  /* 画廊卡片仅展示，型号来自真实目录，不翻译。 */
-  /* ---------- 模型卡片 ---------- */
+  /* 型号来自真实目录，不翻译。 */
+  /* ---------- 模型卡片（链接到详情页） ---------- */
   .card {
-    cursor: default;
+    cursor: pointer;
     position: relative;
     display: flex;
     flex-direction: column;
     gap: 16px;
     padding: 20px 20px 18px;
     text-align: left;
+    text-decoration: none;
     color: var(--ink);
     background: var(--dark);
     border: 1px solid var(--line);

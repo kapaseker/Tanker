@@ -147,7 +147,11 @@
       fade(0, () => {
         restore();
         if (marker?.target === location.href && home && new URL(marker.source).pathname.endsWith('/model-gallery.html')) {
-          document.querySelector('.menu__item[href="model-gallery.html"]').focus({ preventScroll: true });
+          const item = document.querySelector('.menu__item[href="model-gallery.html"]');
+          item.focus({ preventScroll: true });
+          // 鼠标一旦进入菜单就撤销恢复的焦点，
+          // 否则 :focus-visible 高亮残留，与另一项的 :hover 叠加成双选中；键盘用户不受影响。
+          item.closest('.menu')?.addEventListener('pointerover', () => item.blur(), { once: true });
         }
       });
     })));
