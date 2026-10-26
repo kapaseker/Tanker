@@ -1,5 +1,6 @@
 //! 应用组装、页面状态与过渡流程。
 
+pub(crate) mod chrome;
 pub(crate) mod state;
 pub(crate) mod transition;
 
@@ -56,6 +57,8 @@ pub(super) fn run(options: Option<validation::Options>) -> Result<(), String> {
         pages::index::IndexPlugin,
         pages::gallery::GalleryPlugin,
     ))
+    // 必须在 TransitionPlugin 之后：chrome 相机需要已插入的 SceneTarget。
+    .add_plugins(chrome::ChromePlugin)
     .insert_resource(GlobalAmbientLight {
         brightness: GLOBAL_AMBIENT_BRIGHTNESS,
         ..default()

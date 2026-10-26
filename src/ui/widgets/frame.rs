@@ -1,7 +1,8 @@
-//! 直角角标与版本号徽标：首页与画廊共用的装饰控件。
+//! 直角角标与版本文字：首页与画廊共用的装饰控件。
 //!
 //! 样式（尺寸、字距、边框、颜色）在 spawn 辅助里一次写好；`layout_frame` 只负责
-//! 按 marker 设置视口角锚点。控件实体是全屏 root 的子节点，随页面 OnExit 一并销毁。
+//! 按 marker 设置视口角锚点。版本文字是页面 root 的子节点，随页面 OnExit 一并销毁；
+//! 两处直角改由常驻 chrome 生成（切页时保持亮度，见 app::chrome）。
 
 use crate::ui::{
     font::UiFont,
@@ -63,13 +64,12 @@ pub(crate) fn spawn_frame_corner(
     ));
 }
 
-/// 生成版本号徽标 = 右下直角边 + 版本文字（统一首页规格：10px/2px 字距/行高/次要色）。
-pub(crate) fn spawn_version_badge(
+/// 生成版本文字（统一首页规格：10px/2px 字距/行高/次要色）。
+/// 右下直角已拆给常驻 chrome（切页时保持亮度），页面只生成随内容变暗的文字。
+pub(crate) fn spawn_version_text(
     parent: &mut RelatedSpawnerCommands<ChildOf>,
     font: &UiFont,
-    corner_color: Color,
 ) {
-    spawn_frame_corner(parent, CornerOrientation::BottomRight, corner_color);
     parent.spawn((
         VersionBadge,
         Text::new(strings_cn::index::BUILD),

@@ -3,9 +3,12 @@ pub(crate) mod frame;
 pub(crate) mod keycap;
 pub(crate) mod title_bar;
 
-pub(crate) use frame::{CornerOrientation, spawn_frame_corner, spawn_version_badge};
+pub(crate) use frame::{CornerOrientation, spawn_frame_corner, spawn_version_text};
 pub(crate) use keycap::spawn_keycap;
-pub(crate) use title_bar::{TitleBarBackActivated, TitleBarIcon, TitleBarState, spawn_title_bar};
+pub(crate) use title_bar::{
+    TitleBarActive, TitleBarBackActivated, TitleBarBackArrow, TitleBarBackPower, TitleBarState,
+    TitleBarTitle, spawn_title_bar,
+};
 
 use crate::ui::font::UiFont;
 use bevy::prelude::*;
@@ -17,6 +20,8 @@ pub(crate) struct WidgetsPlugin;
 impl Plugin for WidgetsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<TitleBarState>()
+            // 启动即处于菜单（Index），标题栏默认可交互；chrome 按状态切换该门控。
+            .insert_resource(TitleBarActive(true))
             .add_message::<TitleBarBackActivated>()
             .add_systems(Update, (layout_frame, interaction));
     }

@@ -9,7 +9,7 @@ use crate::{
             dimens::{gallery as dims, title_bar as bar},
             strings_cn::gallery as labels,
         },
-        widgets::{self, CornerOrientation, TitleBarBackActivated, eased, text_font},
+        widgets::{self, TitleBarBackActivated, eased, text_font},
         zoom,
     },
 };
@@ -207,14 +207,9 @@ pub(super) fn spawn(
                         }
                     });
             });
-            // 统一标题栏控件：头部、ESC 返回框、标题与全宽底部分割线一次生成。
-            widgets::spawn_title_bar(root, &font, labels::TITLE, widgets::TitleBarIcon::Back);
-            widgets::spawn_frame_corner(
-                root,
-                CornerOrientation::TopLeft,
-                colors::gallery::OUTLINE_ACTIVE,
-            );
-            widgets::spawn_version_badge(root, &font, colors::gallery::OUTLINE_ACTIVE);
+            // 标题栏、左上直角与右下直角由常驻 chrome 生成（见 app::chrome）；
+            // 版本文字属于内容层（随遮罩变暗），仍随页面生成。
+            widgets::spawn_version_text(root, &font);
         });
 }
 /// UI 节点使用固定逻辑像素，窗口适配只通过页面相机统一缩放。
@@ -295,7 +290,8 @@ pub(super) fn input(
     }
     view.scroll = scroll.clamp(0.0, max);
     // 激活消息可能比本系统晚一帧被读取（控件与本页同在 Update，顺序未定）。
-    if activated.read().next().is_some() && fade.begin(GameState::Index) {
+    // 画廊返回首页只压暗内容（ContentOnly），标题栏/直角常驻。
+    if activated.read().next().is_some() && fade.begin(GameState::Index, true) {
         return_focus.0 = true;
         next.set(GameState::GalleryToIndex);
     }

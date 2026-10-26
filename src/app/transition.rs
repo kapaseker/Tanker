@@ -46,7 +46,11 @@ pub(crate) enum Phase {
 pub(crate) struct Fade {
     pub alpha: f32,
     pub phase: Phase,
-    target: GameState,
+    /// 过渡终点页面；chrome 变体同步按它即时换标题/图标。
+    pub(crate) target: GameState,
+    /// true = ContentOnly：合成材质保持白色，由 chrome 遮罩节点只压暗页面内容，
+    /// 标题栏与角标常驻；false = FullBlack：整屏（含 chrome）随材质向黑相乘。
+    pub(crate) content_only: bool,
     stable_frames: u8,
     /// 阻止跨页面继续按住的键立即触发驾驶、开火或确认。
     pub input_armed: bool,
@@ -60,6 +64,7 @@ impl Default for Fade {
             alpha: 0.0,
             phase: Phase::Idle,
             target: GameState::Index,
+            content_only: false,
             stable_frames: 0,
             input_armed: true,
             exit_written: false,
@@ -69,11 +74,13 @@ impl Default for Fade {
 
 impl Fade {
     /// 重复请求被忽略；返回值用于决定是否进入过渡状态。
-    pub fn begin(&mut self, target: GameState) -> bool {
+    /// `content_only` 由调用方按链路决定（target=Index 既可能是画廊返回，也可能是局内 Esc）。
+    pub fn begin(&mut self, target: GameState, content_only: bool) -> bool {
         if self.phase != Phase::Idle || !self.input_armed {
             return false;
         }
         self.target = target;
+        self.content_only = content_only;
         self.phase = Phase::Out;
         self.stable_frames = 0;
         self.input_armed = false;
@@ -214,6 +221,7 @@ fn resize_target(
         Or<(
             With<crate::pages::index::IndexCamera>,
             With<crate::pages::gallery::GalleryCamera>,
+            With<crate::app::chrome::ChromeCamera>,
         )>,
     >,
     mut scene_cameras: Query<
@@ -221,6 +229,7 @@ fn resize_target(
         (
             Without<crate::pages::index::IndexCamera>,
             Without<crate::pages::gallery::GalleryCamera>,
+            Without<crate::app::chrome::ChromeCamera>,
             With<crate::gameplay::camera::FollowCamera>,
         ),
     >,
@@ -279,7 +288,7 @@ fn return_to_index(
 ) {
     if *state.get() == GameState::InGame
         && keys.just_pressed(KeyCode::Escape)
-        && fade.begin(GameState::Index)
+        && fade.begin(GameState::Index, false)
     {
         next.set(GameState::ToIndex);
     }
@@ -362,7 +371,8 @@ fn advance(world: &mut World) {
             fade.phase = Phase::In;
         }
     }
-    let alpha = world.resource::<Fade>().alpha;
+    let fade = world.resource::<Fade>();
+    let (alpha, content_only) = (fade.alpha, fade.content_only);
     if let Some(material) = world
         .get_resource::<CompositeMaterial>()
         .map(|m| m.0.clone())
@@ -371,7 +381,9 @@ fn advance(world: &mut World) {
             .resource_mut::<Assets<StandardMaterial>>()
             .get_mut(&material)
         {
-            material.base_color = Color::linear_rgb(1.0 - alpha, 1.0 - alpha, 1.0 - alpha);
+            // ContentOnly 时材质恒白：压暗由 chrome 遮罩节点完成，标题栏/角标保持亮度。
+            let shade = if content_only { 1.0 } else { 1.0 - alpha };
+            material.base_color = Color::linear_rgb(shade, shade, shade);
         }
     }
 }
@@ -487,7 +499,7 @@ mod tests {
     #[test]
     fn completed_fade_does_not_restart() {
         let mut fade = Fade::default();
-        assert!(fade.begin(GameState::InGame));
+        assert!(fade.begin(GameState::InGame, false));
         assert!(fade.tick(0.6));
         assert_eq!(fade.phase, Phase::Waiting);
         fade.tick(5.0);
@@ -504,8 +516,8 @@ mod tests {
     #[test]
     fn transition_blocks_reentry_and_held_input() {
         let mut fade = Fade::default();
-        assert!(fade.begin(GameState::Index));
-        assert!(!fade.begin(GameState::InGame));
+        assert!(fade.begin(GameState::Index, true));
+        assert!(!fade.begin(GameState::InGame, false));
         assert!(!fade.accepts_input());
         fade.phase = Phase::In;
         fade.tick(1.0);
@@ -525,7 +537,7 @@ mod tests {
         world.init_resource::<ButtonInput<KeyCode>>();
         world.init_resource::<RenderReadiness>();
         world.init_resource::<Messages<AppExit>>();
-        assert!(world.resource_mut::<Fade>().begin(GameState::ToExit));
+        assert!(world.resource_mut::<Fade>().begin(GameState::ToExit, true));
         // 600ms 淡出完成，Out → Waiting（全黑）。
         assert!(world.resource_mut::<Fade>().tick(FADE_SECONDS));
         assert_eq!(world.resource::<Fade>().phase, Phase::Waiting);

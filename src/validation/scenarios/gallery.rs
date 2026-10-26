@@ -271,12 +271,17 @@ pub(super) fn finish_gallery_transition(
             };
             if let Some(slot) = slot.filter(|&i| !saved[i]) {
                 saved[slot] = true;
+                // 画廊往返为 ContentOnly：黑场帧仅内容压黑，标题栏/直角常驻可见。
                 capture_checked(
                     app,
                     &options
                         .output
                         .join(format!("gallery-{direction}-phase-{slot}.png")),
-                    slot == 1,
+                    if slot == 1 {
+                        PixelCheck::ContentBlack
+                    } else {
+                        PixelCheck::Content
+                    },
                 )?;
             }
         }

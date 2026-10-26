@@ -89,8 +89,6 @@ pub(crate) mod index {
     /// 0.028 线性混合后编码回 sRGB≈46，与网页实测 48 一致
     /// （离屏验证 2026-10-22，见 .scratch/homepage-parity/issues/02）。
     pub(crate) const SEPARATOR: Color = with_alpha(ON_SURFACE, 0.028);
-    /// 角标边框。
-    pub(crate) const CORNER: Color = with_alpha(PRIMARY, 0.14);
     /// 退出确认弹框遮罩：网页 rgba(15,14,12,0.6)。
     pub(crate) const EXIT_OVERLAY: Color = with_alpha(BACKGROUND, 0.6);
     /// 弹框面板底色：surface-raised #1b1913。

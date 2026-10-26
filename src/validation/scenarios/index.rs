@@ -160,6 +160,18 @@ pub(super) fn run_index_scenario(
         "取消弹框不应触发页面过渡",
     )?;
     report.push_str("退出确认弹框：打开/切换选中/取消关闭断言通过；已保存 exit-dialog*.png\n");
+    // 取消弹框后焦点归还电源框（设计行为，见 close_exit_dialog）：此时直接 Enter
+    // 会重新打开弹框而非确认菜单。模拟真实用户连按两次 ↓（项 0→1→0）把焦点导航
+    // 回菜单第一项并清除电源框焦点，后续 Enter 才走菜单确认链路。
+    for _ in 0..2 {
+        update(app, STEP, Some(1))?;
+        update(app, STEP, None)?;
+        update(app, STEP, None)?;
+    }
+    ensure(
+        app.world().resource::<crate::pages::index::MenuInput>().focus == Some(0),
+        "方向键未把焦点导航回菜单第一项",
+    )?;
     for (width, height) in [
         (1920, 1080),
         (901, 720),
@@ -229,7 +241,16 @@ pub(super) fn run_index_scenario(
                     if let Some(slot) = slot.filter(|&slot| !saved[slot]) {
                         saved[slot] = true;
                         let path = options.image_path(frame);
-                        capture_checked(app, &path, slot == 1)?;
+                        // 首页↔对局仍为整体黑场（FullBlack）：黑场帧全画面必须为黑。
+                        capture_checked(
+                            app,
+                            &path,
+                            if slot == 1 {
+                                PixelCheck::FullBlack
+                            } else {
+                                PixelCheck::Content
+                            },
+                        )?;
                         report.push_str(&format!(
                             "{}\n",
                             crate::app::transition::diagnostics(app.world_mut())

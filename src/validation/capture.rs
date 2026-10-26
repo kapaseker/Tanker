@@ -103,13 +103,25 @@ pub(super) fn capture_wheel_views(app: &mut App, output: &Path) -> Result<(), St
     result
 }
 
-/// 请求一次截图并等待 observer 完成保存，绝不以请求已提交作为成功判据。
-pub(super) fn capture(app: &mut App, path: &Path) -> Result<(), String> {
-    capture_checked(app, path, false)
+/// 截图像素断言模式：区分正常内容帧、整体黑场与"仅内容黑"的常驻 chrome 帧。
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum PixelCheck {
+    /// 正常内容帧：拒收纯色/黑屏。
+    Content,
+    /// 整体黑场交接帧（FullBlack）：全画面必须为黑。
+    FullBlack,
+    /// 仅内容黑帧（ContentOnly 黑场）：标题栏带与右下直角框属于常驻 chrome，
+    /// 其余画面必须为黑，且标题栏带内必须有可见内容。
+    ContentBlack,
 }
 
-/// 全黑交接专用像素断言，其余帧仍拒收空画面。
-pub(super) fn capture_checked(app: &mut App, path: &Path, black: bool) -> Result<(), String> {
+/// 请求一次截图并等待 observer 完成保存，绝不以请求已提交作为成功判据。
+pub(super) fn capture(app: &mut App, path: &Path) -> Result<(), String> {
+    capture_checked(app, path, PixelCheck::Content)
+}
+
+/// 按模式做像素断言后落盘。
+pub(super) fn capture_checked(app: &mut App, path: &Path, check: PixelCheck) -> Result<(), String> {
     wait_render(app, false)?;
     app.world_mut().resource_mut::<CaptureResult>().0 = None;
     let target = app.world().resource::<Target>().0.clone();
@@ -122,7 +134,7 @@ pub(super) fn capture_checked(app: &mut App, path: &Path, black: bool) -> Result
     let path = path.to_owned();
     app.world_mut().spawn(Screenshot::image(target)).observe(
         move |event: On<ScreenshotCaptured>, mut result: ResMut<CaptureResult>| {
-            result.0 = Some(save_image(&event.image, &path, size, black));
+            result.0 = Some(save_image(&event.image, &path, size, check));
         },
     );
     loop {
@@ -134,7 +146,7 @@ pub(super) fn capture_checked(app: &mut App, path: &Path, black: bool) -> Result
 }
 
 /// RGB 编码会丢弃 HDR 输出中用于亮度的 alpha，与 Bevy 官方截图行为一致。
-fn save_image(image: &Image, path: &Path, size: UVec2, black: bool) -> Result<(), String> {
+fn save_image(image: &Image, path: &Path, size: UVec2, check: PixelCheck) -> Result<(), String> {
     let rgb = image
         .clone()
         .try_into_dynamic()
@@ -145,7 +157,7 @@ fn save_image(image: &Image, path: &Path, size: UVec2, black: bool) -> Result<()
         "截图尺寸不符",
     )?;
     // 临时诊断：像素校验失败也落盘 reject 文件，便于人工检查（验证后删除）。
-    if let Err(message) = validate_capture_pixels(rgb.as_raw(), size, black) {
+    if let Err(message) = validate_capture_pixels(rgb.as_raw(), size, check) {
         let reject = path.with_extension("reject.png");
         let mut file = create_new(&reject)?;
         rgb.write_to(
@@ -174,27 +186,55 @@ fn save_image(image: &Image, path: &Path, size: UVec2, black: bool) -> Result<()
 /// 排除纯色/黑色等明显空图；具体模型和材质效果仍需读取关键帧人工检查。
 #[cfg(test)]
 fn validate_pixels(rgb: &[u8]) -> Result<(), String> {
-    validate_capture_pixels(rgb, UVec2::new(WIDTH, HEIGHT), false)
+    validate_capture_pixels(rgb, UVec2::new(WIDTH, HEIGHT), PixelCheck::Content)
 }
 
 /// 验证目标尺寸与阶段预期，避免把正常黑场与异常黑屏混为一谈。
-fn validate_capture_pixels(rgb: &[u8], size: UVec2, black: bool) -> Result<(), String> {
+fn validate_capture_pixels(rgb: &[u8], size: UVec2, check: PixelCheck) -> Result<(), String> {
     ensure(
         rgb.len() == (size.x * size.y * 3) as usize && !rgb.is_empty(),
         "截图像素长度不符",
     )?;
-    if black {
-        return ensure(
+    match check {
+        PixelCheck::FullBlack => ensure(
             rgb.iter().all(|&value| value <= 3),
             "全黑交接帧仍有可见内容",
-        );
+        ),
+        PixelCheck::ContentBlack => validate_content_black(rgb, size),
+        PixelCheck::Content => {
+            let first = &rgb[..3];
+            ensure(
+                rgb.chunks_exact(3).filter(|pixel| *pixel != first).count()
+                    > (size.x * size.y / 100) as usize,
+                "截图缺少实际场景内容（接近纯色）",
+            )
+        }
     }
-    let first = &rgb[..3];
-    ensure(
-        rgb.chunks_exact(3).filter(|pixel| *pixel != first).count()
-            > (size.x * size.y / 100) as usize,
-        "截图缺少实际场景内容（接近纯色）",
-    )
+}
+
+/// 仅内容黑帧：常驻 chrome 区域（顶部标题栏带 + 右下直角框）豁免黑场断言，
+/// 其余像素必须全黑，且标题栏带内必须有可见内容（证明 chrome 确实亮着）。
+fn validate_content_black(rgb: &[u8], size: UVec2) -> Result<(), String> {
+    use crate::ui::resources::dimens;
+    // 离屏纹理尺寸即物理尺寸（缩放系数 1），逻辑像素 × zoom 即物理像素。
+    let zoom = crate::ui::zoom(size.x as f32);
+    let band = (dimens::title_bar::HEIGHT * zoom) as usize;
+    // 右下直角框：内缩 CORNER_INSET + 边长 CORNER_SIZE 的方形区域。
+    let corner_box = ((dimens::index::CORNER_INSET + dimens::index::CORNER_SIZE) * zoom) as usize;
+    let (w, h) = (size.x as usize, size.y as usize);
+    let mut band_bright = false;
+    for y in 0..h {
+        for x in 0..w {
+            let i = (y * w + x) * 3;
+            let bright = rgb[i] > 3 || rgb[i + 1] > 3 || rgb[i + 2] > 3;
+            if y < band {
+                band_bright |= bright;
+            } else if x < w - corner_box && y < h - corner_box && bright {
+                return Err(format!("内容黑场帧 chrome 外仍有亮像素 ({x},{y})"));
+            }
+        }
+    }
+    ensure(band_bright, "内容黑场帧标题栏带内没有可见 chrome")
 }
 
 /// 排他创建产物；即使预检查后有其它进程写入，也不会覆盖已有文件。
@@ -226,6 +266,22 @@ mod tests {
         pixels[..(WIDTH * HEIGHT * 3 / 2) as usize].fill(128);
         assert!(validate_pixels(&pixels).is_ok());
         assert!(ensure(false, "断言失败").is_err());
+        // 内容黑场：chrome 区域（标题栏带、右下直角框）豁免，其余亮像素或标题栏全黑都失败。
+        let size = UVec2::new(WIDTH, HEIGHT);
+        let set = |px: &mut Vec<u8>, x: u32, y: u32| {
+            let i = ((y * WIDTH + x) * 3) as usize;
+            px[i] = 200;
+        };
+        let mut chrome_only = vec![0u8; (WIDTH * HEIGHT * 3) as usize];
+        set(&mut chrome_only, 10, 10);
+        set(&mut chrome_only, WIDTH - 10, HEIGHT - 10);
+        assert!(validate_capture_pixels(&chrome_only, size, PixelCheck::ContentBlack).is_ok());
+        let mut content_lit = chrome_only.clone();
+        set(&mut content_lit, WIDTH / 2, HEIGHT / 2);
+        assert!(validate_capture_pixels(&content_lit, size, PixelCheck::ContentBlack).is_err());
+        let all_black = vec![0u8; (WIDTH * HEIGHT * 3) as usize];
+        assert!(validate_capture_pixels(&all_black, size, PixelCheck::ContentBlack).is_err());
+        assert!(validate_capture_pixels(&all_black, size, PixelCheck::FullBlack).is_ok());
         let mut report = String::new();
         let mut failures = Vec::new();
         record_check(&mut report, &mut failures, false, "驾驶位移");

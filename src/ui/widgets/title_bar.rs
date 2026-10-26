@@ -35,18 +35,19 @@ pub(crate) struct TitleBarBackArrow;
 #[derive(Component)]
 pub(crate) struct TitleBarBackPower;
 
+/// 页面标题文本节点 marker；常驻 chrome 在切页发起时就地改写其文字。
+#[derive(Component)]
+pub(crate) struct TitleBarTitle;
+
+/// 标题栏是否处于可交互页面（菜单可见状态）。局内 chrome 相机不渲染标题栏，
+/// interaction 据此空跑，避免 Esc 等按键在对局中触发返回框激活。
+#[derive(Resource)]
+pub(crate) struct TitleBarActive(pub(crate) bool);
+
 /// 标题栏返回框键帽 marker；interaction 只重着色带此标记的键帽，
 /// 页面上其它键帽（提示行、弹框）由各自页面驱动，互不串扰。
 #[derive(Component)]
 pub(crate) struct TitleBarKeycap;
-
-/// 返回框左侧图标：内容页用返回箭头，首页用电源符号（design.md 标题栏规格）。
-pub(crate) enum TitleBarIcon {
-    /// 返回箭头，文本字形。
-    Back,
-    /// 电源符号。Bevy UI 无 SVG、MiSans 缺 U+23FB 字形，故用预渲染 PNG 染色。
-    Power(Handle<Image>),
-}
 
 /// 返回框被激活（点击、ESC 或焦点下 Enter）；控件只报告事件，页面决定去向与过渡。
 #[derive(Message)]
@@ -74,12 +75,15 @@ impl TitleBarState {
 }
 
 /// 生成统一标题栏：全屏宽头部（高 `dims::HEIGHT`，底边框即分割线）+ ESC 返回框 + 页面标题。
-/// `icon` 决定返回框左侧图形：返回箭头或电源符号，几何与交互完全一致。
+/// 返回框同时生成箭头与电源图标两个节点，用 `display` 切换可见性（常驻 chrome 需要
+/// 就地换变体，不能销毁重建）；`power_visible` 决定初始显示哪一个。
+/// 电源图标用预渲染 PNG：Bevy UI 无 SVG、MiSans 缺 U+23FB 字形。
 pub(crate) fn spawn_title_bar(
     parent: &mut RelatedSpawnerCommands<ChildOf>,
     font: &UiFont,
     title: &str,
-    icon: TitleBarIcon,
+    power: Handle<Image>,
+    power_visible: bool,
 ) {
     parent
         .spawn((
@@ -122,36 +126,45 @@ pub(crate) fn spawn_title_bar(
                     BorderColor::all(palette::OUTLINE),
                 ))
                 .with_children(|back| {
-                    match icon {
-                        TitleBarIcon::Back => {
-                            back.spawn((
-                                TitleBarBackArrow,
-                                Text::new(strings::BACK_ARROW),
-                                text_font(font, dims::BACK_ARROW_SIZE, 400.0),
-                                TextColor(colors::ON_SURFACE),
-                            ));
-                        }
-                        TitleBarIcon::Power(image) => {
-                            // 与箭头同视觉位置：固定 16px 方形，弹性布局中随内容对齐。
-                            back.spawn((
-                                TitleBarBackPower,
-                                ImageNode {
-                                    image,
-                                    color: colors::ON_SURFACE,
-                                    ..default()
-                                },
-                                Node {
-                                    width: px(dims::POWER_ICON_SIZE),
-                                    height: px(dims::POWER_ICON_SIZE),
-                                    ..default()
-                                },
-                            ));
-                        }
-                    }
+                    // 返回箭头（画廊等内页变体）：文本字形，默认隐藏。
+                    back.spawn((
+                        TitleBarBackArrow,
+                        Text::new(strings::BACK_ARROW),
+                        text_font(font, dims::BACK_ARROW_SIZE, 400.0),
+                        TextColor(colors::ON_SURFACE),
+                        Node {
+                            display: if power_visible {
+                                Display::None
+                            } else {
+                                Display::Flex
+                            },
+                            ..default()
+                        },
+                    ));
+                    // 电源符号（首页变体）：与箭头同视觉位置，固定 16px 方形。
+                    back.spawn((
+                        TitleBarBackPower,
+                        ImageNode {
+                            image: power,
+                            color: colors::ON_SURFACE,
+                            ..default()
+                        },
+                        Node {
+                            display: if power_visible {
+                                Display::Flex
+                            } else {
+                                Display::None
+                            },
+                            width: px(dims::POWER_ICON_SIZE),
+                            height: px(dims::POWER_ICON_SIZE),
+                            ..default()
+                        },
+                    ));
                     spawn_keycap(back, font, strings::KEY_ESCAPE, TitleBarKeycap);
                 });
             let (title_left, title_top, title_width, title_height) = dims::TITLE_RECT;
             header.spawn((
+                TitleBarTitle,
                 Node {
                     position_type: PositionType::Absolute,
                     left: px(title_left),
@@ -195,8 +208,11 @@ pub(crate) fn interaction(
     // 电源符号图像（首页变体）：无 TextColor，单独染色。
     mut power_icons: Query<&mut ImageNode, With<TitleBarBackPower>>,
     mut activated: MessageWriter<TitleBarBackActivated>,
+    active: Res<TitleBarActive>,
 ) {
-    if boxes.is_empty() {
+    // 标题栏实体常驻 chrome；局内相机不渲染它，交互也必须空跑，
+    // 否则对局中的 Esc/点击会写出去向消息或留下高亮残留。
+    if boxes.is_empty() || !active.0 {
         // 标题栏随页面销毁后清掉按下/聚焦残留，下次进入从初始态开始。
         state.pressed = false;
         state.focus = false;

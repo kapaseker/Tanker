@@ -11,7 +11,7 @@ use crate::{
     ui::resources::{
         colors::index as palette, dimens::index as dims, strings, strings_cn::index as labels,
     },
-    ui::widgets::{self, CornerOrientation, text_font},
+    ui::widgets::{self, text_font},
 };
 use bevy::{
     camera::RenderTarget,
@@ -326,7 +326,7 @@ impl Plugin for IndexPlugin {
             .add_systems(
                 Update,
                 // 输入先于视觉；menu_input 必须在标题栏 interaction 之后：弹框打开
-                // 期间要吞掉它记下的 Tab 焦点，取消后又据其 focus 状态归还电源框焦点。
+                // 期间要吞掉它记下的 Tab 焦点，取消后再把焦点归还电源框。
                 (
                     menu_input.after(crate::ui::widgets::title_bar::interaction),
                     update_visual,
@@ -403,14 +403,8 @@ fn spawn_index(
                     ..default()
                 },
             ));
-            // 首页常驻标题栏：电源符号返回框 + “主菜单”（design.md 标题栏规格）。
-            // 必须晚于背景生成：同级 UI 按生成顺序绘制，否则会被全屏背景盖住。
-            widgets::spawn_title_bar(
-                root,
-                &font,
-                labels::TITLE,
-                widgets::TitleBarIcon::Power(assets.load("image/index/power.png")),
-            );
+            // 标题栏与左上直角由常驻 chrome 生成（见 app::chrome），不随页面销毁重建；
+            // 页面只生成背景、标题图、菜单行、提示行与版本文字，切页时随遮罩一起压暗。
             root.spawn((
                 Part::Title,
                 IndexTitle,
@@ -495,7 +489,6 @@ fn spawn_index(
                     }
                 });
             }
-            widgets::spawn_frame_corner(root, CornerOrientation::TopLeft, palette::CORNER);
             // 提示行复刻网页的 inline 键帽，顺序为 ↑ ↓ 选择 · ENTER 确认。
             // 说明：设计稿要求键帽与说明文字按基线对齐，但 Bevy 0.20 的 UI 布局
             // 不向 Taffy 提供文本基线，AlignItems::Baseline 会退化为底边对齐，
@@ -532,7 +525,8 @@ fn spawn_index(
                 widgets::spawn_keycap(hint, &font, strings::KEY_ENTER, ());
                 caption(hint, labels::HINT_CONFIRM);
             });
-            widgets::spawn_version_badge(root, &font, palette::CORNER);
+            // 版本文字属于内容层（随遮罩变暗）；右下直角在常驻 chrome。
+            widgets::spawn_version_text(root, &font);
         });
 }
 
@@ -628,13 +622,16 @@ fn spawn_exit_dialog(commands: &mut Commands, root: Entity, font: &UiFont) {
     });
 }
 
-/// 取消路径：移除弹框并把焦点归还电源框（design.md 退出链路）。
+/// 取消路径：移除弹框并把焦点归还电源框（对齐 transition.js closeDialog 与 design.md 退出链路）。
+/// 焦点是单资源：同时清除菜单的键盘高亮，避免电源框与菜单项双选中。
 fn close_exit_dialog(
     commands: &mut Commands,
     entity: Entity,
     title_bar: &mut crate::ui::widgets::TitleBarState,
+    input: &mut MenuInput,
 ) {
     commands.entity(entity).despawn();
+    input.keyboard_focus = false;
     title_bar.set_focus(true);
 }
 
@@ -646,7 +643,8 @@ fn confirm_exit(
     next: &mut NextState<GameState>,
 ) {
     commands.entity(entity).despawn();
-    if fade.begin(GameState::ToExit) {
+    // 退出淡出对齐设计稿：标题栏/直角常驻，仅内容压黑（ContentOnly）。
+    if fade.begin(GameState::ToExit, true) {
         next.set(GameState::ToExit);
     }
 }
@@ -692,7 +690,7 @@ fn menu_input(
                 ExitDialogSelection::Cancel => ExitDialogSelection::Confirm,
             };
         } else if keys.just_pressed(KeyCode::Escape) {
-            close_exit_dialog(&mut commands, entity, &mut title_bar);
+            close_exit_dialog(&mut commands, entity, &mut title_bar, &mut input);
             return;
         } else if keys.just_pressed(KeyCode::Enter) {
             match dialog.selection {
@@ -700,7 +698,7 @@ fn menu_input(
                     confirm_exit(&mut commands, entity, &mut fade, &mut next);
                 }
                 ExitDialogSelection::Cancel => {
-                    close_exit_dialog(&mut commands, entity, &mut title_bar);
+                    close_exit_dialog(&mut commands, entity, &mut title_bar, &mut input);
                 }
             }
             return;
@@ -720,11 +718,11 @@ fn menu_input(
                         confirm_exit(&mut commands, entity, &mut fade, &mut next);
                     }
                     ExitDialogSelection::Cancel => {
-                        close_exit_dialog(&mut commands, entity, &mut title_bar);
+                        close_exit_dialog(&mut commands, entity, &mut title_bar, &mut input);
                     }
                 }
             } else if !panel.contains(point) {
-                close_exit_dialog(&mut commands, entity, &mut title_bar);
+                close_exit_dialog(&mut commands, entity, &mut title_bar, &mut input);
             }
             return;
         }
@@ -794,10 +792,11 @@ fn menu_input(
     } else {
         clicked
     };
-    if confirmed == Some(0) && fade.begin(GameState::InGame) {
+    // 进入对局保持整体黑场（FullBlack）；去画廊只压暗内容（ContentOnly）。
+    if confirmed == Some(0) && fade.begin(GameState::InGame, false) {
         next.set(GameState::ToGame);
     }
-    if confirmed == Some(1) && fade.begin(GameState::Gallery) {
+    if confirmed == Some(1) && fade.begin(GameState::Gallery, true) {
         next.set(GameState::ToGallery);
     }
 }
@@ -1171,11 +1170,34 @@ mod tests {
         assert!(world.resource::<TitleBarState>().focus);
     }
 
+    /// 取消弹框后焦点总是归还电源框（对齐设计稿 closeDialog）：
+    /// 菜单键盘高亮同时清除，避免电源框与菜单项双选中；选中位置保留供方向键继续。
+    #[test]
+    fn exit_dialog_cancel_returns_focus_to_back_box_and_clears_menu_highlight() {
+        let mut world = dialog_world();
+        // 模拟从画廊返回：菜单项 1 持有键盘焦点。
+        world.resource_mut::<MenuInput>().focus = Some(1);
+        world.resource_mut::<MenuInput>().keyboard_focus = true;
+        press(&mut world, KeyCode::Escape);
+        press(&mut world, KeyCode::Escape);
+        assert_eq!(dialog(&mut world), None);
+        assert!(world.resource::<TitleBarState>().focus);
+        assert!(!world.resource::<MenuInput>().keyboard_focus);
+        assert_eq!(world.resource::<MenuInput>().focus, Some(1));
+        // 归还焦点后 Enter 归属电源框 → 重新打开弹框（对齐设计稿）。
+        // press 辅助只跑 menu_input，需手动注入 interaction 本应写下的激活消息。
+        world
+            .resource_mut::<Messages<crate::ui::widgets::TitleBarBackActivated>>()
+            .write(crate::ui::widgets::TitleBarBackActivated);
+        press(&mut world, KeyCode::Enter);
+        assert_eq!(dialog(&mut world), Some(ExitDialogSelection::Confirm));
+    }
+
     /// 菜单持有键盘焦点时 Enter 归属菜单确认，同帧的电源框激活消息被吞掉、不误开弹框。
     #[test]
     fn menu_keyboard_focus_wins_enter_over_back_box() {
         let mut world = dialog_world();
-        // 模拟弹框取消后的状态：电源框有焦点，菜单仍持有键盘焦点。
+        // 防御性场景：电源框有焦点且菜单持有键盘焦点（取消路径已不再产生此状态）。
         world.resource_mut::<MenuInput>().focus = Some(0);
         world.resource_mut::<MenuInput>().keyboard_focus = true;
         world

@@ -9,7 +9,7 @@ mod wheels;
 
 use super::*;
 use super::{
-    capture::{capture, capture_checked, capture_side, capture_wheel_views},
+    capture::{PixelCheck, capture, capture_checked, capture_side, capture_wheel_views},
     offscreen::{update, wait_render},
 };
 use avian3d::prelude::{LinearVelocity, Position, Rotation};
