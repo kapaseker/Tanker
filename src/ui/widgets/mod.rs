@@ -5,7 +5,7 @@ pub(crate) mod title_bar;
 
 pub(crate) use frame::{CornerOrientation, spawn_frame_corner, spawn_version_badge};
 pub(crate) use keycap::spawn_keycap;
-pub(crate) use title_bar::{TitleBarBackActivated, TitleBarState, spawn_title_bar};
+pub(crate) use title_bar::{TitleBarBackActivated, TitleBarIcon, TitleBarState, spawn_title_bar};
 
 use crate::ui::font::UiFont;
 use bevy::prelude::*;

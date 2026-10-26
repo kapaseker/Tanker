@@ -22,6 +22,8 @@ pub(crate) mod title_bar {
     pub(crate) const BACK_GAP: f32 = 12.0;
     /// 返回箭头字号（网页 .back__arrow 的 16px）。
     pub(crate) const BACK_ARROW_SIZE: f32 = 16.0;
+    /// 电源符号显示边长（首页变体，与箭头同规格 16px；PNG 资产为 8 倍分辨率）。
+    pub(crate) const POWER_ICON_SIZE: f32 = 16.0;
     /// 页面标题在标题栏内的固定矩形与字号。
     pub(crate) const TITLE_RECT: (f32, f32, f32, f32) = (182.0, 30.0, 300.0, 30.0);
     pub(crate) const TITLE_SIZE: f32 = 20.0;
@@ -92,8 +94,10 @@ pub(crate) mod index {
     pub(crate) const HINT_GAP: f32 = 22.0;
     /// 提示行预留高度（提示字号 × 行高）。
     pub(crate) const HINT_HEIGHT: f32 = 16.0;
-    /// 顶部/底部保留区高度（网页 `.hud` 上下各 30px 内边距）。
-    pub(crate) const TOP: f32 = 60.0;
+    /// 首页内容区顶部标题栏高度（design.md：首页常驻 88px 标题栏，正文预留栏高；
+    /// 其余页面同高但首页独用此常量，底部保留区仍为 BOTTOM）。
+    pub(crate) const TITLE_BAR: f32 = 88.0;
+    /// 底部保留区高度（网页 `.hud` 底部 30px 内边距）。
     pub(crate) const BOTTOM: f32 = 60.0;
     /// 内容区顶部/底部内边距（网页 `.stage` 的 16px / 40px）。
     pub(crate) const PADDING_TOP: f32 = 16.0;
@@ -137,4 +141,25 @@ pub(crate) mod index {
     pub(crate) const CORNER_SIZE: f32 = 22.0;
     /// 角标距视口边缘的距离（网页 `.frame` 的 inset 18px）。
     pub(crate) const CORNER_INSET: f32 = 18.0;
+    /// 退出确认弹框面板最小宽度（网页 `.exit-dialog__panel`）。
+    pub(crate) const EXIT_PANEL_WIDTH: f32 = 880.0;
+    /// 弹框标题字号、行高与上/下留白（网页 `.exit-dialog__title` 48px 48px 84px）。
+    pub(crate) const EXIT_TITLE_SIZE: f32 = 24.0;
+    pub(crate) const EXIT_TITLE_LINE_HEIGHT: f32 = 1.2;
+    pub(crate) const EXIT_TITLE_PAD_TOP: f32 = 48.0;
+    pub(crate) const EXIT_TITLE_PAD_BOTTOM: f32 = 84.0;
+    pub(crate) const EXIT_TITLE_PAD_X: f32 = 48.0;
+    /// 弹框按钮固定尺寸（网页为文字自适应宽，游戏内取固定值使命中区与视觉一致：
+    /// 标签两字 32px + gap 8px + 键帽约 19px + 水平内边距 32px）。
+    pub(crate) const EXIT_BUTTON_WIDTH: f32 = 96.0;
+    pub(crate) const EXIT_BUTTON_HEIGHT: f32 = 40.0;
+    /// 弹框按钮字号与行内键帽间距（网页 `.exit-dialog__btn` 16px/700、gap 8px）。
+    pub(crate) const EXIT_BUTTON_SIZE: f32 = 16.0;
+    pub(crate) const EXIT_BUTTON_GAP: f32 = 8.0;
+    /// 按钮行右对齐内边距、按钮间距与贴底留白（网页 `.exit-dialog__actions`）。
+    pub(crate) const EXIT_ACTIONS_PAD_RIGHT: f32 = 48.0;
+    pub(crate) const EXIT_ACTIONS_PAD_BOTTOM: f32 = 48.0;
+    pub(crate) const EXIT_ACTIONS_GAP: f32 = 32.0;
+    /// 弹框淡入时长（网页 `exit-dialog-in` 120ms ease-out）。
+    pub(crate) const EXIT_FADE_IN: f32 = 0.12;
 }

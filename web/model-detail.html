@@ -10,7 +10,7 @@
 <script src="scale.js"></script>
 <script src="transition.js"></script>
 </head>
-<body>
+<body class="page-detail">
   <div class="bg" aria-hidden="true">
     <div class="bg__glow"></div>
     <div class="bg__floor"></div>
@@ -92,10 +92,10 @@
 
       // ---------- 查看区：拖拽旋转 + 滚轮缩放 ----------
       const viewer = document.getElementById('viewer');
-      // 初始为三分之四视角
+      // 初始为三分之四视角；全屏查看区更大，基准缩放同步提高
       let yaw = -28;
       let pitch = -14;
-      let zoom = 1.5;
+      let zoom = 2.4;
 
       // 详情页模型由 JS 直接写 transform，缩放与旋转合并应用
       const detailModel = buildModel(model);
@@ -143,7 +143,7 @@
       // 滚轮缩放，限制在可读范围内
       viewer.addEventListener('wheel', (event) => {
         event.preventDefault();
-        zoom = Math.max(0.8, Math.min(2.4, zoom * (event.deltaY > 0 ? 0.92 : 1.08)));
+        zoom = Math.max(1.2, Math.min(3.6, zoom * (event.deltaY > 0 ? 0.92 : 1.08)));
         renderDetailModel();
       }, { passive: false });
 

@@ -50,6 +50,8 @@ pub(crate) struct Fade {
     stable_frames: u8,
     /// 阻止跨页面继续按住的键立即触发驾驶、开火或确认。
     pub input_armed: bool,
+    /// 退出消息只写一次；黑场保持到进程结束，不再重复请求退出。
+    exit_written: bool,
 }
 
 impl Default for Fade {
@@ -60,6 +62,7 @@ impl Default for Fade {
             target: GameState::Index,
             stable_frames: 0,
             input_armed: true,
+            exit_written: false,
         }
     }
 }
@@ -135,6 +138,7 @@ impl Plugin for TransitionPlugin {
         app.insert_resource(SceneTarget(image))
             .init_resource::<Fade>()
             .init_resource::<RenderReadiness>()
+            .add_message::<AppExit>()
             .add_plugins(ExtractResourcePlugin::<RenderReadiness>::default())
             .add_systems(Startup, setup_output)
             .add_systems(PreUpdate, sync_physics)
@@ -143,7 +147,13 @@ impl Plugin for TransitionPlugin {
             .add_systems(Update, resize_target)
             .add_systems(
                 Update,
-                (report_asset_failure, return_to_index, advance).chain(),
+                (
+                    report_asset_failure,
+                    return_to_index,
+                    advance,
+                    rearm_input,
+                )
+                    .chain(),
             )
             .add_systems(OnEnter(GameState::Index), crate::gameplay::session::cleanup);
         app.sub_app_mut(RenderApp)
@@ -310,13 +320,25 @@ fn advance(world: &mut World) {
     let change = world.resource_mut::<Fade>().tick(delta);
     if change {
         let target = world.resource::<Fade>().target;
-        world.resource_mut::<NextState<GameState>>().set(target);
+        // 退出目标不发起页面切换，黑场即终点；其余目标照常切页并等待新页面就绪。
+        if target != GameState::ToExit {
+            world.resource_mut::<NextState<GameState>>().set(target);
+        }
         world
             .resource::<RenderReadiness>()
             .ready
             .store(false, Ordering::Release);
     }
     if world.resource::<Fade>().phase == Phase::Waiting && !change {
+        if world.resource::<Fade>().target == GameState::ToExit {
+            // 退出：黑场已达成，直接写退出消息（默认 runner 消费后结束进程），
+            // 不再做就绪检查，也不等待揭幕；输入保持锁定到进程结束。
+            if !world.resource::<Fade>().exit_written {
+                world.write_message(AppExit::Success);
+                world.resource_mut::<Fade>().exit_written = true;
+            }
+            return;
+        }
         let meshes = world
             .query::<&Mesh3d>()
             .iter(world)
@@ -340,16 +362,6 @@ fn advance(world: &mut World) {
             fade.phase = Phase::In;
         }
     }
-    if world.resource::<Fade>().phase == Phase::Idle
-        && !world.resource::<Fade>().input_armed
-        && world
-            .resource::<ButtonInput<KeyCode>>()
-            .get_pressed()
-            .next()
-            .is_none()
-    {
-        world.resource_mut::<Fade>().input_armed = true;
-    }
     let alpha = world.resource::<Fade>().alpha;
     if let Some(material) = world
         .get_resource::<CompositeMaterial>()
@@ -361,6 +373,16 @@ fn advance(world: &mut World) {
         {
             material.base_color = Color::linear_rgb(1.0 - alpha, 1.0 - alpha, 1.0 - alpha);
         }
+    }
+}
+
+/// 揭幕完成后释放输入锁：上一页按住的键全部松开才恢复游戏输入。
+fn rearm_input(keys: Res<ButtonInput<KeyCode>>, mut fade: ResMut<Fade>) {
+    if fade.phase == Phase::Idle
+        && !fade.input_armed
+        && keys.get_pressed().next().is_none()
+    {
+        fade.input_armed = true;
     }
 }
 
@@ -490,5 +512,30 @@ mod tests {
         assert!(!fade.accepts_input());
         fade.input_armed = true;
         assert!(fade.accepts_input());
+    }
+
+    /// 退出目标在黑场达成时直接写退出消息并终止过渡；不切页、不等揭幕。
+    #[test]
+    fn exit_target_exits_at_black_without_page_switch() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut world = World::new();
+        world.init_resource::<Fade>();
+        world.init_resource::<NextState<GameState>>();
+        world.init_resource::<Time>();
+        world.init_resource::<ButtonInput<KeyCode>>();
+        world.init_resource::<RenderReadiness>();
+        world.init_resource::<Messages<AppExit>>();
+        assert!(world.resource_mut::<Fade>().begin(GameState::ToExit));
+        // 600ms 淡出完成，Out → Waiting（全黑）。
+        assert!(world.resource_mut::<Fade>().tick(FADE_SECONDS));
+        assert_eq!(world.resource::<Fade>().phase, Phase::Waiting);
+        world.run_system_once(advance).unwrap();
+        assert_eq!(world.resource::<Messages<AppExit>>().len(), 1);
+        // 退出不发起页面切换，黑场保持到进程结束。
+        assert!(matches!(
+            world.resource::<NextState<GameState>>(),
+            NextState::Unchanged
+        ));
+        assert_eq!(world.resource::<Fade>().phase, Phase::Waiting);
     }
 }

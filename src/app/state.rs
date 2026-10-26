@@ -21,6 +21,8 @@ pub(crate) enum GameState {
     GalleryToIndex,
     /// Esc 返回首页，先保持当前场景并渐出。
     ToIndex,
+    /// 首页退出确认后：淡出至黑场即退出进程，不进入任何页面（见 design.md 退出链路）。
+    ToExit,
     /// 游戏内：黑幕淡入完成后的正常 gameplay。
     InGame,
 }

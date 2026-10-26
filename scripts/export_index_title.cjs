@@ -21,8 +21,8 @@ const { pathToFileURL } = require('node:url');
       return { width:r.width, height:r.height };
     });
     assert(Math.abs(bounds.width - 736.046875) < 1, '标题字宽异常：请确认 MiSans 已实际加载');
-    fs.mkdirSync('assets/index', { recursive:true });
-    await page.screenshot({ path:'assets/index/title.png', omitBackground:true,
+    fs.mkdirSync('assets/image/index', { recursive:true });
+    await page.screenshot({ path:'assets/image/index/title.png', omitBackground:true,
       clip:{ x:0, y:0, width:Math.ceil(bounds.width+160), height:Math.ceil(bounds.height+130) } });
     console.log(bounds);
   } finally { await browser.close(); }

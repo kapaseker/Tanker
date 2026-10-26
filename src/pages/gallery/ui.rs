@@ -208,7 +208,7 @@ pub(super) fn spawn(
                     });
             });
             // 统一标题栏控件：头部、ESC 返回框、标题与全宽底部分割线一次生成。
-            widgets::spawn_title_bar(root, &font, labels::TITLE);
+            widgets::spawn_title_bar(root, &font, labels::TITLE, widgets::TitleBarIcon::Back);
             widgets::spawn_frame_corner(
                 root,
                 CornerOrientation::TopLeft,

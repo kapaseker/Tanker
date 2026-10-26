@@ -16,3 +16,6 @@ pub(crate) const KEY_ENTER: &str = "ENTER";
 pub(crate) const BACK_ARROW: &str = "←";
 /// 返回键帽标识，不随语言翻译。
 pub(crate) const KEY_ESCAPE: &str = "ESC";
+/// 退出弹框键帽：确认与取消按钮的快捷键标识，不随语言翻译。
+pub(crate) const KEY_Y: &str = "Y";
+pub(crate) const KEY_N: &str = "N";

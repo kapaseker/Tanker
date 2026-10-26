@@ -15,6 +15,8 @@ pub(crate) mod gallery {
 
 /// 首页可见文案；品牌标题已烘焙在 PNG 中，不在此重复定义。
 pub(crate) mod index {
+    /// 标题栏页面标题（design.md：首页常驻 88px 标题栏，显示“主菜单”）。
+    pub(crate) const TITLE: &str = "主菜单";
     /// 与菜单交互顺序一致的操作标签。
     pub(crate) const ACTIONS: [&str; 2] = ["开始游戏", "模型画廊"];
     /// 方向键提示后的动作说明。
@@ -23,4 +25,8 @@ pub(crate) mod index {
     pub(crate) const HINT_CONFIRM: &str = "确认";
     /// 版本文案分两部分：前缀为固定文字，版本号由 Cargo 从包配置注入，避免在此重复维护。
     pub(crate) const BUILD: &str = concat!("版本 ", env!("CARGO_PKG_VERSION"));
+    /// 退出确认弹框标题与按钮标签。
+    pub(crate) const EXIT_TITLE: &str = "确认退出游戏吗？";
+    pub(crate) const EXIT_CANCEL: &str = "取消";
+    pub(crate) const EXIT_CONFIRM: &str = "确认";
 }

@@ -112,6 +112,54 @@ pub(super) fn run_index_scenario(
         update(app, STEP, None)?;
     }
     capture(app, &options.output.join("keyboard-focus.png"))?;
+    // 退出确认弹框：Esc 打开（初始选中确认）→ ← 切取消 → Esc 取消关闭。
+    let dialog_count = |app: &mut App| {
+        app.world_mut()
+            .query::<&crate::pages::index::ExitDialog>()
+            .iter(app.world())
+            .count()
+    };
+    update(app, STEP, Some(5))?;
+    update(app, STEP, None)?;
+    ensure(dialog_count(app) == 1, "Esc 未打开退出确认弹框")?;
+    ensure(
+        app.world_mut()
+            .query::<&crate::pages::index::ExitDialog>()
+            .single(app.world())
+            .unwrap()
+            .selection
+            == crate::pages::index::ExitDialogSelection::Confirm,
+        "弹框初始应选中确认",
+    )?;
+    for _ in 0..12 {
+        update(app, STEP, None)?;
+    }
+    capture(app, &options.output.join("exit-dialog.png"))?;
+    update(app, STEP, Some(15))?;
+    for _ in 0..14 {
+        update(app, STEP, None)?;
+    }
+    ensure(
+        app.world_mut()
+            .query::<&crate::pages::index::ExitDialog>()
+            .single(app.world())
+            .unwrap()
+            .selection
+            == crate::pages::index::ExitDialogSelection::Cancel,
+        "← 未切换选中到取消",
+    )?;
+    capture(app, &options.output.join("exit-dialog-cancel.png"))?;
+    update(app, STEP, Some(5))?;
+    update(app, STEP, None)?;
+    for _ in 0..12 {
+        update(app, STEP, None)?;
+    }
+    ensure(dialog_count(app) == 0, "Esc 未关闭弹框")?;
+    ensure(
+        app.world().resource::<Fade>().phase == Phase::Idle,
+        "取消弹框不应触发页面过渡",
+    )?;
+    report.push_str("退出确认弹框：打开/切换选中/取消关闭断言通过；已保存 exit-dialog*.png\n");
     for (width, height) in [
         (1920, 1080),
         (901, 720),

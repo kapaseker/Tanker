@@ -116,7 +116,8 @@
       if (!titles[name] || url.origin !== location.origin) return;
       savedFocus = document.activeElement;
       destination = url.href;
-      title.textContent = titles[name];
+      // 详情页淡出后显示的是具体型号而非通用名，预览会闪现"模型详情"，故不替换标题
+      if (name !== 'model-detail.html') title.textContent = titles[name];
       back.setAttribute('aria-label', '取消页面切换');
       // 先读取当前遮罩亮度，再改变阶段，防止 CSS 将透明度提前设为全黑。
       fade(1, () => {

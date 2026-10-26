@@ -720,25 +720,31 @@
     position: absolute;
   }
 
-  /* ---------- 模型详情 ---------- */
+  /* ---------- 模型详情：沉浸式全屏查看 ---------- */
+  /* 查看区铺满标题栏以下的整个窗口，网格背景不再收在带边框的盒子里 */
   .detail {
-    width: 100%;
-    /* 与画廊同为 1152px 内容容器，查看区与规格区边缘对齐 */
-    max-width: 1152px;
-    margin: 0 auto;
-    /* 预留固定标题栏高度，避免内容被遮挡 */
-    padding-top: 88px;
+    position: fixed;
+    inset: 88px 0 0;
+    /* 高于空 footer（z1），保证底部边缘的拖拽与滚轮落在查看区上；
+       版本号同为 z2 但 DOM 在后，仍绘制在网格之上 */
+    z-index: 2;
+  }
+
+  /* 详情页隐藏地面透视图层，保留查看区单一全屏平面网格，避免双重网格干扰 */
+  .page-detail .bg__floor {
+    display: none;
   }
 
   /* 查看区：指针拖拽旋转（yaw/pitch），滚轮缩放 */
   .viewer {
-    position: relative;
-    height: 346px;
+    position: absolute;
+    inset: 0;
     perspective: 1000px;
     cursor: grab;
     touch-action: none;
-    border: 1px solid var(--line);
-    background-color: var(--dark);
+    /* 禁用文本选择：否则拖拽会被浏览器当作选择拖拽，拖到视口边缘时
+       选区无法继续扩展，光标变成 not-allowed 并覆盖 grabbing */
+    user-select: none;
     background-image:
       linear-gradient(rgba(200, 219, 177, 0.05) 1px, transparent 1px),
       linear-gradient(90deg, rgba(200, 219, 177, 0.05) 1px, transparent 1px);
@@ -749,20 +755,20 @@
     cursor: grabbing;
   }
 
-  /* 三维尺寸信息：名称 + 宽/高/深三组读数 */
+  /* 三维尺寸读数：左上角浮层，与标题栏左内边距对齐；不拦截拖拽 */
   .specs {
+    position: absolute;
+    top: 32px;
+    left: 64px;
     display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    gap: 24px 56px;
-    margin-top: 32px;
-    padding-top: 24px;
-    border-top: 1px solid var(--line);
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+    pointer-events: none;
   }
 
   .specs__id {
-    flex: 1 1 240px;
-    min-width: 0;
+    flex: none;
   }
 
   .spec {

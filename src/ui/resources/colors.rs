@@ -91,6 +91,12 @@ pub(crate) mod index {
     pub(crate) const SEPARATOR: Color = with_alpha(ON_SURFACE, 0.028);
     /// 角标边框。
     pub(crate) const CORNER: Color = with_alpha(PRIMARY, 0.14);
+    /// 退出确认弹框遮罩：网页 rgba(15,14,12,0.6)。
+    pub(crate) const EXIT_OVERLAY: Color = with_alpha(BACKGROUND, 0.6);
+    /// 弹框面板底色：surface-raised #1b1913。
+    pub(crate) const EXIT_PANEL: Color = Color::srgb_u8(27, 25, 19);
+    /// 弹框面板与按钮边框：暗色细边，随选中态与薄荷插值。
+    pub(crate) const EXIT_OUTLINE: Color = Color::srgb_u8(48, 46, 41);
 }
 
 /// Bevy 的 Alpha trait 不能用于常量求值；本文件的颜色均明确使用 sRGB。

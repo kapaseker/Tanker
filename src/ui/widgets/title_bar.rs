@@ -4,7 +4,7 @@
 //! ESC / Tab 聚焦 + Enter、220ms 颜色过渡）内建于控件，激活时发 `TitleBarBackActivated`
 //! 消息，跳转去向由页面决定（见 ADR-0004）。
 
-use super::keycap::{Keycap, spawn_keycap};
+use super::keycap::spawn_keycap;
 use super::{eased, text_font};
 use crate::ui::{
     font::UiFont,
@@ -31,6 +31,23 @@ pub(crate) struct TitleBarBack;
 #[derive(Component)]
 pub(crate) struct TitleBarBackArrow;
 
+/// 电源符号图像 marker（首页变体）；与箭头同位同尺寸语义，随高亮进度染色。
+#[derive(Component)]
+pub(crate) struct TitleBarBackPower;
+
+/// 标题栏返回框键帽 marker；interaction 只重着色带此标记的键帽，
+/// 页面上其它键帽（提示行、弹框）由各自页面驱动，互不串扰。
+#[derive(Component)]
+pub(crate) struct TitleBarKeycap;
+
+/// 返回框左侧图标：内容页用返回箭头，首页用电源符号（design.md 标题栏规格）。
+pub(crate) enum TitleBarIcon {
+    /// 返回箭头，文本字形。
+    Back,
+    /// 电源符号。Bevy UI 无 SVG、MiSans 缺 U+23FB 字形，故用预渲染 PNG 染色。
+    Power(Handle<Image>),
+}
+
 /// 返回框被激活（点击、ESC 或焦点下 Enter）；控件只报告事件，页面决定去向与过渡。
 #[derive(Message)]
 pub(crate) struct TitleBarBackActivated;
@@ -45,15 +62,24 @@ pub(crate) struct TitleBarState {
     progress: f32,
     /// 左键按下是否发生在返回框内；拖出取消。
     pressed: bool,
-    /// Tab 聚焦返回框；任意左键按下清除。
-    focus: bool,
+    /// Tab 聚焦返回框；任意左键按下清除；页面据此断言弹框取消后的焦点归还。
+    pub(crate) focus: bool,
+}
+
+impl TitleBarState {
+    /// 页面强制设置键盘焦点：弹框打开期间吞掉 Tab 记下的焦点，取消后归还。
+    pub(crate) fn set_focus(&mut self, focused: bool) {
+        self.focus = focused;
+    }
 }
 
 /// 生成统一标题栏：全屏宽头部（高 `dims::HEIGHT`，底边框即分割线）+ ESC 返回框 + 页面标题。
+/// `icon` 决定返回框左侧图形：返回箭头或电源符号，几何与交互完全一致。
 pub(crate) fn spawn_title_bar(
     parent: &mut RelatedSpawnerCommands<ChildOf>,
     font: &UiFont,
     title: &str,
+    icon: TitleBarIcon,
 ) {
     parent
         .spawn((
@@ -96,13 +122,33 @@ pub(crate) fn spawn_title_bar(
                     BorderColor::all(palette::OUTLINE),
                 ))
                 .with_children(|back| {
-                    back.spawn((
-                        TitleBarBackArrow,
-                        Text::new(strings::BACK_ARROW),
-                        text_font(font, dims::BACK_ARROW_SIZE, 400.0),
-                        TextColor(colors::ON_SURFACE),
-                    ));
-                    spawn_keycap(back, font, strings::KEY_ESCAPE);
+                    match icon {
+                        TitleBarIcon::Back => {
+                            back.spawn((
+                                TitleBarBackArrow,
+                                Text::new(strings::BACK_ARROW),
+                                text_font(font, dims::BACK_ARROW_SIZE, 400.0),
+                                TextColor(colors::ON_SURFACE),
+                            ));
+                        }
+                        TitleBarIcon::Power(image) => {
+                            // 与箭头同视觉位置：固定 16px 方形，弹性布局中随内容对齐。
+                            back.spawn((
+                                TitleBarBackPower,
+                                ImageNode {
+                                    image,
+                                    color: colors::ON_SURFACE,
+                                    ..default()
+                                },
+                                Node {
+                                    width: px(dims::POWER_ICON_SIZE),
+                                    height: px(dims::POWER_ICON_SIZE),
+                                    ..default()
+                                },
+                            ));
+                        }
+                    }
+                    spawn_keycap(back, font, strings::KEY_ESCAPE, TitleBarKeycap);
                 });
             let (title_left, title_top, title_width, title_height) = dims::TITLE_RECT;
             header.spawn((
@@ -141,8 +187,13 @@ pub(crate) fn interaction(
     // 返回框内容（箭头/键帽）与框节点用 Without 互斥，避免同时可变 BorderColor 触发 B0001。
     mut contents: Query<
         (&mut TextColor, Option<&mut BorderColor>),
-        (Or<(With<TitleBarBackArrow>, With<Keycap>)>, Without<TitleBarBack>),
+        (
+            Or<(With<TitleBarBackArrow>, With<TitleBarKeycap>)>,
+            Without<TitleBarBack>,
+        ),
     >,
+    // 电源符号图像（首页变体）：无 TextColor，单独染色。
+    mut power_icons: Query<&mut ImageNode, With<TitleBarBackPower>>,
     mut activated: MessageWriter<TitleBarBackActivated>,
 ) {
     if boxes.is_empty() {
@@ -187,5 +238,9 @@ pub(crate) fn interaction(
         if let Some(mut border) = border {
             *border = BorderColor::all(palette::OUTLINE.mix(&colors::KBD_BORDER_ACTIVE, t));
         }
+    }
+    // 电源符号与箭头共用同一高亮节奏：普通 on-surface，激活后 on-primary 深色。
+    for mut image in &mut power_icons {
+        image.color = colors::ON_SURFACE.mix(&colors::ON_PRIMARY, t);
     }
 }

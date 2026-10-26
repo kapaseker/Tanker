@@ -52,6 +52,9 @@ avian3d = { version = "0.8", default-features = false, features = ["3d", "parry-
 # 开局随机摆放敌人；复用依赖树中已锁定的随机库。
 fastrand = "2"
 
+# 字体光学度量（hhea/OS2 表）解析；与 parley 传递依赖同版本，零新增编译成本。
+read-fonts = "0.41"
+
 # Bevy 官方推荐的 dev 性能配置：自身轻度优化，依赖全量优化，保证运行流畅
 [profile.dev]
 opt-level = 1

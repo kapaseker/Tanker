@@ -65,6 +65,8 @@ impl Scenario {
             (Self::Index | Self::Gallery, 5) => &[KeyCode::Escape],
             (Self::Index | Self::Gallery, 7) => &[KeyCode::Tab],
             (Self::Index | Self::Gallery, 8) => &[KeyCode::Tab, KeyCode::ShiftLeft],
+            // 首页退出确认弹框：← 在两按钮间切换选中。
+            (Self::Index, 15) => &[KeyCode::ArrowLeft],
             (Self::Gallery, 11) => &[KeyCode::End],
             (Self::Gallery, 12) => &[KeyCode::Home],
             (Self::Gallery, 13) => &[KeyCode::PageDown],
