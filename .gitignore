@@ -15,6 +15,8 @@
 *.swp
 *~
 .trae
+# Trae HTML 分享/预览功能生成的快照包（web/ 源码的派生物）
+.trae-html-share-packages/
 
 # ===== 操作系统 =====
 .DS_Store
