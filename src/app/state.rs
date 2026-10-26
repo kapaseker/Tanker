@@ -1,4 +1,4 @@
-//! 首页、模型画廊与对局共用的页面状态。
+//! 首页、模型画廊、模型详情与对局共用的页面状态。
 
 use bevy::prelude::States;
 
@@ -19,6 +19,12 @@ pub(crate) enum GameState {
     Gallery,
     /// 画廊渐出，黑场时回到首页。
     GalleryToIndex,
+    /// 画廊内容渐出，黑场交接到单模型详情。
+    GalleryToDetail,
+    /// 可拖拽旋转与缩放的真实模型详情。
+    Detail,
+    /// 详情渐出，黑场返回原画廊位置。
+    DetailToGallery,
     /// Esc 返回首页，先保持当前场景并渐出。
     ToIndex,
     /// 首页退出确认后：淡出至黑场即退出进程，不进入任何页面（见 design.md 退出链路）。

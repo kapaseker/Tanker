@@ -40,6 +40,13 @@ pub(crate) mod gallery {
     pub(crate) const NAME_ACTIVE: Color = Color::srgb_u8(234, 244, 218);
 }
 
+/// 详情平面网格配色，在背景材质的 sRGB 混色中使用。
+pub(crate) mod detail {
+    /// 原型 rgba(200,219,177,0.05)，低对比避免干扰模型轮廓。
+    pub(crate) const GRID: bevy::prelude::Color =
+        bevy::prelude::Color::srgba(200.0 / 255.0, 219.0 / 255.0, 177.0 / 255.0, 0.05);
+}
+
 /// 首页专用配色与渲染补偿值；保留当前实际画面，不套用通用透明度。
 pub(crate) mod index {
     use super::*;

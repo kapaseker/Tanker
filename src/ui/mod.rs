@@ -4,4 +4,4 @@ pub(crate) mod resources;
 pub(crate) mod scaling;
 pub(crate) mod widgets;
 
-pub(crate) use scaling::zoom;
+pub(crate) use scaling::{logical_viewport, zoom};

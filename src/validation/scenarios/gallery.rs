@@ -132,9 +132,9 @@ pub(super) fn run_gallery_scenario(
                 "模型未按时间自转",
             )?;
             capture(app, &options.output.join("gallery-rotation.png"))?;
-            // 非交互卡片点击和 Enter 不打开页面，也不停止自转。
+            // 空白区域点击和无焦点 Enter 不打开页面，也不停止自转。
             crate::pages::gallery::view_mut(app.world_mut()).pointer =
-                Some(Vec2::new(120.0, 430.0));
+                Some(Vec2::new(1100.0, 430.0));
             app.world_mut().resource_mut::<MenuMouse>().0 = true;
             update(app, STEP, None)?;
             app.world_mut().resource_mut::<MenuMouse>().0 = false;
@@ -142,7 +142,7 @@ pub(super) fn run_gallery_scenario(
             update(app, STEP, None)?;
             ensure(
                 app.world().resource::<Fade>().phase == Phase::Idle,
-                "卡片确认不应发起页面跳转",
+                "空白区域确认不应发起页面跳转",
             )?;
             crate::pages::gallery::view_mut(app.world_mut()).pointer = None;
             for (width, height) in [(640, 720), (1920, 720), (1280, 720)] {
@@ -174,7 +174,7 @@ pub(super) fn run_gallery_scenario(
                 )?;
             }
             report.push_str(
-                "滚轮、PageDown、Home/End、悬停、自转与三种窗口尺寸已验证；卡片确认无动作\n",
+                "滚轮、PageDown、Home/End、悬停、自转与三种窗口尺寸已验证；空白区域确认无动作\n",
             );
         }
         if cycle == 2 {

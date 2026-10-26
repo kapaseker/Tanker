@@ -56,7 +56,11 @@ fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
     // 反解 perspective(520px) rotateX(66deg)，保持与 CSS 的地面网格坐标一致。
     let dy=pixel.y-size.y*1.14;
     let denom=cos(1.1519173)+dy*sin(1.1519173)/520.0;
-    if denom>0.0 {
+    // 详情复用背景氛围，平面网格替换透视地面；W 为逻辑像素间距。
+    if cubes.z<=0.0 && cubes.w>0.0 {
+        let grid=min(fract(pixel.x/cubes.w)*cubes.w,fract((pixel.y-cubes.y)/cubes.w)*cubes.w);
+        color=over(color,colors.grid.rgb,colors.grid.a*select(0.0,1.0,grid<1.0 && pixel.y>=cubes.y));
+    } else if denom>0.0 {
         let y=dy/denom;
         let x=(pixel.x-size.x*0.5)*(1.0-y*sin(1.1519173)/520.0)+size.x*0.72;
         if y<=0.0 && y>=-size.y*0.56 {

@@ -1,6 +1,6 @@
-//! 画廊模型预览：每张卡片独占的模型、相机与离屏纹理，只做纯视觉组装。
-use super::{ENTRIES, GalleryEntity};
-use crate::{tank::{track, visual}, ui::resources::colors};
+//! 画廊与详情共用的真实模型目录、视觉组装、离屏纹理和几何测量。
+use crate::tank::visual;
+use crate::{tank::track, ui::resources::colors};
 use bevy::{
     asset::LoadState,
     camera::{RenderTarget, ScalingMode, primitives::MeshAabb, visibility::RenderLayers},
@@ -11,14 +11,80 @@ use bevy::{
     world_serialization::{WorldInstance, WorldInstanceSpawner},
 };
 
+/// 分类索引与页面顺序一致；整车显示其车身型号。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Entry {
+    pub category: usize,
+    pub path: &'static str,
+    pub enemy: bool,
+}
+impl Entry {
+    /// 型号严格取主资产的父目录，排除扩展名和车型目录。
+    pub fn name(self) -> &'static str {
+        self.path.rsplit('/').nth(1).unwrap()
+    }
+}
+
+/// 当前已接入的真实资源，不枚举 ADR 中的预留型号或炮管附属子弹。
+pub(crate) const ENTRIES: [Entry; 8] = [
+    Entry {
+        category: 0,
+        path: visual::PLAYER_BARREL,
+        enemy: false,
+    },
+    Entry {
+        category: 0,
+        path: visual::ENEMY_BARREL,
+        enemy: true,
+    },
+    Entry {
+        category: 1,
+        path: "tank/tracks/player/cleat/track.vox",
+        enemy: false,
+    },
+    Entry {
+        category: 1,
+        path: "tank/tracks/enemy/crawl/track.vox",
+        enemy: true,
+    },
+    Entry {
+        category: 2,
+        path: "tank/bodies/player/anvil/body.vox",
+        enemy: false,
+    },
+    Entry {
+        category: 2,
+        path: "tank/bodies/enemy/carapace/body.vox",
+        enemy: true,
+    },
+    Entry {
+        category: 3,
+        path: "tank/bodies/player/anvil/body.vox",
+        enemy: false,
+    },
+    Entry {
+        category: 3,
+        path: "tank/bodies/enemy/carapace/body.vox",
+        enemy: true,
+    },
+];
+
+/// 预览专用实体；页面退出时统一清理，避免混入玩法。
+#[derive(Component)]
+pub(crate) struct PreviewEntity;
+
 /// 一张卡片独占的模型、相机与纹理；尺寸在未旋转的模型空间测量。
 pub(crate) struct Preview {
     pub(crate) root: Entity,
-    pub(super) content: Entity,
-    pub(super) camera: Entity,
+    /// 实际资源目录项，详情单项不依赖画廊中的纹理下标。
+    pub(crate) entry: Entry,
+    /// 适配完整旋转包络所需的球半径，供详情按视口纵横比取景。
+    pub(crate) radius: f32,
+    pub(crate) content: Entity,
+    pub(crate) camera: Entity,
     pub(crate) image: Handle<Image>,
-    pub(super) size: Option<Vec3>,
-    pub(super) error: Option<String>,
+    pub(crate) size: Option<Vec3>,
+    pub(crate) error: Option<String>,
     /// 场景根就绪后仍等待网格后代稳定，避免插件延迟生成的节点漏分层或漏计尺寸。
     mesh_count: usize,
     stable_frames: u8,
@@ -31,16 +97,26 @@ pub(crate) struct Previews {
 }
 
 /// 每项独占渲染层；整车只添加视觉子树，不使用 Tank/EnemyTank 标记。
-pub(super) fn spawn_previews(
+pub(crate) fn spawn_previews(
     mut commands: Commands,
     assets: Res<AssetServer>,
     mut images: ResMut<Assets<Image>>,
 ) {
+    spawn(&mut commands, &assets, &mut images, &ENTRIES);
+}
+
+/// 画廊传完整清单，详情只传当前项；两者共用组装与就绪协议。
+pub(crate) fn spawn(
+    commands: &mut Commands,
+    assets: &AssetServer,
+    images: &mut Assets<Image>,
+    entries: &[Entry],
+) {
     let mut items = Vec::new();
-    for (index, entry) in ENTRIES.iter().enumerate() {
+    for (index, entry) in entries.iter().enumerate() {
         let layer = RenderLayers::layer(index + 1);
         let root = commands
-            .spawn((GalleryEntity, Transform::default(), Visibility::Inherited))
+            .spawn((PreviewEntity, Transform::default(), Visibility::Inherited))
             .id();
         let content = commands
             .spawn((Transform::default(), Visibility::Inherited))
@@ -60,8 +136,8 @@ pub(super) fn spawn_previews(
         }
         if entry.category == 3 {
             visual::mount_barrel(
-                &mut commands,
-                &assets,
+                commands,
+                assets,
                 content,
                 if entry.enemy {
                     visual::ENEMY_BARREL
@@ -78,7 +154,7 @@ pub(super) fn spawn_previews(
         ));
         let camera = commands
             .spawn((
-                GalleryEntity,
+                PreviewEntity,
                 Camera3d::default(),
                 Camera {
                     order: -3,
@@ -106,6 +182,8 @@ pub(super) fn spawn_previews(
             .id();
         items.push(Preview {
             root,
+            entry: *entry,
+            radius: 0.0,
             content,
             camera,
             image,
@@ -122,7 +200,7 @@ pub(super) fn spawn_previews(
 }
 
 /// 层级展开时累计局部变换，显隐沿父链传播；只显示的网格参与尺寸计算。
-pub(super) fn model_nodes(world: &World, content: Entity) -> Vec<(Entity, Affine3A, bool)> {
+pub(crate) fn model_nodes(world: &World, content: Entity) -> Vec<(Entity, Affine3A, bool)> {
     let mut result = Vec::new();
     let mut pending = vec![(content, Affine3A::IDENTITY, true)];
     while let Some((entity, parent, visible)) = pending.pop() {
@@ -140,7 +218,7 @@ pub(super) fn model_nodes(world: &World, content: Entity) -> Vec<(Entity, Affine
 }
 
 /// 等待真正的依赖及场景实例；初次就绪时设置所有后代的层并测量几何。
-pub(super) fn prepare_previews(world: &mut World) {
+pub(crate) fn prepare_previews(world: &mut World) {
     let Some(mut previews) = world.remove_resource::<Previews>() else {
         return;
     };
@@ -175,7 +253,7 @@ pub(super) fn prepare_previews(world: &mut World) {
                 error = Some(failure.0.clone());
             }
         }
-        if ENTRIES[index].category == 1 || ENTRIES[index].category == 3 {
+        if preview.entry.category == 1 || preview.entry.category == 3 {
             ready &= world
                 .get::<track::TracksValidated>(preview.content)
                 .is_some();
@@ -184,7 +262,7 @@ pub(super) fn prepare_previews(world: &mut World) {
             error.get_or_insert("模型加载超过30秒".into());
         }
         if let Some(error) = error {
-            error!("画廊模型加载失败：{}：{error}", ENTRIES[index].path);
+            error!("模型预览加载失败：{}：{error}", preview.entry.path);
             preview.error = Some(error);
             continue;
         }
@@ -237,12 +315,12 @@ pub(super) fn prepare_previews(world: &mut World) {
         }
         if !low.is_finite() || !high.is_finite() {
             preview.error = Some("模型没有可见网格".into());
-            error!("画廊模型没有可见网格：{}", ENTRIES[index].path);
+            error!("模型预览没有可见网格：{}", preview.entry.path);
             continue;
         }
         let size = high - low;
         // 整车保留与游戏一致的 body 根原点，炮管不能把旋转轴拉向车头。
-        let pivot = if ENTRIES[index].category == 3 {
+        let pivot = if preview.entry.category == 3 {
             Vec3::ZERO
         } else {
             (low + high) * 0.5
@@ -260,10 +338,11 @@ pub(super) fn prepare_previews(world: &mut World) {
                 };
             }
         }
+        preview.radius = radius;
         preview.size = Some(size);
         info!(
-            "画廊模型就绪：{}，长宽高 {:.1}×{:.1}×{:.1} 米",
-            ENTRIES[index].name(),
+            "模型预览就绪：{}，长宽高 {:.1}×{:.1}×{:.1} 米",
+            preview.entry.name(),
             size.x,
             size.z,
             size.y
@@ -273,7 +352,11 @@ pub(super) fn prepare_previews(world: &mut World) {
 }
 
 /// 相位只由时间决定，各卡片错开，履带轮组保持静止安装姿态。
-pub(super) fn spin(time: Res<Time>, previews: Res<Previews>, mut transforms: Query<&mut Transform>) {
+pub(crate) fn spin(
+    time: Res<Time>,
+    previews: Res<Previews>,
+    mut transforms: Query<&mut Transform>,
+) {
     for (index, preview) in previews.items.iter().enumerate() {
         if preview.size.is_some() {
             if let Ok(mut transform) = transforms.get_mut(preview.root) {
@@ -283,4 +366,98 @@ pub(super) fn spin(time: Res<Time>, previews: Res<Previews>, mut transforms: Que
             }
         }
     }
+}
+
+/// 离屏验收读取真实子树，检查轮组、相位、渲染隔离和行为隔离。
+pub(crate) fn validate(world: &World) -> Result<String, String> {
+    let previews = world.resource::<Previews>();
+    let mut report = String::new();
+    for (index, preview) in previews.items.iter().enumerate() {
+        if let Some(error) = &preview.error {
+            return Err(format!("{}：{error}", preview.entry.path));
+        }
+        let size = preview.size.ok_or("预览尺寸尚未就绪")?;
+        let nodes = model_nodes(world, preview.content);
+        let mut visible_phases = 0;
+        let mut wheels = 0;
+        for (entity, _, visible) in nodes {
+            if world.get::<crate::gameplay::player::Tank>(entity).is_some()
+                || world
+                    .get::<crate::gameplay::enemy::EnemyTank>(entity)
+                    .is_some()
+                || world.get::<avian3d::prelude::RigidBody>(entity).is_some()
+            {
+                return Err("预览混入游戏行为或物理组件".into());
+            }
+            if world.get::<Mesh3d>(entity).is_some()
+                && world.get::<RenderLayers>(entity) != Some(&RenderLayers::layer(index + 1))
+            {
+                return Err(format!(
+                    "模型网格渲染层不匹配：{} {entity:?}",
+                    preview.entry.path
+                ));
+            }
+            if let Some(name) = world.get::<Name>(entity) {
+                visible_phases += usize::from(
+                    visible
+                        && name.as_str().starts_with("track_")
+                        && world.get::<WorldAssetRoot>(entity).is_some(),
+                );
+                wheels += usize::from(
+                    name.as_str().starts_with("wheel_")
+                        && world.get::<WorldAssetRoot>(entity).is_some(),
+                );
+            }
+        }
+        if matches!(preview.entry.category, 1 | 3)
+            && (visible_phases != 2 || wheels != if preview.entry.enemy { 12 } else { 14 })
+        {
+            return Err(format!("履带可见相位/轮组异常：{visible_phases}/{wheels}"));
+        }
+        if preview.entry.category == 3 {
+            let expected = if preview.entry.enemy { 9.0 } else { 10.5 };
+            if (size.x - expected).abs() > 0.01 {
+                return Err(format!("整车视觉长度异常：{}", size.x));
+            }
+            if world.get::<Transform>(preview.content).unwrap().translation != Vec3::ZERO {
+                return Err("整车旋转轴偏离 body 根节点原点".into());
+            }
+            report.push_str("整车旋转轴：body 根节点原点；不按组合包围盒重新居中\n");
+        }
+        report.push_str(&format!(
+            "{}：{}，长宽高 {:.1}×{:.1}×{:.1} 米；可见相位 {visible_phases}；轮 {wheels}\n",
+            preview.entry.path,
+            preview.entry.name(),
+            size.x,
+            size.z,
+            size.y
+        ));
+    }
+    Ok(report)
+}
+
+/// 错误项也结束等待，页面显示失败并仍可返回。
+pub(crate) fn assets_ready(world: &World) -> bool {
+    world.get_resource::<Previews>().is_some_and(|previews| {
+        previews
+            .items
+            .iter()
+            .all(|p| p.size.is_some() || p.error.is_some())
+    })
+}
+
+/// 页面黑场交接时释放预览实体与专用动态纹理。
+pub(crate) fn cleanup(
+    mut commands: Commands,
+    roots: Query<Entity, With<PreviewEntity>>,
+    previews: Res<Previews>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    for root in &roots {
+        commands.entity(root).despawn();
+    }
+    for preview in &previews.items {
+        images.remove(preview.image.id());
+    }
+    commands.remove_resource::<Previews>();
 }

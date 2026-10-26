@@ -23,3 +23,9 @@
 - 消息读取可能比控件写入晚一帧（同在 Update，系统顺序未定）；页面过渡有 2000 帧量级余量，无实际影响。
 - `colors::title_bar::OUTLINE` 当前与 `colors::gallery::OUTLINE` 同值但独立演化，避免跨页面共享语义被单页改动劫持。
 - 验证：`cargo check`/`cargo test`（63 项，含返回框按下/松开配对的控件化测试）通过；`--offscreen-test gallery` 退出码 0，`gallery-top.png` 标题栏外观与改动前一致，`gallery-back-hover.png` 返回框高亮与键帽描边正常，过渡与三种窗口宽度检查通过。
+
+## 2026-10-26：多控件页面的键盘焦点
+
+画廊卡片成为可操作控件后，`TitleBarState.external_navigation` 允许页面统一分配 Tab/Enter 焦点；标题栏仍负责 Esc 与鼠标返回，独立页面默认保持原有行为。画廊输入先于标题栏交互执行，避免同一 Enter 同时打开详情和返回首页。页面退出时释放焦点归属。该协议只表达控件交互所有权，不引入页面或应用状态依赖。
+
+常驻 chrome 每帧按 `Fade.accepts_input()` 更新 `TitleBarActive`，可见性与可操作性分开处理。锁定时控件清除按下残留，避免过渡中按下、揭幕后松开的点击延迟生效；页面仍对导航请求检查 Fade。

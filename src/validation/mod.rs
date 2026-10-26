@@ -38,6 +38,13 @@ struct MenuMouse(bool);
 #[derive(Resource)]
 struct WheelTarget(Entity);
 
+/// 故障场景只允许这一条明确指定的缺失资源；其它加载错误仍立即失败。
+#[derive(Resource)]
+struct ExpectedAssetFailure {
+    path: String,
+    seen: bool,
+}
+
 /// 每帧记录真实游戏事件与子弹轨迹，防止只看最终状态造成假通过。
 #[derive(Resource, Default)]
 struct Evidence {

@@ -258,7 +258,7 @@ pub(crate) struct IndexPalette {
     warm: Vec4,
     mint: Vec4,
     /// 网格、扫描线、暗角与方块阴影。
-    grid: Vec4,
+    pub(crate) grid: Vec4,
     scan: Vec4,
     vignette: Vec4,
     shadow: Vec4,
@@ -297,6 +297,7 @@ pub(crate) struct IndexBackground {
     /// XY 为逻辑视口尺寸，Z 为秒数，W 为装饰漂浮距离（逻辑像素）。
     #[uniform(0)]
     pub(crate) viewport: Vec4,
+    /// XYZ 为装饰方块位置与宽度；Z=0 且 W>0 时改画平面网格（间距 W，顶部 Y）。
     #[uniform(1)]
     pub(crate) cubes: Vec4,
     /// 静态配色只在创建材质时由 UI 常量构建。

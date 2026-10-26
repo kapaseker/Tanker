@@ -30,3 +30,8 @@ pub(crate) mod index {
     pub(crate) const EXIT_CANCEL: &str = "取消";
     pub(crate) const EXIT_CONFIRM: &str = "确认";
 }
+
+/// 详情尺寸标签；分类与单位沿用画廊文案。
+pub(crate) mod detail {
+    pub(crate) const DIMENSIONS: [&str; 3] = ["长度", "宽度", "高度"];
+}

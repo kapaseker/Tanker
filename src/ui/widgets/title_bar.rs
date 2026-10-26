@@ -11,10 +11,7 @@ use crate::ui::{
     resources::{colors, dimens, strings},
     zoom,
 };
-use bevy::{
-    ecs::relationship::RelatedSpawnerCommands,
-    prelude::*,
-};
+use bevy::{ecs::relationship::RelatedSpawnerCommands, prelude::*};
 
 use colors::title_bar as palette;
 use dimens::title_bar as dims;
@@ -65,6 +62,8 @@ pub(crate) struct TitleBarState {
     pressed: bool,
     /// Tab 聚焦返回框；任意左键按下清除；页面据此断言弹框取消后的焦点归还。
     pub(crate) focus: bool,
+    /// 页面有其它可聚焦控件时，由页面统一处理 Tab/Enter；Esc 和鼠标仍由标题栏处理。
+    pub(crate) external_navigation: bool,
 }
 
 impl TitleBarState {
@@ -187,7 +186,7 @@ pub(crate) fn back_rect() -> Rect {
 }
 
 /// 标题栏交互：指针命中、键鼠状态机、220ms 高亮与激活消息；无标题栏实体时空跑并复位状态。
-/// 过渡锁（Fade）归页面管：锁期间消息仍会发出，由页面 fade.begin 拒绝，最终行为一致。
+/// 应用通过 TitleBarActive 门控过渡输入；关闭时清掉按下残留，不积压跨页返回消息。
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn interaction(
     mut state: ResMut<TitleBarState>,
@@ -231,12 +230,12 @@ pub(crate) fn interaction(
     if mouse.just_released(MouseButton::Left) {
         state.pressed = false;
     }
-    if keys.just_pressed(KeyCode::Tab) {
+    if !state.external_navigation && keys.just_pressed(KeyCode::Tab) {
         state.focus = true;
     }
     if clicked
         || keys.just_pressed(KeyCode::Escape)
-        || (state.focus && keys.just_pressed(KeyCode::Enter))
+        || (!state.external_navigation && state.focus && keys.just_pressed(KeyCode::Enter))
     {
         activated.write(TitleBarBackActivated);
     }

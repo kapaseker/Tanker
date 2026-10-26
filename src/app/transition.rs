@@ -154,13 +154,7 @@ impl Plugin for TransitionPlugin {
             .add_systems(Update, resize_target)
             .add_systems(
                 Update,
-                (
-                    report_asset_failure,
-                    return_to_index,
-                    advance,
-                    rearm_input,
-                )
-                    .chain(),
+                (report_asset_failure, return_to_index, advance, rearm_input).chain(),
             )
             .add_systems(OnEnter(GameState::Index), crate::gameplay::session::cleanup);
         app.sub_app_mut(RenderApp)
@@ -221,6 +215,7 @@ fn resize_target(
         Or<(
             With<crate::pages::index::IndexCamera>,
             With<crate::pages::gallery::GalleryCamera>,
+            With<crate::pages::detail::DetailCamera>,
             With<crate::app::chrome::ChromeCamera>,
         )>,
     >,
@@ -229,6 +224,7 @@ fn resize_target(
         (
             Without<crate::pages::index::IndexCamera>,
             Without<crate::pages::gallery::GalleryCamera>,
+            Without<crate::pages::detail::DetailCamera>,
             Without<crate::app::chrome::ChromeCamera>,
             With<crate::gameplay::camera::FollowCamera>,
         ),
@@ -304,7 +300,14 @@ fn report_asset_failure(
         let message = format!("页面资源加载失败：{}：{}", event.path, event.error);
         error!("{message}");
         // 画廊以错误卡片结束加载，保留返回入口；战斗资源错误仍阻止揭幕。
-        if !matches!(state.get(), GameState::Gallery | GameState::GalleryToIndex) {
+        if !matches!(
+            state.get(),
+            GameState::Gallery
+                | GameState::GalleryToIndex
+                | GameState::GalleryToDetail
+                | GameState::Detail
+                | GameState::DetailToGallery
+        ) {
             *readiness.failure.lock().unwrap() = Some(message);
         }
     }
@@ -318,7 +321,7 @@ pub(crate) fn content_ready(world: &mut World) -> bool {
     }
     match world.resource::<State<GameState>>().get() {
         GameState::Index => crate::pages::index::assets_ready(world),
-        GameState::Gallery => crate::pages::gallery::assets_ready(world),
+        GameState::Gallery | GameState::Detail => crate::pages::model_preview::assets_ready(world),
         _ => crate::gameplay::session::content_ready(world),
     }
 }
@@ -388,11 +391,16 @@ fn advance(world: &mut World) {
     }
 }
 
-/// 揭幕完成后释放输入锁：上一页按住的键全部松开才恢复游戏输入。
-fn rearm_input(keys: Res<ButtonInput<KeyCode>>, mut fade: ResMut<Fade>) {
+/// 揭幕完成后释放输入锁：上一页按住的键鼠全部松开才恢复输入。
+fn rearm_input(
+    keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut fade: ResMut<Fade>,
+) {
     if fade.phase == Phase::Idle
         && !fade.input_armed
         && keys.get_pressed().next().is_none()
+        && mouse.get_pressed().next().is_none()
     {
         fade.input_armed = true;
     }
@@ -493,6 +501,36 @@ mod tests {
             app.update();
         }
         assert!(app.world().get::<Position>(body).unwrap().y < 3.0);
+    }
+
+    /// 淡入完成仍必须等待键鼠全部释放，防止按住鼠标跨页继续拖拽。
+    #[test]
+    fn rearm_waits_for_mouse_and_keyboard_release() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut world = World::new();
+        let mut fade = Fade::default();
+        fade.input_armed = false;
+        world.insert_resource(fade);
+        world.init_resource::<ButtonInput<KeyCode>>();
+        world.init_resource::<ButtonInput<MouseButton>>();
+        world
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .press(MouseButton::Left);
+        world.run_system_once(rearm_input).unwrap();
+        assert!(!world.resource::<Fade>().accepts_input());
+        world
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Enter);
+        world
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .release(MouseButton::Left);
+        world.run_system_once(rearm_input).unwrap();
+        assert!(!world.resource::<Fade>().accepts_input());
+        world
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .release(KeyCode::Enter);
+        world.run_system_once(rearm_input).unwrap();
+        assert!(world.resource::<Fade>().accepts_input());
     }
 
     /// 已完成的渐入在后续任意多帧保持完成，而不是重启黑幕。

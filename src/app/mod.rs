@@ -58,7 +58,7 @@ pub(super) fn run(options: Option<validation::Options>) -> Result<(), String> {
         pages::gallery::GalleryPlugin,
     ))
     // 必须在 TransitionPlugin 之后：chrome 相机需要已插入的 SceneTarget。
-    .add_plugins(chrome::ChromePlugin)
+    .add_plugins((pages::detail::DetailPlugin, chrome::ChromePlugin))
     .insert_resource(GlobalAmbientLight {
         brightness: GLOBAL_AMBIENT_BRIGHTNESS,
         ..default()

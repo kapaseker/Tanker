@@ -1,6 +1,7 @@
 //! 场景帧表、输入脚本与公共预热/计帧流程；各场景保留原有断言。
 
 mod combat;
+mod detail;
 mod drive;
 mod gallery;
 mod index;
@@ -30,6 +31,8 @@ pub(super) enum Scenario {
     Index,
     /// 模型画廊：真实预览、滚动、自转及反复往返清理。
     Gallery,
+    /// 单模型详情：八项资源、真实输入、返回恢复与重复清理。
+    Detail,
 }
 
 impl Scenario {
@@ -46,7 +49,7 @@ impl Scenario {
                 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 75, 90, 105, 120, 130, 240, 250,
             ],
             // 菜单关键帧按真实阶段动态计帧，固定列表只声明基准图。
-            Self::Index | Self::Gallery => &[0],
+            Self::Index | Self::Gallery | Self::Detail => &[0],
         }
     }
 
@@ -60,17 +63,20 @@ impl Scenario {
             (Self::Wheels, 31..=60) => &[KeyCode::ArrowDown],
             (Self::Wheels, 61..=90) => &[KeyCode::ArrowLeft],
             (Self::Wheels, 91..=120) => &[KeyCode::ArrowRight],
-            (Self::Index | Self::Gallery, 1) => &[KeyCode::ArrowDown],
-            (Self::Index | Self::Gallery, 3) => &[KeyCode::Enter],
-            (Self::Index | Self::Gallery, 5) => &[KeyCode::Escape],
-            (Self::Index | Self::Gallery, 7) => &[KeyCode::Tab],
-            (Self::Index | Self::Gallery, 8) => &[KeyCode::Tab, KeyCode::ShiftLeft],
+            (Self::Index | Self::Gallery | Self::Detail, 1) => &[KeyCode::ArrowDown],
+            (Self::Index | Self::Gallery | Self::Detail, 3) => &[KeyCode::Enter],
+            (Self::Index | Self::Gallery | Self::Detail, 5) => &[KeyCode::Escape],
+            (Self::Index | Self::Gallery | Self::Detail, 7) => &[KeyCode::Tab],
+            (Self::Index | Self::Gallery | Self::Detail, 8) => &[KeyCode::Tab, KeyCode::ShiftLeft],
             // 首页退出确认弹框：← 在两按钮间切换选中。
             (Self::Index, 15) => &[KeyCode::ArrowLeft],
-            (Self::Gallery, 11) => &[KeyCode::End],
-            (Self::Gallery, 12) => &[KeyCode::Home],
-            (Self::Gallery, 13) => &[KeyCode::PageDown],
-            (Self::Gallery, 14) => &[KeyCode::ArrowDown],
+            (Self::Gallery | Self::Detail, 11) => &[KeyCode::End],
+            (Self::Gallery | Self::Detail, 12) => &[KeyCode::Home],
+            (Self::Gallery | Self::Detail, 13) => &[KeyCode::PageDown],
+            (Self::Gallery | Self::Detail, 14) => &[KeyCode::ArrowDown],
+            (Self::Detail, 16) => &[KeyCode::ArrowRight],
+            (Self::Detail, 17) => &[KeyCode::ArrowUp],
+            (Self::Detail, 18) => &[KeyCode::ArrowLeft],
             _ => &[],
         }
     }
@@ -82,6 +88,9 @@ pub(super) fn run_scenario(
     options: &Options,
     report: &mut String,
 ) -> Result<(), String> {
+    if options.scenario == Scenario::Detail {
+        return detail::run_detail_scenario(app, options, report);
+    }
     if options.scenario == Scenario::Gallery {
         return run_gallery_scenario(app, options, report);
     }

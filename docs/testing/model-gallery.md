@@ -1,12 +1,12 @@
 # 模型画廊验收
 
-当前入口为 `src/pages/gallery/mod.rs`，预览归 `preview.rs`，交互归 `ui.rs`；无窗口预设在 `src/validation/scenarios/gallery.rs`。目录迁移后的最终回归见 [任务 10](architecture-step10-20261023.md)。
+当前入口为 `src/pages/gallery/mod.rs`，共用预览归 `src/pages/model_preview.rs`，交互归 `ui.rs`，详情归 `src/pages/detail.rs`；无窗口预设在 `src/validation/scenarios/gallery.rs`。目录迁移后的最终回归见 [任务 10](architecture-step10-20261023.md)。
 
 ## 页面约定
 
-首页第二项进入模型画廊。炮管、履带、车身、坦克各两项；型号直接取真实资产变体目录，整车使用车身型号。卡片只展示、悬停和16秒一周的自转，不提供详情或换装。
+首页第二项进入模型画廊。炮管、履带、车身、坦克各两项；型号直接取真实资产变体目录，整车使用车身型号。卡片提供悬停和16秒一周的自转，点击或键盘确认进入详情，不提供换装。
 
-标题栏固定，内容独立滚动。滚轮和上下键每次64逻辑像素；PageUp/PageDown按可视内容高度减64像素翻页；Home/End到首尾。Esc、返回按钮或Tab聚焦返回按钮后Enter回首页，恢复画廊入口焦点。双向切换均经过600毫秒渐出、黑场等资源和GPU、600毫秒渐入。
+标题栏固定，内容独立滚动。滚轮每格64逻辑像素；方向键在两列模型间选择并自动滚入可见区，上下保持列、边界停止。Tab/Shift+Tab在返回框和八张卡片间循环，Enter激活；PageUp/PageDown按可视内容高度减64像素翻页；Home/End到首尾。Esc、返回按钮或Tab聚焦返回按钮后Enter回首页，恢复画廊入口焦点。双向切换均经过600毫秒渐出、黑场等资源和GPU、600毫秒渐入。
 
 ## 真实模型与尺寸
 
@@ -37,10 +37,28 @@
 cargo check --locked
 cargo test --locked
 cargo run --locked -- --offscreen-test gallery --output .scratch/gallery/new-run
-cargo run --locked -- --offscreen-test menu --output .scratch/gallery/new-menu-run
+cargo run --locked -- --offscreen-test detail --output .scratch/model-detail/new-run
+cargo run --locked -- --offscreen-test index --output .scratch/gallery/new-index-run
 ```
 
-`gallery`通过真实首页键盘和鼠标入口进入，覆盖滚动、悬停、自转、卡片确认无动作、Esc/鼠标/键盘返回、焦点恢复，以及三次往返后的实体、场景实例和纹理清理。保留顶部、各滚动位置、整车、自转、640×720和1920×720布局、渐出/黑场/渐入关键帧及report.txt。
+`gallery`通过真实首页键盘和鼠标入口进入，覆盖滚动、悬停、自转、空白区域确认无动作、Esc/鼠标/键盘返回、焦点恢复，以及三次往返后的实体、场景实例和纹理清理。保留顶部、各滚动位置、整车、自转、640×720和1920×720布局、渐出/黑场/渐入关键帧及report.txt。
+
+## 模型详情验收
+
+详情在标题栏下方显示48逻辑像素的低对比平面网格、真实模型与分类/长宽高。标题取真实型号，尺寸与画廊共用同一可见几何测量，不使用网页示意数值。每次进入重置三分之四视角，不自动旋转；左键拖拽旋转（俯仰±80°），滚轮缩放到初始适配的0.5～1.5倍。返回恢复原卡片焦点与滚动，从首页重新进入画廊则重置。
+
+`detail`预设通过真实首页入口遍历八个模型，交替使用键盘和鼠标进入，分别使用Esc、返回框点击和Tab/Enter返回。断言实际几何、轮组、隐藏相位、整车轴心、单项预览、视角重置、拖拽缩放、标题栏输入隔离、返回恢复，以及每次交接时旧实体/场景实例/纹理全部释放。输出每个模型初始图、旋转与缩放图、640/1280/1920宽度布局，以及首次往返的渐出/黑场/渐入关键帧。
+
+故障用例在黑场刚生成详情时注入一个明确的缺失模型路径，仅允许该路径的预期加载失败事件；其它资源/管线错误仍失败退出。必须真正显示错误页并能返回画廊。`report.txt`中的通过只表示断言和图片保存成功，仍需读取关键帧检查实际画面。
+
+## 2026-10-26详情实现与验证
+
+- `cargo check`通过；`cargo test`全部86项通过。新增测试覆盖网格方向边界、自动滚入、Tab焦点归属、点击取消、拖拽生命周期、旋转缩放限位和跨页键鼠释放锁，并用失败重现测试覆盖返回框跨页点击残留。
+- `detail`离屏验证退出0，证据位于`.scratch/model-detail/final-detail/`：八项真实模型、三种宽度、鼠标/键盘导航、原位置恢复、首次加载失败揭幕与返回、反复清理均通过。已读取模型、旋转缩放、布局、错误提示和过渡关键帧。
+- `gallery`三轮往返离屏回归退出0，证据位于`.scratch/model-detail/final-gallery/`，已读取顶部和整车关键帧。
+- `index`三轮首页/对局双向过渡回归退出0，最终证据位于`.scratch/model-detail/final-index/`；已读取首页关键帧确认透视背景正常，详情平面网格未影响首页。
+- 当前环境为llvmpipe软件Vulkan，未验证硬件GPU或真实窗口输入；没有启动可见游戏窗口。已有ICU4X中日文分词告警仍存在，所检查的中文标签与错误提示可见。
+- 保留中间证据：`index-regression/`进程收到SIGTERM，未产生完整报告；`index-regression-02/`断言通过，但画面检查发现详情网格分支误用于首页，随后收紧分支条件。最终首页回归单独执行，使用新目录保存证据，不覆盖先前结果。
 
 ## 2026-10-23验证记录
 
@@ -58,3 +76,11 @@ cargo run --locked -- --offscreen-test menu --output .scratch/gallery/new-menu-r
 `cargo check --locked`和60项测试通过。真实资产测试先复现旧实现约1.5米的车身偏移，再验证新轴心为零，并在一整周的15度采样角度下检查可见网格边界不超出相机视野。
 
 最新构建产物通过画廊离屏三次往返，输出位于`.scratch/gallery/body-pivot/`。报告验证两辆整车绕body原点，已读取`gallery-bottom.png`与`gallery-rotation.png`确认实际效果。运行时显式设置`BEVY_ASSET_ROOT`为工程根目录；未启动可见窗口。
+
+### 上下拖拽方向修正
+
+原实现把CSS的俯仰减法直接用于Bevy，导致向下拖拽时前侧表面反而上移；仅修正符号仍不足以解决水平转到侧面时的侧滚，因为原组合顺序让俯仰绕偏航后的模型局部轴进行。现改为正向累加屏幕Y增量，并先应用偏航、再绕屏幕水平轴俯仰，±80°限位保持不变。
+
+方向回归测试先复现0°偏航时的反向，再复现仅改符号后90°偏航时没有竖直位移的问题；修正后覆盖0°、45°、90°、180°、270°的上下拖拽。`cargo check`和全部87项测试通过。离屏脚本新增独立向下、向上拖拽的实际输入与关键帧，已读取`.scratch/model-detail/drag-direction/detail-drag-down.png`和`detail-drag-up.png`核对方向。
+
+本次完整`detail`离屏在llvmpipe软件Vulkan环境中两次触及120秒上限，**完整场景未通过**；第二次仅以`LP_NUM_THREADS=4`限制线程重试，没有修改断言或超时。失败报告、日志和已生成图片分别保留在`.scratch/model-detail/drag-direction/`、`.scratch/model-detail/drag-direction-verified/`。没有进行真实窗口或硬件GPU验证。

@@ -163,3 +163,16 @@ pub(crate) mod index {
     /// 弹框淡入时长（网页 `exit-dialog-in` 120ms ease-out）。
     pub(crate) const EXIT_FADE_IN: f32 = 0.12;
 }
+
+/// 详情查看区与浮层的逻辑像素，取自 model-detail.html。
+pub(crate) mod detail {
+    /// 平面网格间距；从标题栏底部开始计格。
+    pub(crate) const GRID: f32 = 48.0;
+    /// 尺寸浮层相对查看区的位置。
+    pub(crate) const SPECS_LEFT: f32 = 64.0;
+    pub(crate) const SPECS_TOP: f32 = 32.0;
+    pub(crate) const GROUP_GAP: f32 = 16.0;
+    pub(crate) const LABEL_GAP: f32 = 8.0;
+    pub(crate) const LABEL_SIZE: f32 = 12.0;
+    pub(crate) const VALUE_SIZE: f32 = 28.0;
+}

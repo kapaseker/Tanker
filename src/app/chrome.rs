@@ -35,6 +35,8 @@ pub(crate) struct FadeOverlay;
 enum Variant {
     Menu,
     Gallery,
+    /// 详情标题随选中的资产型号变化。
+    Detail(usize),
 }
 
 /// 已应用的 chrome 变体；None 表示尚未同步，避免逐帧重写组件。
@@ -54,13 +56,21 @@ impl Plugin for ChromePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<AppliedVariant>()
             .add_systems(Startup, setup_chrome)
-            .add_systems(Update, (update_overlay, sync_variant).chain());
+            .add_systems(
+                Update,
+                (update_overlay, sync_variant, gate_chrome)
+                    .chain()
+                    .before(crate::ui::widgets::title_bar::interaction),
+            );
         // 每次进入状态都同步 chrome 相机开关与标题栏交互门控。
         app.add_systems(OnEnter(GameState::Index), gate_chrome)
             .add_systems(OnEnter(GameState::ToGame), gate_chrome)
             .add_systems(OnEnter(GameState::ToGallery), gate_chrome)
             .add_systems(OnEnter(GameState::Gallery), gate_chrome)
             .add_systems(OnEnter(GameState::GalleryToIndex), gate_chrome)
+            .add_systems(OnEnter(GameState::GalleryToDetail), gate_chrome)
+            .add_systems(OnEnter(GameState::Detail), gate_chrome)
+            .add_systems(OnEnter(GameState::DetailToGallery), gate_chrome)
             .add_systems(OnEnter(GameState::ToIndex), gate_chrome)
             .add_systems(OnEnter(GameState::ToExit), gate_chrome)
             .add_systems(OnEnter(GameState::InGame), gate_chrome);
@@ -139,16 +149,20 @@ fn setup_chrome(
         });
 }
 
-/// 按状态同步 chrome 相机开关与标题栏交互门控（OnEnter 各状态共用）。
+/// 进入状态及每帧同步可见性/输入门控；揭幕后等待键鼠释放才恢复操作。
 fn gate_chrome(
     state: Res<State<GameState>>,
+    fade: Res<Fade>,
     mut cameras: Query<&mut Camera, With<ChromeCamera>>,
     mut active: ResMut<TitleBarActive>,
 ) {
     let visible = menu_visible(*state.get());
-    active.0 = visible;
+    // 可见性与可操作性独立：过渡锁期间丢弃返回框按下，不能把松开事件带到下一页。
+    active.0 = visible && fade.accepts_input();
     for mut camera in &mut cameras {
-        camera.is_active = visible;
+        if camera.is_active != visible {
+            camera.is_active = visible;
+        }
     }
 }
 
@@ -170,19 +184,25 @@ fn sync_variant(
     fade: Res<Fade>,
     state: Res<State<GameState>>,
     mut applied: ResMut<AppliedVariant>,
+    selected: Option<Res<crate::pages::detail::SelectedModel>>,
     mut titles: Query<&mut Text, With<TitleBarTitle>>,
     // 箭头与电源节点必属不同实体；`Without` 互斥避免同时可变 `&mut Node` 触发 B0001。
     mut arrows: Query<&mut Node, (With<TitleBarBackArrow>, Without<TitleBarBackPower>)>,
     mut powers: Query<&mut Node, (With<TitleBarBackPower>, Without<TitleBarBackArrow>)>,
 ) {
+    let detail = Variant::Detail(selected.map_or(0, |s| s.0));
     let desired = if fade.phase != Phase::Idle && fade.content_only {
         match fade.target {
             GameState::Gallery => Variant::Gallery,
+            GameState::Detail => detail,
             _ => Variant::Menu,
         }
     } else {
         match state.get() {
-            GameState::Gallery | GameState::GalleryToIndex => Variant::Gallery,
+            GameState::Gallery | GameState::GalleryToIndex | GameState::GalleryToDetail => {
+                Variant::Gallery
+            }
+            GameState::Detail | GameState::DetailToGallery => detail,
             _ => Variant::Menu,
         }
     };
@@ -190,20 +210,28 @@ fn sync_variant(
         return;
     }
     *applied = AppliedVariant(Some(desired));
-    let gallery = desired == Variant::Gallery;
-    let title = if gallery {
-        strings_cn::gallery::TITLE
-    } else {
-        strings_cn::index::TITLE
+    let gallery = desired != Variant::Menu;
+    let title = match desired {
+        Variant::Gallery => strings_cn::gallery::TITLE,
+        Variant::Menu => strings_cn::index::TITLE,
+        Variant::Detail(index) => crate::pages::model_preview::ENTRIES[index].name(),
     };
     for mut text in &mut titles {
         text.0 = title.into();
     }
     for mut node in &mut arrows {
-        node.display = if gallery { Display::Flex } else { Display::None };
+        node.display = if gallery {
+            Display::Flex
+        } else {
+            Display::None
+        };
     }
     for mut node in &mut powers {
-        node.display = if gallery { Display::None } else { Display::Flex };
+        node.display = if gallery {
+            Display::None
+        } else {
+            Display::Flex
+        };
     }
 }
 
@@ -212,13 +240,48 @@ mod tests {
     use super::*;
     use bevy::ecs::system::RunSystemOnce;
 
+    /// 过渡中按下、揭幕后松开不能生成返回消息，防止积压的点击跨页生效。
+    #[test]
+    fn transition_discards_back_press_before_input_rearms() {
+        use crate::ui::widgets::title_bar::{
+            self, TitleBarBack, TitleBarBackActivated, TitleBarState,
+        };
+        let mut world = World::new();
+        world.init_resource::<State<GameState>>();
+        world.init_resource::<Fade>();
+        world.init_resource::<TitleBarState>();
+        world.insert_resource(TitleBarActive(true));
+        world.init_resource::<Time>();
+        world.init_resource::<ButtonInput<KeyCode>>();
+        world.init_resource::<ButtonInput<MouseButton>>();
+        world.init_resource::<Messages<TitleBarBackActivated>>();
+        world.spawn(TitleBarBack);
+        world.resource_mut::<TitleBarState>().pointer = Some(Vec2::new(90.0, 40.0));
+        world.resource_mut::<Fade>().begin(GameState::Detail, true);
+        world
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .press(MouseButton::Left);
+        world.run_system_once(gate_chrome).unwrap();
+        world.run_system_once(title_bar::interaction).unwrap();
+        world.insert_resource(Fade::default());
+        world.resource_mut::<ButtonInput<MouseButton>>().clear();
+        world
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .release(MouseButton::Left);
+        world.run_system_once(gate_chrome).unwrap();
+        world.run_system_once(title_bar::interaction).unwrap();
+        assert_eq!(world.resource::<Messages<TitleBarBackActivated>>().len(), 0);
+    }
+
     /// 搭一个含 chrome 实体与所需资源的最小世界。
     fn world_with_chrome() -> (World, Vec<Entity>) {
         let mut world = World::new();
         world.init_resource::<Fade>();
         world.init_resource::<State<GameState>>();
         world.init_resource::<AppliedVariant>();
-        let title = world.spawn((TitleBarTitle, Text::new(strings_cn::index::TITLE))).id();
+        let title = world
+            .spawn((TitleBarTitle, Text::new(strings_cn::index::TITLE)))
+            .id();
         let arrow = world.spawn((TitleBarBackArrow, Node::default())).id();
         let power = world.spawn((TitleBarBackPower, Node::default())).id();
         let overlay = world
@@ -236,7 +299,10 @@ mod tests {
         world.resource_mut::<Fade>().alpha = 0.5;
         world.run_system_once(sync_variant).unwrap();
         world.run_system_once(update_overlay).unwrap();
-        assert_eq!(world.get::<Text>(title).unwrap().0, strings_cn::gallery::TITLE);
+        assert_eq!(
+            world.get::<Text>(title).unwrap().0,
+            strings_cn::gallery::TITLE
+        );
         assert_eq!(world.get::<Node>(arrow).unwrap().display, Display::Flex);
         assert_eq!(world.get::<Node>(power).unwrap().display, Display::None);
         let alpha = world.resource::<Fade>().alpha;
@@ -256,7 +322,13 @@ mod tests {
         world.resource_mut::<Fade>().alpha = 0.5;
         world.run_system_once(sync_variant).unwrap();
         world.run_system_once(update_overlay).unwrap();
-        assert_eq!(world.get::<BackgroundColor>(overlay).unwrap().0.alpha(), 0.0);
-        assert_eq!(world.get::<Text>(ids[0]).unwrap().0, strings_cn::index::TITLE);
+        assert_eq!(
+            world.get::<BackgroundColor>(overlay).unwrap().0.alpha(),
+            0.0
+        );
+        assert_eq!(
+            world.get::<Text>(ids[0]).unwrap().0,
+            strings_cn::index::TITLE
+        );
     }
 }

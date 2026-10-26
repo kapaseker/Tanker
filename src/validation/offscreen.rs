@@ -115,12 +115,19 @@ fn inject_input(
 /// Last 中读取，确保本帧 Update 命中消息与 PostUpdate 新生子弹均已提交。
 fn collect_evidence(
     mut evidence: ResMut<Evidence>,
+    mut expected: Option<ResMut<ExpectedAssetFailure>>,
     mut failures: MessageReader<UntypedAssetLoadFailedEvent>,
     mut destroyed: MessageReader<crate::gameplay::enemy::EnemyDestroyed>,
     bullets: Query<&Transform, With<crate::gameplay::combat::firing::Bullet>>,
     explosions: Query<(), With<crate::gameplay::combat::explosion::Explosion>>,
 ) {
     for failure in failures.read() {
+        if let Some(expected) = expected.as_mut() {
+            if failure.path.to_string() == expected.path {
+                expected.seen = true;
+                continue;
+            }
+        }
         evidence
             .errors
             .push(format!("资源加载失败：{}：{}", failure.path, failure.error));
@@ -150,7 +157,10 @@ pub(crate) fn run(mut app: App, options: Options) -> Result<(), String> {
         .init_resource::<MenuMouse>()
         .add_systems(PreUpdate, (setup_target, inject_input.after(InputSystems)))
         .add_systems(Last, collect_evidence);
-    if !matches!(options.scenario, Scenario::Index | Scenario::Gallery) {
+    if !matches!(
+        options.scenario,
+        Scenario::Index | Scenario::Gallery | Scenario::Detail
+    ) {
         // 旧场景在首个 StateTransition 前直接请求 InGame 跳过菜单：
         // 启动期 StateTransition 应用 InGame 并运行 OnEnter(session::setup)，
         // 引导消息与 Pending 取 .last() 后以 InGame 为准，不会落入菜单。
