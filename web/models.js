@@ -77,13 +77,14 @@ function attachBullet(modelEl, model) {
 // 与游戏当前九项真实清单同步；尺寸为可见几何长宽高（米）。
 // 网页盒子仅表达构图，游戏必须通过 VOX 加载器渲染真实资产。
 // bullet 为可选伴随子弹（正上方展示，不参与尺寸）；仅 lance 配了真实资产 bullet.vox。
+// specs 为可选装备参数行；只写游戏内已定义的真实数值，占位 0 的敌人装备不写。
 const CATEGORIES = [
   { name: '炮管', code: 'BR', models: [
-    { name: 'lance', tone: 'mint', dims: [4.5, 0.4, 0.4], bullet: { gap: 30, parts: [{ w: 28, h: 12, d: 12 }] }, parts: [{ w: 170, h: 16, d: 16 }] },
+    { name: 'lance', tone: 'mint', dims: [4.5, 0.4, 0.4], specs: [{ label: '初速', value: '1200', unit: 'm/s' }, { label: '射速', value: '12', unit: 'rpm' }], bullet: { gap: 30, parts: [{ w: 28, h: 12, d: 12 }] }, parts: [{ w: 170, h: 16, d: 16 }] },
     { name: 'spit', tone: 'sand', dims: [3.8, 0.4, 0.4], parts: [{ w: 144, h: 16, d: 16 }] },
   ] },
   { name: '履带', code: 'TR', models: [
-    { name: 'cleat', tone: 'dark', dims: [7.5, 3.6, 1.3], parts: [{ w: 180, h: 31, d: 20, z: 33 }, { w: 180, h: 31, d: 20, z: -33 }] },
+    { name: 'cleat', tone: 'dark', dims: [7.5, 3.6, 1.3], specs: [{ label: '前进速度', value: '16', unit: 'm/s' }, { label: '倒车速度', value: '8', unit: 'm/s' }], parts: [{ w: 180, h: 31, d: 20, z: 33 }, { w: 180, h: 31, d: 20, z: -33 }] },
     { name: 'crawl', tone: 'sand', dims: [6.6, 3.4, 1.4], parts: [{ w: 158, h: 34, d: 20, z: 31 }, { w: 158, h: 34, d: 20, z: -31 }] },
   ] },
   { name: '车身', code: 'CH', models: [

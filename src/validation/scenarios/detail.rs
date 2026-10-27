@@ -6,7 +6,7 @@ use crate::{
         transition::{Fade, SceneTarget},
     },
     pages::{
-        detail::{SelectedModel, View},
+        detail::{SelectedModel, SpecRow, View},
         gallery,
         model_preview::{self as preview, Previews},
     },
@@ -133,6 +133,21 @@ fn assert_dims(app: &mut App, index: usize) -> Result<(), String> {
     Ok(())
 }
 
+/// 规格行只出现在已定义参数的玩家装备：lance（0）与 cleat（2）各两行，其余为零。
+/// 数值与单位的人工核对由初始帧截图完成，这里防止空行重新出现。
+fn assert_specs(app: &mut App, index: usize) -> Result<(), String> {
+    let world = app.world_mut();
+    let rows = world
+        .query_filtered::<(), With<SpecRow>>()
+        .iter(world)
+        .count();
+    let expected = if matches!(index, 0 | 2) { 2 } else { 0 };
+    ensure(
+        rows == expected,
+        format!("目录项{index}规格行应为 {expected}，实际 {rows}").as_str(),
+    )
+}
+
 /// 整个链路从首页发起；重复往返每个目录项，同时验证返回保持原位置。
 pub(super) fn run_detail_scenario(
     app: &mut App,
@@ -223,6 +238,7 @@ pub(super) fn run_detail_scenario(
             "详情不应自动旋转",
         )?;
         assert_dims(app, index)?;
+        assert_specs(app, index)?;
         capture(
             app,
             &options.output.join(format!("detail-{index}-initial.png")),

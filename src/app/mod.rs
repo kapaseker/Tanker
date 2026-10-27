@@ -29,10 +29,6 @@ pub(super) fn run(options: Option<validation::Options>) -> Result<(), String> {
         app.add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: ui::resources::strings_cn::WINDOW_TITLE.into(),
-                // 无边框固定窗口：界面即游戏 UI，窗口拖动由标题栏接管
-                // （见 ui::widgets::title_bar::drag_window）。
-                decorations: false,
-                resizable: false,
                 ..default()
             }),
             ..default()

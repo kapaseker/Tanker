@@ -192,8 +192,8 @@ fn drag_hit(logical: Vec2) -> bool {
     logical.y <= dims::HEIGHT && !back_rect().contains(logical)
 }
 
-/// 无边框窗口的拖动：左键按在标题栏条内时调用 winit `drag_window`，系统接管进入
-/// 模态拖动循环直到左键释放。局内标题栏未激活，顶部点击属于游戏画面，不劫持；
+/// 窗口拖动：左键按在标题栏条内时调用 winit `drag_window`，系统接管
+/// 进入模态拖动循环直到左键释放。局内标题栏未激活，顶部点击属于游戏画面，不劫持；
 /// WinitWindows 是 bevy_winit 的线程局部存储（0.20 起替代 NonSend 资源），
 /// 测试/离屏环境为空表，get_window 返回 None 自然空跑。
 pub(crate) fn drag_window(

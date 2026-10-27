@@ -875,6 +875,153 @@
     white-space: nowrap;
   }
 
+  /* ---------- 战斗 HUD：游戏内场景 ---------- */
+  /* 底图取自游戏实际开局画面（离屏 1280×720），HUD 叠加在真实构图上：
+     棕色地形、暗天空与第三人称车尾视角都和进入对局后的观感一致 */
+  .battle {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    background: #241f1b;
+    pointer-events: none;
+  }
+
+  .battle__shake {
+    position: absolute;
+    inset: 0;
+  }
+
+  /* 开火下坐：整幅画面短促下沉，模拟相机后坐；动画结束由脚本移除类 */
+  .battle__shake.is-kick {
+    animation: scene-kick 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  @keyframes scene-kick {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1.012); }
+    22% { transform: translate3d(0, 4px, 0) scale(1.014); }
+  }
+
+  /* 截图铺满窗口并略放大，主体（坦克）居中；多余边缘被裁切不影响 HUD */
+  .battle__scene {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scale(1.012);
+  }
+
+  /* 炮口火光锚在截图炮管末端（水平 50%、垂直 46.9%） */
+  .battle__flash {
+    position: absolute;
+    left: 50%;
+    top: 46.9%;
+    width: 0;
+    height: 0;
+  }
+
+  .battle__flash::before {
+    content: "";
+    position: absolute;
+    left: -30px;
+    top: -30px;
+    width: 60px;
+    height: 60px;
+    background: radial-gradient(circle, rgba(246, 251, 240, 0.95) 0%, rgba(234, 244, 218, 0.7) 24%, rgba(200, 219, 177, 0) 68%);
+    opacity: 0;
+    transform: scale(0.4);
+  }
+
+  .battle__flash.is-firing::before {
+    animation: muzzle-flash 180ms ease-out;
+  }
+
+  @keyframes muzzle-flash {
+    0% { opacity: 1; transform: scale(0.4); }
+    60% { opacity: 0.85; transform: scale(1); }
+    100% { opacity: 0; transform: scale(1.5); }
+  }
+
+  /* 画面暗角与扫描线沿用站点氛围，同时提升 HUD 对比度 */
+  .battle__vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(120% 90% at 50% 46%, transparent 48%, rgba(0, 0, 0, 0.5));
+  }
+
+  .battle__scan {
+    position: absolute;
+    inset: 0;
+    background-image: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.16) 0 1px, transparent 1px 3px);
+    opacity: 0.16;
+  }
+
+  /* ---------- 战斗 HUD：装填进度条 ---------- */
+  /* 取景盒与场景 cover 区域同尺寸（16:9 内容居中裁切），
+     进度条按画面坐标定位，任意窗口比例都贴在炮台右侧 */
+  .hudbox {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    z-index: 3;
+    width: max(100vw, 177.7778vh);
+    height: max(56.25vw, 100vh);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+
+  /* 贴在玩家炮台右侧的小进度条：只有分格进度和一块带边框的暗底板，
+     用于在棕色地形与场景高光上保持可读，不显示标签或倒计时 */
+  .reload {
+    position: absolute;
+    left: 55%;
+    top: 57%;
+    /* 原 200px 的 2/3；内部轨道均分 5 格，对应 5 秒冷却 */
+    width: 133.33px;
+    transform: translateY(-50%);
+    padding: 3px;
+    background: rgba(15, 14, 12, 0.78);
+    border: 1px solid rgba(200, 219, 177, 0.38);
+    pointer-events: none;
+    /* 出现立即生效（状态延迟 0），满格后 140ms 淡出再隐藏 */
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 140ms ease, visibility 0s linear 140ms;
+  }
+
+  .reload.is-visible {
+    opacity: 1;
+    visibility: visible;
+    /* 不声明 opacity 过渡：装填开始必须立即呈现真实状态 */
+    transition: visibility 0s;
+  }
+
+  .reload__track {
+    position: relative;
+    height: 8px;
+    /* 稍亮于底板，空槽里也能看清 5 个格子 */
+    background: #23201a;
+    overflow: hidden;
+  }
+
+  /* 填充使用交互渐变，右端最亮，表示当前装填到的位置 */
+  .reload__fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 0;
+    background: linear-gradient(90deg, var(--mint-deep), var(--mint) 70%, var(--mint-bright));
+  }
+
+  /* 5 秒冷却 → 轨道 5 等分，每格 1 秒；冷却时长变化时同步改 20% */
+  .reload__ticks {
+    position: absolute;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+      90deg,
+      transparent 0 calc(20% - 1px),
+      rgba(8, 7, 6, 0.85) calc(20% - 1px) 20%
+    );
+  }
+
   /* ---------- 窗口适配 ---------- */
   /* 游戏式整体缩放：不设布局断点、不做窄屏重排，窗口窄于参考分辨率时
      由 scale.js 对整个页面设置 zoom 等比缩小（等价游戏 UiScale），
@@ -894,4 +1041,7 @@
     .exit-dialog { animation: none; }
     .exit-dialog__btn,
     .exit-dialog__btn kbd { transition: none; }
+    .reload { transition: none; }
+    .battle__shake.is-kick,
+    .battle__flash.is-firing::before { animation: none; }
   }

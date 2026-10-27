@@ -12,6 +12,12 @@ pub(crate) const KEY_DOWN: &str = "↓";
 /// 键帽提示：确认。英文白名单内的按键标识，不随语言翻译。
 pub(crate) const KEY_ENTER: &str = "ENTER";
 
+/// 装备参数单位：米/秒；英文缩写，不随语言翻译。
+pub(crate) const UNIT_METERS_PER_SECOND: &str = "m/s";
+
+/// 装备参数单位：发/分钟；英文缩写，不随语言翻译。
+pub(crate) const UNIT_ROUNDS_PER_MINUTE: &str = "rpm";
+
 /// 返回操作方向符号。
 pub(crate) const BACK_ARROW: &str = "←";
 /// 返回键帽标识，不随语言翻译。

@@ -35,23 +35,10 @@
         <div class="viewer" id="viewer" aria-label="模型查看区，按住鼠标拖拽可旋转模型"></div>
 
         <!-- 三维尺寸改由模型边沿的三条尺寸轴标注（见下方脚本）；
-             左侧仅保留分类眉题，其余为占位参数行：样式与信息行一致，字段待玩法确定后替换 -->
+             左侧保留分类眉题，规格行由本页脚本按模型参数生成 -->
         <div class="specs">
           <div class="specs__id">
             <p class="eyebrow" id="detail-cat">坦克</p>
-          </div>
-          <!-- 占位值仅用于核对版式与字号，非真实数据 -->
-          <div class="spec">
-            <span class="spec__label">质量</span>
-            <span class="spec__row"><span class="spec__value">32.4</span><span class="spec__unit">吨</span></span>
-          </div>
-          <div class="spec">
-            <span class="spec__label">装甲</span>
-            <span class="spec__row"><span class="spec__value">45</span><span class="spec__unit">毫米</span></span>
-          </div>
-          <div class="spec">
-            <span class="spec__label">极速</span>
-            <span class="spec__row"><span class="spec__value">56</span><span class="spec__unit">千米/时</span></span>
           </div>
         </div>
 
@@ -92,6 +79,18 @@
 
       document.getElementById('detail-cat').textContent = category.name;
       document.getElementById('detail-name').textContent = modelCode;
+
+      // 规格行来自模型数据；没有定义参数的型号不渲染空行
+      const specs = document.querySelector('.specs');
+      for (const { label, value, unit } of model.specs ?? []) {
+        const spec = document.createElement('div');
+        spec.className = 'spec';
+        spec.innerHTML =
+          `<span class="spec__label">${label}</span>` +
+          `<span class="spec__row"><span class="spec__value">${value}</span>` +
+          `<span class="spec__unit">${unit}</span></span>`;
+        specs.append(spec);
+      }
 
       // ---------- 查看区：拖拽旋转 + 滚轮缩放 ----------
       const viewer = document.getElementById('viewer');

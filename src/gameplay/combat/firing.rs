@@ -15,7 +15,7 @@ use bevy::{
 const FIRE_INTERVAL: f32 = 60.0 / crate::tank::visual::PLAYER_BARREL.rate_of_fire;
 /// 子弹的匀速飞行速度即炮口初速，单位：米/秒；来自 lance 装备定义。
 const BULLET_SPEED: f32 = crate::tank::visual::PLAYER_BARREL.muzzle_velocity;
-/// 当前弹体为 4×4×4 格立方体，扫掠尺寸与资源保持一致，单位：米。
+/// 弹体资源为 12×4×4 格；扫掠碰撞仍按横向 4 格的立方体计算，单位：米。
 const BULLET_SIZE: f32 = 0.4;
 /// 从出生点累计计算的最大飞行距离，单位：世界单位。
 const BULLET_RANGE: f32 = 2000.0;

@@ -31,7 +31,13 @@ pub(crate) mod index {
     pub(crate) const EXIT_CONFIRM: &str = "确认";
 }
 
-/// 详情尺寸标签；分类与单位沿用画廊文案。
+/// 详情尺寸与装备规格标签；分类与单位沿用画廊文案。
 pub(crate) mod detail {
     pub(crate) const DIMENSIONS: [&str; 3] = ["长度", "宽度", "高度"];
+    /// 炮管规格：初速与射速。
+    pub(crate) const MUZZLE_VELOCITY: &str = "初速";
+    pub(crate) const RATE_OF_FIRE: &str = "射速";
+    /// 履带规格：前进与倒车速度。
+    pub(crate) const FORWARD_SPEED: &str = "前进速度";
+    pub(crate) const REVERSE_SPEED: &str = "倒车速度";
 }

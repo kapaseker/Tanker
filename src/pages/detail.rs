@@ -6,12 +6,13 @@ use crate::{
         transition::{Fade, SceneTarget},
     },
     pages::index::{IndexBackground, IndexPalette},
+    tank::{track, visual},
     ui::{
         font::UiFont,
         resources::{
             colors,
             dimens::{detail as dims, title_bar as bar},
-            strings_cn,
+            strings, strings_cn,
         },
         widgets::{self, text_font},
         zoom,
@@ -49,6 +50,9 @@ struct DimTag(usize);
 /// 尺寸标签数值文本（0 长 / 1 宽 / 2 高），供逐帧更新与离屏验收断言。
 #[derive(Component)]
 pub(crate) struct DimValue(pub(crate) usize);
+/// 左上角规格区中的一条装备参数行；没有定义的型号不生成。
+#[derive(Component)]
+pub(crate) struct SpecRow;
 /// 模型纹理填满标题栏以下区域。
 #[derive(Component)]
 struct Viewer;
@@ -94,6 +98,50 @@ impl View {
     /// 滚轮正方向放大；指数映射兼容细粒度触控板和多格滚轮。
     fn scale(&mut self, lines: f32) {
         self.zoom = (self.zoom * (lines * 0.08).exp()).clamp(0.5, 1.5);
+    }
+}
+
+/// 单条装备规格：标签与单位是静态文案，数值取自游戏装备定义，避免网页与玩法参数分叉。
+struct Spec {
+    label: &'static str,
+    value: f32,
+    unit: &'static str,
+}
+
+/// lance 炮管规格；敌人 spit 的初速与射速仍是占位 0，不展示。
+const LANCE_SPECS: [Spec; 2] = [
+    Spec {
+        label: strings_cn::detail::MUZZLE_VELOCITY,
+        value: visual::PLAYER_BARREL.muzzle_velocity,
+        unit: strings::UNIT_METERS_PER_SECOND,
+    },
+    Spec {
+        label: strings_cn::detail::RATE_OF_FIRE,
+        value: visual::PLAYER_BARREL.rate_of_fire,
+        unit: strings::UNIT_ROUNDS_PER_MINUTE,
+    },
+];
+
+/// cleat 履带规格；敌人 crawl 的速度仍是占位 0，不展示。
+const CLEAT_SPECS: [Spec; 2] = [
+    Spec {
+        label: strings_cn::detail::FORWARD_SPEED,
+        value: track::PLAYER_TRACKS.forward_speed,
+        unit: strings::UNIT_METERS_PER_SECOND,
+    },
+    Spec {
+        label: strings_cn::detail::REVERSE_SPEED,
+        value: track::PLAYER_TRACKS.reverse_speed,
+        unit: strings::UNIT_METERS_PER_SECOND,
+    },
+];
+
+/// 按目录分类与阵营返回已定义的规格；坦克与敌人装备暂无真实参数，返回空。
+fn specs_for(entry: preview::Entry) -> &'static [Spec] {
+    match (entry.category, entry.enemy) {
+        (0, false) => &LANCE_SPECS,
+        (1, false) => &CLEAT_SPECS,
+        _ => &[],
     }
 }
 
@@ -217,37 +265,89 @@ fn spawn_ui(
                 },
                 ImageNode::new(previews.items[0].image.clone()),
             ));
-            // 左上角仅保留分类眉题：前置横线 + 分类文字（样式取网页 .eyebrow）；
-            // 三维尺寸改由模型边沿的三条尺寸轴标注（见 spawn_axes），占位参数行
-            // （质量/装甲/极速）依赖未实现的玩法数据，不同步。
+            // 左上角：分类眉题 + 已定义的装备规格（样式取网页 .specs/.spec）；
+            // 没有真实参数的型号只保留眉题。三维尺寸改由模型边沿的尺寸轴标注。
             root.spawn((
                 Node {
                     position_type: PositionType::Absolute,
                     left: px(dims::SPECS_LEFT),
                     top: px(bar::HEIGHT + dims::SPECS_TOP),
-                    align_items: AlignItems::Center,
-                    column_gap: px(dims::EYEBROW_GAP),
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::FlexStart,
+                    row_gap: px(dims::SPECS_GAP),
                     ..default()
                 },
             ))
-                .with_children(|eyebrow| {
-                    eyebrow.spawn((
+            .with_children(|specs| {
+                specs
+                    .spawn((
                         Node {
-                            width: px(dims::EYEBROW_LINE.0),
-                            height: px(dims::EYEBROW_LINE.1),
+                            align_items: AlignItems::Center,
+                            column_gap: px(dims::EYEBROW_GAP),
                             ..default()
                         },
-                        BackgroundColor(colors::PRIMARY),
-                    ));
-                    eyebrow.spawn((
-                        Text::new(
-                            strings_cn::gallery::CATEGORIES[previews.items[0].entry.category],
-                        ),
-                        text_font(&font, dims::EYEBROW_SIZE, 400.0),
-                        LetterSpacing::Px(dims::EYEBROW_SPACING),
-                        TextColor(colors::PRIMARY),
-                    ));
-                });
+                    ))
+                    .with_children(|eyebrow| {
+                        eyebrow.spawn((
+                            Node {
+                                width: px(dims::EYEBROW_LINE.0),
+                                height: px(dims::EYEBROW_LINE.1),
+                                ..default()
+                            },
+                            BackgroundColor(colors::PRIMARY),
+                        ));
+                        eyebrow.spawn((
+                            Text::new(
+                                strings_cn::gallery::CATEGORIES
+                                    [previews.items[0].entry.category],
+                            ),
+                            text_font(&font, dims::EYEBROW_SIZE, 400.0),
+                            LetterSpacing::Px(dims::EYEBROW_SPACING),
+                            TextColor(colors::PRIMARY),
+                        ));
+                    });
+                for spec in specs_for(previews.items[0].entry) {
+                    specs
+                        .spawn((
+                            SpecRow,
+                            Node {
+                                flex_direction: FlexDirection::Column,
+                                row_gap: px(dims::SPEC_LABEL_GAP),
+                                ..default()
+                            },
+                        ))
+                        .with_children(|row| {
+                            row.spawn((
+                                Text::new(spec.label),
+                                text_font(&font, dims::SPEC_LABEL_SIZE, 400.0),
+                                LetterSpacing::Px(dims::SPEC_LABEL_SPACING),
+                                TextColor(colors::ON_SURFACE_MUTED),
+                            ));
+                            row.spawn((
+                                Node {
+                                    flex_direction: FlexDirection::Row,
+                                    align_items: AlignItems::Baseline,
+                                    column_gap: px(dims::SPEC_VALUE_GAP),
+                                    ..default()
+                                },
+                            ))
+                            .with_children(|value| {
+                                // 薄荷亮色与画廊激活型号同源；单位为英文缩写。
+                                value.spawn((
+                                    Text::new(spec.value.to_string()),
+                                    text_font(&font, dims::SPEC_VALUE_SIZE, 700.0),
+                                    TextColor(colors::gallery::NAME_ACTIVE),
+                                ));
+                                value.spawn((
+                                    Text::new(spec.unit),
+                                    text_font(&font, dims::SPEC_UNIT_SIZE, 400.0),
+                                    LetterSpacing::Px(dims::SPEC_UNIT_SPACING),
+                                    TextColor(colors::ON_SURFACE_MUTED),
+                                ));
+                            });
+                        });
+                }
+            });
             root.spawn((
                 Status,
                 Node {
