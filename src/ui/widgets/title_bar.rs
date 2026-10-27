@@ -12,6 +12,8 @@ use crate::ui::{
     zoom,
 };
 use bevy::{ecs::relationship::RelatedSpawnerCommands, prelude::*};
+use bevy::window::PrimaryWindow;
+use bevy::winit::WINIT_WINDOWS;
 
 use colors::title_bar as palette;
 use dimens::title_bar as dims;
@@ -185,6 +187,40 @@ pub(crate) fn back_rect() -> Rect {
     Rect::from_corners(Vec2::new(left, top), Vec2::new(left + width, top + height))
 }
 
+/// 标题栏拖动命中判定：左键落在标题栏条内（y ≤ 栏高）且避开返回框（留给返回/退出交互）。
+fn drag_hit(logical: Vec2) -> bool {
+    logical.y <= dims::HEIGHT && !back_rect().contains(logical)
+}
+
+/// 无边框窗口的拖动：左键按在标题栏条内时调用 winit `drag_window`，系统接管进入
+/// 模态拖动循环直到左键释放。局内标题栏未激活，顶部点击属于游戏画面，不劫持；
+/// WinitWindows 是 bevy_winit 的线程局部存储（0.20 起替代 NonSend 资源），
+/// 测试/离屏环境为空表，get_window 返回 None 自然空跑。
+pub(crate) fn drag_window(
+    windows: Query<(Entity, &Window), With<PrimaryWindow>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    active: Res<TitleBarActive>,
+) {
+    if !active.0 || !mouse.just_pressed(MouseButton::Left) {
+        return;
+    }
+    let Ok((entity, window)) = windows.single() else {
+        return;
+    };
+    let Some(cursor) = window.cursor_position() else {
+        return;
+    };
+    if !drag_hit(cursor / zoom(window.width())) {
+        return;
+    }
+    WINIT_WINDOWS.with_borrow(|winit_windows| {
+        if let Some(winit_window) = winit_windows.get_window(entity) {
+            // 拖动失败（如已处于其它模态循环）静默忽略，不影响游戏内交互。
+            let _ = winit_window.drag_window();
+        }
+    });
+}
+
 /// 标题栏交互：指针命中、键鼠状态机、220ms 高亮与激活消息；无标题栏实体时空跑并复位状态。
 /// 应用通过 TitleBarActive 门控过渡输入；关闭时清掉按下残留，不积压跨页返回消息。
 #[allow(clippy::too_many_arguments)]
@@ -257,5 +293,25 @@ pub(crate) fn interaction(
     // 电源符号与箭头共用同一高亮节奏：普通 on-surface，激活后 on-primary 深色。
     for mut image in &mut power_icons {
         image.color = colors::ON_SURFACE.mix(&colors::ON_PRIMARY, t);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 拖动命中区 = 标题栏条减去返回框：条内可拖、条外与返回框内不可拖。
+    #[test]
+    fn drag_hit_is_strip_minus_back_rect() {
+        let (left, top, width, height) = dims::BACK_RECT;
+        // 标题栏条标题区（返回框右侧）：可拖
+        assert!(drag_hit(Vec2::new(400.0, dims::HEIGHT * 0.5)));
+        // 条下方一像素：不可拖（属页面内容）
+        assert!(!drag_hit(Vec2::new(640.0, dims::HEIGHT + 1.0)));
+        // 返回框中心：不可拖（返回/退出按钮）
+        assert!(!drag_hit(Vec2::new(
+            left + width * 0.5,
+            top + height * 0.5,
+        )));
     }
 }

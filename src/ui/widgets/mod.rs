@@ -13,7 +13,7 @@ pub(crate) use title_bar::{
 use crate::ui::font::UiFont;
 use bevy::prelude::*;
 use frame::layout_frame;
-use title_bar::interaction;
+use title_bar::{drag_window, interaction};
 
 /// 注册共享控件的布局与交互系统。系统状态无关：无 marker 实体时空跑。
 pub(crate) struct WidgetsPlugin;
@@ -23,7 +23,7 @@ impl Plugin for WidgetsPlugin {
             // 启动即处于菜单（Index），标题栏默认可交互；chrome 按状态切换该门控。
             .insert_resource(TitleBarActive(true))
             .add_message::<TitleBarBackActivated>()
-            .add_systems(Update, (layout_frame, interaction));
+            .add_systems(Update, (layout_frame, interaction, drag_window));
     }
 }
 
