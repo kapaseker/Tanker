@@ -85,6 +85,54 @@ fn wheel(app: &mut App, lines: f32) -> Result<(), String> {
     update(app, STEP, None)
 }
 
+/// 尺寸轴与屏幕层标签存在性断言：3 个标签文本为数值、轴线组唯一、
+/// 伴随子弹只在 lance（玩家炮管）出现。
+fn assert_dims(app: &mut App, index: usize) -> Result<(), String> {
+    let world = app.world_mut();
+    let mut values = world.query::<(&crate::pages::detail::DimValue, &Text)>();
+    let mut found: [Option<String>; 3] = [None, None, None];
+    for (dim, text) in values.iter(world) {
+        ensure(dim.0 < 3, "尺寸标签序号越界")?;
+        found[dim.0] = Some(text.0.clone());
+    }
+    ensure(
+        found.iter().all(|v| v.is_some()),
+        "详情缺少尺寸标签（长/宽/高）",
+    )?;
+    if world.resource::<Previews>().items[0].size.is_some() {
+        for value in found.into_iter().flatten() {
+            ensure(
+                value.parse::<f32>().is_ok(),
+                format!("尺寸标签不是数值：{value}").as_str(),
+            )?;
+        }
+    }
+    let axes = world
+        .query_filtered::<(), With<crate::pages::detail::DimAxes>>()
+        .iter(world)
+        .count();
+    ensure(axes == 1, "详情缺少唯一的尺寸轴组")?;
+    let content = world.resource::<Previews>().items[0].content;
+    let mut stack = vec![content];
+    let mut bullet = false;
+    while let Some(entity) = stack.pop() {
+        if world
+            .get::<crate::pages::model_preview::BulletCompanion>(entity)
+            .is_some()
+        {
+            bullet = true;
+        }
+        if let Some(children) = world.get::<Children>(entity) {
+            stack.extend(children.iter());
+        }
+    }
+    ensure(
+        bullet == (preview::ENTRIES[index].path == crate::tank::visual::PLAYER_BARREL),
+        "伴随子弹只应出现在 lance",
+    )?;
+    Ok(())
+}
+
 /// 整个链路从首页发起；重复往返每个目录项，同时验证返回保持原位置。
 pub(super) fn run_detail_scenario(
     app: &mut App,
@@ -174,6 +222,7 @@ pub(super) fn run_detail_scenario(
             app.world().get::<Transform>(root).unwrap().rotation == rotation,
             "详情不应自动旋转",
         )?;
+        assert_dims(app, index)?;
         capture(
             app,
             &options.output.join(format!("detail-{index}-initial.png")),

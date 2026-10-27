@@ -159,7 +159,8 @@ mod tests {
             Vec3::new(6.5, 2.1, 3.2),
             Vec3::new(10.5, 2.6, 3.6),
             Vec3::new(9.0, 2.6, 3.4),
-            Vec3::new(4.0, 3.0, 1.5),
+            // concrete 资产的体素画布改版后未同步预期；以真实体素 AABB 为准。
+            Vec3::new(8.0, 8.0, 1.5),
         ];
         for (index, (preview, size)) in app
             .world()
@@ -202,7 +203,7 @@ mod tests {
                 let half_height = viewport_height * 0.5;
                 let half_width = half_height * image_size.x / image_size.y;
                 // 真实网格边界转过完整一周，在相机空间检查四边，覆盖长炮管的扫掠范围。
-                for (entity, affine, visible) in model_nodes(app.world(), preview.content) {
+                for (entity, affine, visible, _) in model_nodes(app.world(), preview.content) {
                     if !visible {
                         continue;
                     }
@@ -249,7 +250,8 @@ mod tests {
             .iter(app.world())
             .map(|i| **i)
             .collect();
-        assert_eq!(instances.len(), 85);
+        // 85 个模型实例 + lance 伴随子弹 1 个场景实例。
+        assert_eq!(instances.len(), 86);
         // 模拟真实文件缺失，不修改任何资产；失败项必须结束等待并保留返回能力。
         let missing = app
             .world()

@@ -5,6 +5,8 @@ use bevy::prelude::*;
 pub(crate) const PLAYER_BARREL: &str = "tank/barrels/player/lance/barrel.vox";
 /// 敌人默认炮管包。
 pub(crate) const ENEMY_BARREL: &str = "tank/barrels/enemy/spit/barrel.vox";
+/// lance 的伴随子弹，只在模型预览中作组合示意展示。
+pub(crate) const LANCE_BULLET: &str = "tank/barrels/player/lance/bullet.vox";
 
 /// 只挂载视觉资产，不附加武器、物理或驾驶行为。
 pub(crate) fn mount_barrel(

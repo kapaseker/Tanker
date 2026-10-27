@@ -78,6 +78,11 @@ pub(crate) const ENTRIES: [Entry; 9] = [
 #[derive(Component)]
 pub(crate) struct PreviewEntity;
 
+/// 伴随子弹子树标记（仅 lance 配置）：只作"子弹与炮管组合"示意，
+/// 不参与包围盒测量、自转中心与详情尺寸轴（测量时按本标记整树排除）。
+#[derive(Component)]
+pub(crate) struct BulletCompanion;
+
 /// 一张卡片独占的模型、相机与纹理；尺寸在未旋转的模型空间测量。
 pub(crate) struct Preview {
     pub(crate) root: Entity,
@@ -89,6 +94,11 @@ pub(crate) struct Preview {
     pub(crate) camera: Entity,
     pub(crate) image: Handle<Image>,
     pub(crate) size: Option<Vec3>,
+    /// 测得的可见几何包围盒（content 局部空间，米；不含伴随子弹），
+    /// 供详情页尺寸轴贴合模型边沿取位。
+    pub(crate) bounds: Option<(Vec3, Vec3)>,
+    /// 自转轴（content 局部空间）；content 平移取其负值，详情投影复用。
+    pub(crate) pivot: Vec3,
     pub(crate) error: Option<String>,
     /// 场景根就绪后仍等待网格后代稳定，避免插件延迟生成的节点漏分层或漏计尺寸。
     mesh_count: usize,
@@ -159,6 +169,19 @@ pub(crate) fn spawn(
                 },
             );
         }
+        // 伴随子弹：炮管 lance（唯一配置）在正上方叠加，表达与炮管的组合关系；
+        // 不改变模型中心，也不参与尺寸与包围盒（测量时按 BulletCompanion 排除）。
+        if entry.path == visual::PLAYER_BARREL {
+            let bullet = commands
+                .spawn((
+                    BulletCompanion,
+                    Transform::default(),
+                    Visibility::Inherited,
+                    WorldAssetRoot(assets.load(visual::LANCE_BULLET)),
+                ))
+                .id();
+            commands.entity(content).add_child(bullet);
+        }
         let image = images.add(Image::new_target_texture(
             460,
             360,
@@ -201,6 +224,8 @@ pub(crate) fn spawn(
             camera,
             image,
             size: None,
+            bounds: None,
+            pivot: Vec3::ZERO,
             error: None,
             mesh_count: 0,
             stable_frames: 0,
@@ -212,19 +237,21 @@ pub(crate) fn spawn(
     });
 }
 
-/// 层级展开时累计局部变换，显隐沿父链传播；只显示的网格参与尺寸计算。
-pub(crate) fn model_nodes(world: &World, content: Entity) -> Vec<(Entity, Affine3A, bool)> {
+/// 层级展开时累计局部变换，显隐与伴随子弹排除沿父链传播；只显示的网格参与尺寸计算。
+/// 返回元组为 (实体, 局部仿射, 是否可见, 是否位于伴随子弹子树内)。
+pub(crate) fn model_nodes(world: &World, content: Entity) -> Vec<(Entity, Affine3A, bool, bool)> {
     let mut result = Vec::new();
-    let mut pending = vec![(content, Affine3A::IDENTITY, true)];
-    while let Some((entity, parent, visible)) = pending.pop() {
+    let mut pending = vec![(content, Affine3A::IDENTITY, true, false)];
+    while let Some((entity, parent, visible, bullet)) = pending.pop() {
         let transform = world
             .get::<Transform>(entity)
             .map_or(Affine3A::IDENTITY, Transform::compute_affine);
         let affine = parent * transform;
         let visible = visible && world.get::<Visibility>(entity) != Some(&Visibility::Hidden);
-        result.push((entity, affine, visible));
+        let bullet = bullet || world.get::<BulletCompanion>(entity).is_some();
+        result.push((entity, affine, visible, bullet));
         if let Some(children) = world.get::<Children>(entity) {
-            pending.extend(children.iter().map(|child| (child, affine, visible)));
+            pending.extend(children.iter().map(|child| (child, affine, visible, bullet)));
         }
     }
     result
@@ -238,7 +265,7 @@ pub(crate) fn prepare_previews(world: &mut World) {
     for (index, preview) in previews.items.iter_mut().enumerate() {
         let nodes = model_nodes(world, preview.content);
         // VOX 插件可能在实例就绪后继续展开后代；渲染层不能只在首帧设置。
-        for (entity, _, _) in &nodes {
+        for (entity, _, _, _) in &nodes {
             if world.get::<RenderLayers>(*entity) != Some(&RenderLayers::layer(index + 1)) {
                 world
                     .entity_mut(*entity)
@@ -252,7 +279,7 @@ pub(crate) fn prepare_previews(world: &mut World) {
         let spawner = world.resource::<WorldInstanceSpawner>();
         let mut ready = !nodes.is_empty();
         let mut error = None;
-        for (entity, _, _) in &nodes {
+        for (entity, _, _, _) in &nodes {
             if let Some(root) = world.get::<WorldAssetRoot>(*entity) {
                 if let Some(LoadState::Failed(reason)) = server.get_load_state(&root.0) {
                     error = Some(reason.to_string());
@@ -284,7 +311,7 @@ pub(crate) fn prepare_previews(world: &mut World) {
         }
         let mesh_count = nodes
             .iter()
-            .filter(|(entity, _, _)| world.get::<Mesh3d>(*entity).is_some())
+            .filter(|(entity, _, _, _)| world.get::<Mesh3d>(*entity).is_some())
             .count();
         preview.stable_frames = if mesh_count > 0 && mesh_count == preview.mesh_count {
             preview.stable_frames + 1
@@ -295,9 +322,12 @@ pub(crate) fn prepare_previews(world: &mut World) {
         if preview.stable_frames < 8 {
             continue;
         }
+        // 主体包围盒与子弹本地包围盒分别累计；子弹不计入模型尺寸与自转中心。
         let mut low = Vec3::splat(f32::INFINITY);
         let mut high = Vec3::splat(f32::NEG_INFINITY);
-        for (entity, affine, visible) in &nodes {
+        let mut bullet_low = Vec3::splat(f32::INFINITY);
+        let mut bullet_high = Vec3::splat(f32::NEG_INFINITY);
+        for (entity, affine, visible, bullet) in &nodes {
             world
                 .entity_mut(*entity)
                 .insert(RenderLayers::layer(index + 1));
@@ -316,12 +346,17 @@ pub(crate) fn prepare_previews(world: &mut World) {
             };
             let center = Vec3::from(aabb.center);
             let half = Vec3::from(aabb.half_extents);
+            let (target_low, target_high) = if *bullet {
+                (&mut bullet_low, &mut bullet_high)
+            } else {
+                (&mut low, &mut high)
+            };
             for x in [-1.0, 1.0] {
                 for y in [-1.0, 1.0] {
                     for z in [-1.0, 1.0] {
                         let point = affine.transform_point3(center + half * Vec3::new(x, y, z));
-                        low = low.min(point);
-                        high = high.max(point);
+                        *target_low = target_low.min(point);
+                        *target_high = target_high.max(point);
                     }
                 }
             }
@@ -338,10 +373,28 @@ pub(crate) fn prepare_previews(world: &mut World) {
         } else {
             (low + high) * 0.5
         };
+        // 伴随子弹就位：模型上缘上方 0.8 米（design.md 标准间距），XZ 对中自转轴；
+        // content 平移为 -pivot，故本地目标 = pivot + 上方偏移；子弹本地包围盒
+        // 在其根尚未平移时测得，平移量按该包围盒换算。
+        if let Some((bullet_root, _, _, _)) =
+            nodes.iter().find(|(e, _, _, _)| world.get::<BulletCompanion>(*e).is_some()).copied()
+            .filter(|_| bullet_low.is_finite())
+        {
+            let bullet_center = (bullet_low + bullet_high) * 0.5;
+            world
+                .get_mut::<Transform>(bullet_root)
+                .unwrap()
+                .translation = Vec3::new(
+                pivot.x - bullet_center.x,
+                high.y + crate::ui::resources::dimens::BULLET_GAP - bullet_low.y,
+                pivot.z - bullet_center.z,
+            );
+        }
         world
             .get_mut::<Transform>(preview.content)
             .unwrap()
             .translation = -pivot;
+        preview.pivot = pivot;
         // 以实际旋转轴为球心，取最远边界的半径；非对称炮管也不会在自转中裁切。
         let radius = (low - pivot).abs().max((high - pivot).abs()).length();
         if let Some(mut projection) = world.get_mut::<Projection>(preview.camera) {
@@ -353,6 +406,7 @@ pub(crate) fn prepare_previews(world: &mut World) {
         }
         preview.radius = radius;
         preview.size = Some(size);
+        preview.bounds = Some((low, high));
         info!(
             "模型预览就绪：{}，长宽高 {:.1}×{:.1}×{:.1} 米",
             preview.entry.name(),
@@ -393,7 +447,7 @@ pub(crate) fn validate(world: &World) -> Result<String, String> {
         let nodes = model_nodes(world, preview.content);
         let mut visible_phases = 0;
         let mut wheels = 0;
-        for (entity, _, visible) in nodes {
+        for (entity, _, visible, _) in nodes {
             if world.get::<crate::gameplay::player::Tank>(entity).is_some()
                 || world
                     .get::<crate::gameplay::enemy::EnemyTank>(entity)

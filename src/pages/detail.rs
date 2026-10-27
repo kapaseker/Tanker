@@ -21,7 +21,9 @@ use bevy::{
     camera::{RenderTarget, ScalingMode, visibility::RenderLayers},
     core_pipeline::tonemapping::{DebandDither, Tonemapping},
     input::mouse::{MouseScrollUnit, MouseWheel},
+    material::AlphaMode,
     prelude::*,
+    text::LetterSpacing,
     ui_render::prelude::MaterialNode,
 };
 
@@ -35,9 +37,18 @@ pub(crate) struct DetailCamera;
 /// 详情拥有的 UI 根和相机；预览本身由共用模块清理。
 #[derive(Component)]
 pub(crate) struct DetailEntity;
-/// 长宽高读数的中文排列顺序。
+/// 详情 UI 根节点；屏幕层尺寸标签挂在其下，绘制顺序在模型纹理之上。
 #[derive(Component)]
-struct Dimension(usize);
+struct DetailUiRoot;
+/// 模型子树内的 3D 尺寸轴组标记；轴线随预览实体一起清理。
+#[derive(Component)]
+pub(crate) struct DimAxes;
+/// 屏幕层尺寸标签节点标记；序号与 tag_anchors 的锚点顺序一致。
+#[derive(Component)]
+struct DimTag(usize);
+/// 尺寸标签数值文本（0 长 / 1 宽 / 2 高），供逐帧更新与离屏验收断言。
+#[derive(Component)]
+pub(crate) struct DimValue(pub(crate) usize);
 /// 模型纹理填满标题栏以下区域。
 #[derive(Component)]
 struct Viewer;
@@ -100,6 +111,7 @@ impl Plugin for DetailPlugin {
                 Update,
                 (
                     preview::prepare_previews,
+                    spawn_axes,
                     input.before(widgets::title_bar::interaction),
                     update_view,
                 )
@@ -177,6 +189,7 @@ fn spawn_ui(
     commands
         .spawn((
             DetailEntity,
+            DetailUiRoot,
             UiTargetCamera(camera),
             Node {
                 width: percent(100),
@@ -204,56 +217,36 @@ fn spawn_ui(
                 },
                 ImageNode::new(previews.items[0].image.clone()),
             ));
-            root.spawn((Node {
-                position_type: PositionType::Absolute,
-                left: px(dims::SPECS_LEFT),
-                top: px(bar::HEIGHT + dims::SPECS_TOP),
-                flex_direction: FlexDirection::Column,
-                row_gap: px(dims::GROUP_GAP),
-                ..default()
-            },))
-                .with_children(|specs| {
-                    specs.spawn((
+            // 左上角仅保留分类眉题：前置横线 + 分类文字（样式取网页 .eyebrow）；
+            // 三维尺寸改由模型边沿的三条尺寸轴标注（见 spawn_axes），占位参数行
+            // （质量/装甲/极速）依赖未实现的玩法数据，不同步。
+            root.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: px(dims::SPECS_LEFT),
+                    top: px(bar::HEIGHT + dims::SPECS_TOP),
+                    align_items: AlignItems::Center,
+                    column_gap: px(dims::EYEBROW_GAP),
+                    ..default()
+                },
+            ))
+                .with_children(|eyebrow| {
+                    eyebrow.spawn((
+                        Node {
+                            width: px(dims::EYEBROW_LINE.0),
+                            height: px(dims::EYEBROW_LINE.1),
+                            ..default()
+                        },
+                        BackgroundColor(colors::PRIMARY),
+                    ));
+                    eyebrow.spawn((
                         Text::new(
                             strings_cn::gallery::CATEGORIES[previews.items[0].entry.category],
                         ),
-                        text_font(&font, dims::LABEL_SIZE, 400.0),
-                        TextColor(colors::ON_SURFACE_MUTED),
+                        text_font(&font, dims::EYEBROW_SIZE, 400.0),
+                        LetterSpacing::Px(dims::EYEBROW_SPACING),
+                        TextColor(colors::PRIMARY),
                     ));
-                    for (i, label) in strings_cn::detail::DIMENSIONS.iter().enumerate() {
-                        specs
-                            .spawn(Node {
-                                flex_direction: FlexDirection::Column,
-                                row_gap: px(dims::LABEL_GAP),
-                                ..default()
-                            })
-                            .with_children(|group| {
-                                group.spawn((
-                                    Text::new(*label),
-                                    text_font(&font, dims::LABEL_SIZE, 400.0),
-                                    TextColor(colors::ON_SURFACE_MUTED),
-                                ));
-                                group
-                                    .spawn(Node {
-                                        align_items: AlignItems::Baseline,
-                                        column_gap: px(dims::LABEL_GAP),
-                                        ..default()
-                                    })
-                                    .with_children(|row| {
-                                        row.spawn((
-                                            Dimension(i),
-                                            Text::new("—"),
-                                            text_font(&font, dims::VALUE_SIZE, 700.0),
-                                            TextColor(colors::gallery::NAME_ACTIVE),
-                                        ));
-                                        row.spawn((
-                                            Text::new(strings_cn::gallery::UNIT),
-                                            text_font(&font, dims::LABEL_SIZE, 400.0),
-                                            TextColor(colors::ON_SURFACE_MUTED),
-                                        ));
-                                    });
-                            });
-                    }
                 });
             root.spawn((
                 Status,
@@ -270,6 +263,212 @@ fn spawn_ui(
             ));
             widgets::spawn_version_text(root, &font);
         });
+}
+
+/// 包围盒测得后生成尺寸轴与屏幕层标签；只生成一次，随详情与预览清理。
+#[allow(clippy::too_many_arguments)]
+fn spawn_axes(
+    mut commands: Commands,
+    previews: Res<Previews>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut pbr_materials: ResMut<Assets<StandardMaterial>>,
+    font: Res<UiFont>,
+    spawned: Query<(), With<DimAxes>>,
+    roots: Query<Entity, With<DetailUiRoot>>,
+) {
+    if !spawned.is_empty() {
+        return;
+    }
+    let p = &previews.items[0];
+    let Some(bounds) = p.bounds else {
+        return;
+    };
+    let Ok(ui_root) = roots.single() else {
+        return;
+    };
+    // 三种线材质：主轴、刻度、延长线；无光照混色，跟随模型旋转缩放。
+    let materials = [
+        StandardMaterial {
+            base_color: colors::detail::AXIS,
+            unlit: true,
+            alpha_mode: AlphaMode::Blend,
+            ..default()
+        },
+        StandardMaterial {
+            base_color: colors::detail::TICK,
+            unlit: true,
+            alpha_mode: AlphaMode::Blend,
+            ..default()
+        },
+        StandardMaterial {
+            base_color: colors::detail::EXT,
+            unlit: true,
+            alpha_mode: AlphaMode::Blend,
+            ..default()
+        },
+    ]
+    .map(|material| pbr_materials.add(material));
+    let segments = axis_segments(bounds);
+    commands.entity(p.content).with_children(|axes| {
+        axes.spawn((DimAxes, Transform::default(), Visibility::Inherited))
+            .with_children(|group| {
+                for (center, size, kind) in segments {
+                    group.spawn((
+                        Mesh3d(meshes.add(Cuboid::from_size(size))),
+                        MeshMaterial3d(materials[kind].clone()),
+                        Transform::from_translation(center),
+                    ));
+                }
+            });
+    });
+    // 屏幕层尺寸标签：底板+细边框，行内基线排列；锚点位置由 update_view 逐帧投影。
+    for (i, name) in strings_cn::detail::DIMENSIONS.iter().enumerate() {
+        commands.entity(ui_root).with_children(|tags| {
+            tags.spawn((
+                DimTag(i),
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(0.0),
+                    top: Val::Px(0.0),
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Baseline,
+                    column_gap: px(6.0),
+                    padding: UiRect::px(8.0, 8.0, 4.0, 4.0),
+                    border: UiRect::all(px(1.0)),
+                    ..default()
+                },
+                BackgroundColor(colors::detail::TAG_PLATE),
+                BorderColor::all(colors::detail::TAG_BORDER),
+            ))
+            .with_children(|tag| {
+                tag.spawn((
+                    Text::new(*name),
+                    text_font(&font, dims::TAG_NAME_SIZE, 400.0),
+                    TextColor(colors::ON_SURFACE_MUTED),
+                ));
+                tag.spawn((
+                    DimValue(i),
+                    Text::new("—"),
+                    text_font(&font, dims::TAG_VALUE_SIZE, 700.0),
+                    TextColor(colors::gallery::NAME_ACTIVE),
+                ));
+                tag.spawn((
+                    Text::new(strings_cn::gallery::UNIT),
+                    text_font(&font, dims::TAG_UNIT_SIZE, 400.0),
+                    TextColor(colors::ON_SURFACE_MUTED),
+                ));
+            });
+        });
+    }
+}
+
+/// 尺寸轴几何（content 局部空间，米）。布局复刻网页 buildDimAxes：
+/// 长度轴沿前缘正下方沿 X、宽度轴沿右缘正下方沿 Z，在右前下角相接成 L；
+/// 高度轴在右前角外侧沿 Y；端点带刻度，角点引出延长线。
+/// 返回 (中心, 尺寸, 材质序号 0 轴线 / 1 刻度 / 2 延长线)。
+fn axis_segments(bounds: (Vec3, Vec3)) -> Vec<(Vec3, Vec3, usize)> {
+    let (low, high) = bounds;
+    let ground = low.y - dims::AXIS_GAP; // 轴线地面：模型最低点再向下偏移
+    let t = dims::AXIS_THICKNESS;
+    let tick = dims::HALF_TICK * 2.0;
+    let mut segments = Vec::new();
+    let mut push = |center: Vec3, size: Vec3, kind: usize| segments.push((center, size, kind));
+    // 长度轴：前缘正下方沿 X；宽度轴：右缘正下方沿 Z
+    push(
+        Vec3::new((low.x + high.x) / 2.0, ground, high.z),
+        Vec3::new(high.x - low.x, t, t),
+        0,
+    );
+    push(
+        Vec3::new(high.x, ground, (low.z + high.z) / 2.0),
+        Vec3::new(t, t, high.z - low.z),
+        0,
+    );
+    // 长度轴端点刻度 + 角点向下引出的延长线
+    for xe in [low.x, high.x] {
+        push(Vec3::new(xe, ground, high.z), Vec3::new(t, t, tick), 1);
+        push(
+            Vec3::new(xe, (low.y + ground) / 2.0, high.z),
+            Vec3::new(t, dims::AXIS_GAP, t),
+            2,
+        );
+    }
+    // 宽度轴端点刻度 + 延长线（右前角延长线已由长度轴画出，跳过）
+    for ze in [low.z, high.z] {
+        push(Vec3::new(high.x, ground, ze), Vec3::new(tick, t, t), 1);
+        if ze != high.z {
+            push(
+                Vec3::new(high.x, (low.y + ground) / 2.0, ze),
+                Vec3::new(t, dims::AXIS_GAP, t),
+                2,
+            );
+        }
+    }
+    // 高度轴：右前角外侧沿 Y
+    push(
+        Vec3::new(high.x + dims::AXIS_GAP, (low.y + high.y) / 2.0, high.z),
+        Vec3::new(t, high.y - low.y, t),
+        0,
+    );
+    for ye in [low.y, high.y] {
+        // 上下端水平延长线引自模型角点；刻度取十字两向，任意偏航不侧边消失
+        push(
+            Vec3::new(high.x + dims::AXIS_GAP / 2.0, ye, high.z),
+            Vec3::new(dims::AXIS_GAP, t, t),
+            2,
+        );
+        push(
+            Vec3::new(high.x + dims::AXIS_GAP, ye, high.z),
+            Vec3::new(tick, t, t),
+            1,
+        );
+        push(
+            Vec3::new(high.x + dims::AXIS_GAP, ye, high.z),
+            Vec3::new(t, t, tick),
+            1,
+        );
+    }
+    segments
+}
+
+/// 尺寸标签锚点（content 局部空间，米）：长/宽钉在各自轴线中点，高度钉在轴外侧中点。
+fn tag_anchors(bounds: (Vec3, Vec3)) -> [Vec3; 3] {
+    let (low, high) = bounds;
+    let ground = low.y - dims::AXIS_GAP;
+    [
+        Vec3::new((low.x + high.x) / 2.0, ground, high.z),
+        Vec3::new(high.x, ground, (low.z + high.z) / 2.0),
+        Vec3::new(
+            high.x + dims::AXIS_GAP + dims::HEIGHT_TAG_OFFSET,
+            (low.y + high.y) / 2.0,
+            high.z,
+        ),
+    ]
+}
+
+/// 模型空间锚点 → 查看区逻辑坐标。复现预览链路的正交投影：
+/// 相机固定在 +Z 30 米处正对原点（spawn_ui 设定），先取景高再换 NDC 与图像像素，
+/// 最后按查看区尺寸映射为逻辑坐标；与网页 projectToScreen 同构。
+#[allow(clippy::too_many_arguments)]
+fn project_to_viewer(
+    anchor: Vec3,
+    orientation: Quat,
+    pivot_shift: Vec3,
+    viewport_height: f32,
+    aspect: f32,
+    image_size: Vec2,
+    viewer: Vec2,
+) -> Vec2 {
+    let world = orientation * (anchor + pivot_shift);
+    let view = world - Vec3::new(0.0, 0.0, 30.0);
+    let half = viewport_height / 2.0;
+    let ndc = Vec2::new(view.x / (half * aspect), view.y / half);
+    let pixel = Vec2::new(
+        (ndc.x + 1.0) / 2.0 * image_size.x,
+        (1.0 - ndc.y) / 2.0 * image_size.y,
+    );
+    // 图像恰好铺满查看区，物理像素线性映射为逻辑坐标
+    Vec2::new(pixel.x / image_size.x * viewer.x, pixel.y / image_size.y * viewer.y)
 }
 
 /// 控件只发返回消息，详情决定返回画廊；失焦/过渡立即取消拖拽。
@@ -340,6 +539,7 @@ fn input(
 }
 
 /// 尺寸、纹理和相机随窗口变化；旋转包络按纵横比适配，主动放大允许裁切。
+/// 尺寸标签逐帧投影轴上锚点，跟随旋转、缩放与窗口变化，字号恒定。
 #[allow(clippy::too_many_arguments)]
 fn update_view(
     windows: Query<&Window>,
@@ -350,7 +550,8 @@ fn update_view(
     mut transforms: Query<&mut Transform>,
     mut projections: Query<&mut Projection>,
     mut viewers: Query<&mut Node, With<Viewer>>,
-    mut values: Query<(&Dimension, &mut Text), Without<Status>>,
+    mut values: Query<(&DimValue, &mut Text), Without<Status>>,
+    mut tags: Query<(&DimTag, &mut Node, Option<&ComputedNode>), (With<DimTag>, Without<Viewer>)>,
     mut status: Query<&mut Text, With<Status>>,
     mut materials: ResMut<Assets<IndexBackground>>,
 ) {
@@ -382,12 +583,12 @@ fn update_view(
     if let Ok(mut model) = transforms.get_mut(p.root) {
         model.rotation = view.orientation();
     }
+    let mut viewport_height = 1.0;
     if let Ok(mut projection) = projections.get_mut(p.camera) {
         if let Projection::Orthographic(ref mut ortho) = *projection {
-            ortho.scaling_mode = ScalingMode::FixedVertical {
-                viewport_height: (p.radius * 2.0 * 1.15 / (size.x / height).min(1.0) / view.zoom)
-                    .max(0.1),
-            };
+            let vh = (p.radius * 2.0 * 1.15 / (size.x / height).min(1.0) / view.zoom).max(0.1);
+            ortho.scaling_mode = ScalingMode::FixedVertical { viewport_height: vh };
+            viewport_height = vh;
         }
     }
     for (dimension, mut text) in &mut values {
@@ -397,6 +598,45 @@ fn update_view(
         );
         if text.0 != value {
             text.0 = value;
+        }
+    }
+    // 尺寸标签定位：与 detail.rs 取景同一套正交投影（pivot 平移 → 旋转 → 30 米相机），
+    // 图像像素按查看区尺寸映射为逻辑坐标；底板以自身中心对准投影点，并沿
+    // “锚点 → 屏幕外侧”方向推开 LABEL_PUSH，避免压住模型。
+    if let Some(bounds) = p.bounds {
+        let viewer = Vec2::new(size.x, height);
+        // content 平移为 -pivot（见 model_preview 的测量），投影前还原该平移
+        let pivot_shift = -p.pivot;
+        let image_size = Vec2::new(desired.x as f32, desired.y as f32);
+        for (tag, mut node, computed) in &mut tags {
+            let mut pos = project_to_viewer(
+                tag_anchors(bounds)[tag.0],
+                view.orientation(),
+                pivot_shift,
+                viewport_height,
+                image_size.x / image_size.y,
+                image_size,
+                viewer,
+            );
+            // 与网页 projectToScreen 的 x*(1+k) 一致：沿“锚点 → 远离屏幕中心”
+            // 的离心方向推开 LABEL_PUSH，避免标签压在模型上。
+            let to_edge = pos - viewer / 2.0;
+            let len = to_edge.length();
+            if len > 1.0 {
+                pos += to_edge / len * dims::LABEL_PUSH;
+            }
+            if let Some(computed) = computed {
+                // ComputedNode.size 是物理像素，换算回逻辑像素再取负，让底板中心对准投影点
+                node.margin = UiRect::px(
+                    -computed.size.x / density / 2.0,
+                    0.0,
+                    -computed.size.y / density / 2.0,
+                    0.0,
+                );
+            }
+            // 标签挂在全屏根节点下，pos 相对查看区顶部，需叠加标题栏高度
+            node.left = px(pos.x);
+            node.top = px(bar::HEIGHT + pos.y);
         }
     }
     for mut text in &mut status {

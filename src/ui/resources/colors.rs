@@ -42,9 +42,25 @@ pub(crate) mod gallery {
 
 /// 详情平面网格配色，在背景材质的 sRGB 混色中使用。
 pub(crate) mod detail {
+    use super::*;
+
     /// 原型 rgba(200,219,177,0.05)，低对比避免干扰模型轮廓。
     pub(crate) const GRID: bevy::prelude::Color =
         bevy::prelude::Color::srgba(200.0 / 255.0, 219.0 / 255.0, 177.0 / 255.0, 0.05);
+
+    /// 以下为尺寸轴与标签配色。CSS 的透明合成在 sRGB 空间进行，而 Bevy 的
+    /// UI/材质都在线性空间混合；与 index::SEPARATOR 同理，alpha 需按暗底
+    /// 合成结果换算（换算取原型在暗底上的实测观感，随关键帧验证微调）。
+    /// 尺寸轴主轴线：CSS rgba(200,219,177,0.9)。
+    pub(crate) const AXIS: Color = with_alpha(PRIMARY, 0.8);
+    /// 端点刻度：CSS rgba(232,244,218,0.95)。
+    pub(crate) const TICK: Color = Color::srgba(232.0 / 255.0, 244.0 / 255.0, 218.0 / 255.0, 0.93);
+    /// 角点延长线：CSS rgba(200,219,177,0.30)。
+    pub(crate) const EXT: Color = with_alpha(PRIMARY, 0.09);
+    /// 尺寸标签底板：CSS rgba(15,14,12,0.82)（暗色底板在暗景上取偏实值）。
+    pub(crate) const TAG_PLATE: Color = Color::srgba(15.0 / 255.0, 14.0 / 255.0, 12.0 / 255.0, 0.9);
+    /// 尺寸标签边框：CSS rgba(200,219,177,0.28)。
+    pub(crate) const TAG_BORDER: Color = with_alpha(PRIMARY, 0.09);
 }
 
 /// 首页专用配色与渲染补偿值；保留当前实际画面，不套用通用透明度。

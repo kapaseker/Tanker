@@ -166,15 +166,35 @@ pub(crate) mod index {
     pub(crate) const EXIT_FADE_IN: f32 = 0.12;
 }
 
+/// 伴随子弹与模型上缘的标准间距（世界单位：米，design.md 约定）。
+pub(crate) const BULLET_GAP: f32 = 0.8;
+
 /// 详情查看区与浮层的逻辑像素，取自 model-detail.html。
 pub(crate) mod detail {
     /// 平面网格间距；从标题栏底部开始计格。
     pub(crate) const GRID: f32 = 48.0;
-    /// 尺寸浮层相对查看区的位置。
+    /// 左上角分类眉题相对查看区的位置。
     pub(crate) const SPECS_LEFT: f32 = 64.0;
     pub(crate) const SPECS_TOP: f32 = 32.0;
-    pub(crate) const GROUP_GAP: f32 = 16.0;
-    pub(crate) const LABEL_GAP: f32 = 8.0;
-    pub(crate) const LABEL_SIZE: f32 = 12.0;
-    pub(crate) const VALUE_SIZE: f32 = 28.0;
+    /// 眉题字号与字距（网页 .eyebrow 的 18px / 4px）。
+    pub(crate) const EYEBROW_SIZE: f32 = 18.0;
+    pub(crate) const EYEBROW_SPACING: f32 = 4.0;
+    /// 眉题前置横线（网页 .eyebrow::before 的 26×1px）与文字间距。
+    pub(crate) const EYEBROW_LINE: (f32, f32) = (26.0, 1.0);
+    pub(crate) const EYEBROW_GAP: f32 = 12.0;
+    /// 以下为尺寸轴几何（世界单位：米）；px→米换算按网页模型 37.8px/m 取整。
+    /// 轴线与模型边沿的间距（网页 GAP 14px ≈ 0.37m）。
+    pub(crate) const AXIS_GAP: f32 = 0.4;
+    /// 端点刻度半长（网页 HALF_TICK 7px ≈ 0.19m）。
+    pub(crate) const HALF_TICK: f32 = 0.2;
+    /// 轴线/刻度/延长线的截面厚度；细长方体任意视角可见，等效网页 1px 线。
+    pub(crate) const AXIS_THICKNESS: f32 = 0.02;
+    /// 高度标签在高度轴外侧的偏移（网页 16px ≈ 0.42m）。
+    pub(crate) const HEIGHT_TAG_OFFSET: f32 = 0.4;
+    /// 尺寸标签沿离心方向推开的屏幕距离（逻辑像素，网页 LABEL_PUSH）。
+    pub(crate) const LABEL_PUSH: f32 = 36.0;
+    /// 尺寸标签字号（网页 .dims__name/.dims__val/.dims__unit 的 10/14/10px）。
+    pub(crate) const TAG_NAME_SIZE: f32 = 10.0;
+    pub(crate) const TAG_VALUE_SIZE: f32 = 14.0;
+    pub(crate) const TAG_UNIT_SIZE: f32 = 10.0;
 }
