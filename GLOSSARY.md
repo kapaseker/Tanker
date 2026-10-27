@@ -50,8 +50,8 @@
 
 ## 混凝土墩样品
 
-- `assets/obstacles/concrete/obstacle.vox`：长 4 m、底厚 1.5 m、顶厚 0.9 m、高 3 m；灰色哑光梯形，VOX 画布 15×40×30 格。
-- `src/gameplay/obstacle.rs` 的 `SIZE` / `POSITION`：世界 X 为厚度、Y 为高度、Z 为长度，中心 (−25, 1.5, 0)，出生点正前方 25 m 横放，底部贴地。
+- `assets/obstacles/concrete/obstacle.vox`：长 8 m、底厚 1.5 m、顶厚 0.9 m、高 8 m；灰色哑光梯形，VOX 画布 15×80×80 格。
+- `src/gameplay/obstacle.rs` 的 `SIZE` / `POSITION`：世界 X 为厚度、Y 为高度、Z 为长度，中心 (−25, 4.0, 0)，出生点正前方 25 m 横放，底部贴地。
 - 静态凸刚体不可推动、不可摧毁；炮弹命中仅清除炮弹，不触发敌人爆炸。敌人出生按水平外接半径另留 1 m 净空。
 - `scripts/generate_concrete.py` 使用标准库生成资产；凸碰撞体与分层体素表面允许不超过 0.1 m 的轮廓差。
 

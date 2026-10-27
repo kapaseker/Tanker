@@ -4,8 +4,8 @@ import struct
 from generate_ground import chunk, dictionary
 
 OUTPUT = Path(__file__).resolve().parents[1] / 'assets' / 'obstacles' / 'concrete' / 'obstacle.vox'
-# 底厚15格、顶厚9格、长40格、高30格；与 gameplay::obstacle 的凸碰撞体一致。
-SIZE = (15, 40, 30)
+# 底厚15格、顶厚9格、长80格、高80格（长与高各 8 米）；与 gameplay::obstacle 的凸碰撞体一致。
+SIZE = (15, 80, 80)
 PALETTE = ((137, 139, 137), (128, 130, 128), (146, 148, 146), (112, 114, 112))
 
 
@@ -18,7 +18,8 @@ def build_vox():
             for y in range(SIZE[1]):
                 noise = (x * 73856093 ^ y * 19349663 ^ z * 83492791) % 101
                 color = 2 if noise < 5 else 3 if noise > 95 else 1
-                if z in (9, 19):
+                # 接缝色带按约 30% 与 64% 高度放置，随总高缩放保持三段比例。
+                if z in (24, 51):
                     color = 4
                 cells.append(bytes((x, y, z, color)))
     children = chunk('SIZE', struct.pack('<III', *SIZE))

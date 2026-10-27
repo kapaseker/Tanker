@@ -17,21 +17,21 @@ class ConcreteTests(unittest.TestCase):
             chunks.setdefault(tag, []).append(vox[offset + 12:offset + 12 + size])
             offset += 12 + size
         self.assertEqual(offset, len(vox))
-        self.assertEqual(struct.unpack('<III', chunks[b'SIZE'][0]), (15, 40, 30))
+        self.assertEqual(struct.unpack('<III', chunks[b'SIZE'][0]), (15, 80, 80))
         count = struct.unpack_from('<I', chunks[b'XYZI'][0])[0]
         cells = list(struct.iter_unpack('4B', chunks[b'XYZI'][0][4:]))
         self.assertEqual(count, len(cells))
         self.assertEqual(count, len({v[:3] for v in cells}))
-        for z in range(30):
+        for z in range(80):
             layer = [v for v in cells if v[2] == z]
             low, high = min(v[0] for v in layer), max(v[0] for v in layer) + 1
-            expected_low = int(3 * z / 29 + .5)
+            expected_low = int(3 * z / 79 + .5)
             self.assertEqual((low, high), (expected_low, 15 - expected_low))
-            self.assertEqual(len(layer), (high - low) * 40)
+            self.assertEqual(len(layer), (high - low) * 80)
             # 体素台阶外轮廓与连续斜面偏差不能超过一格。
             for surface_z in (z, z + 1):
-                self.assertLessEqual(abs(low - 3 * surface_z / 30), 1)
-        self.assertTrue(all(0 <= y < 40 and 1 <= c <= 4 for _, y, _, c in cells))
+                self.assertLessEqual(abs(low - 3 * surface_z / 80), 1)
+        self.assertTrue(all(0 <= y < 80 and 1 <= c <= 4 for _, y, _, c in cells))
         self.assertEqual(len(chunks[b'RGBA'][0]), 1024)
         self.assertEqual(len(chunks[b'MATL']), 4)
         self.assertEqual(len(chunks[b'nSHP']), 1)

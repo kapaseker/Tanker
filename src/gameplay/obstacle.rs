@@ -5,8 +5,8 @@ use bevy::prelude::*;
 
 use super::session::SessionEntity;
 
-/// 混凝土墩整体包围尺寸（世界 X 厚、Y 高、Z 长），单位米；0.1 米一格。
-pub(crate) const SIZE: Vec3 = Vec3::new(1.5, 3.0, 4.0);
+/// 混凝土墩整体包围尺寸（世界 X 厚、Y 高、Z 长），单位米；0.1 米一格。长与高各 8 米。
+pub(crate) const SIZE: Vec3 = Vec3::new(1.5, 8.0, 8.0);
 /// 顶部厚度，单位米；底部厚度取 SIZE.x。
 const TOP_THICKNESS: f32 = 0.9;
 /// 出生点正前方 25 米，中心高度保证底部落在 Y=0。
