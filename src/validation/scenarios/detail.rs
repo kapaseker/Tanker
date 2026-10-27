@@ -127,7 +127,7 @@ fn assert_dims(app: &mut App, index: usize) -> Result<(), String> {
         }
     }
     ensure(
-        bullet == (preview::ENTRIES[index].path == crate::tank::visual::PLAYER_BARREL),
+        bullet == (preview::ENTRIES[index].path == crate::tank::visual::PLAYER_BARREL.path),
         "伴随子弹只应出现在 lance",
     )?;
     Ok(())

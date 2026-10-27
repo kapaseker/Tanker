@@ -229,6 +229,8 @@ mod tests {
             .spawn((
                 crate::gameplay::player::Tank,
                 crate::tank::driving::tank_body(),
+                // 驾驶系统按履带装备读取速度，缺省组件会导致坦克不动。
+                crate::tank::track::PLAYER_TRACKS,
                 Transform::from_xyz(0.0, 4.0, 0.0),
             ))
             .id();
@@ -287,6 +289,7 @@ mod tests {
             .spawn((
                 crate::gameplay::player::Tank,
                 crate::tank::driving::tank_body(),
+                crate::tank::track::PLAYER_TRACKS,
                 Transform::from_xyz(8.0, 4.0, 0.0),
             ))
             .id();
@@ -296,8 +299,9 @@ mod tests {
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::ArrowUp);
-        // 4 秒 = 到达台阶（约 1 秒）+ 翻坎 + 在坎上继续行驶，留足余量。
-        for _ in 0..240 {
+        // 3 秒 = 到达台阶（约 0.3 秒）+ 翻坎 + 坎上行驶；16 米/秒共推进约 48 米，
+        // 保持在 -50 米地形末端之内，避免采样到冲出边缘后的下落高度。
+        for _ in 0..180 {
             app.update();
         }
         let moved = app.world().get::<Transform>(tank).unwrap().translation;

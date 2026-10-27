@@ -185,7 +185,13 @@ mod tests {
         app.cleanup();
         let tank = app
             .world_mut()
-            .spawn((Tank, tank_body(), Transform::from_xyz(0.0, 4.0, 0.0)))
+            .spawn((
+                Tank,
+                tank_body(),
+                // 驾驶系统按履带装备读取速度，缺省组件会导致坦克不动。
+                crate::tank::track::PLAYER_TRACKS,
+                Transform::from_xyz(0.0, 4.0, 0.0),
+            ))
             .id();
         for _ in 0..192 {
             app.update();
@@ -201,7 +207,8 @@ mod tests {
         for _ in 0..64 {
             app.update();
         }
-        assert!((app.world().get::<Transform>(tank).unwrap().translation.x + 6.0).abs() < 0.05);
+        // cleat 前进 16 米/秒，一秒推进 16 米（含物理求解的起步损失）。
+        assert!((app.world().get::<Transform>(tank).unwrap().translation.x + 16.0).abs() < 0.05);
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .release(KeyCode::ArrowUp);
@@ -216,7 +223,7 @@ mod tests {
                 .translation
                 .abs_diff_eq(stopped, 0.01)
         );
-        // 直行直到抵住 300 米处的墙：6 米/秒 × 53 秒 ≈ 318 米，足够贴墙并保持压力。
+        // 直行直到抵住 300 米处的墙：16 米/秒 × 19 秒已够，3400 帧余量充足。
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::ArrowUp);

@@ -82,6 +82,7 @@ mod tests {
             .spawn((
                 crate::gameplay::player::Tank,
                 crate::tank::driving::tank_body(),
+                crate::tank::track::PLAYER_TRACKS,
                 Transform::from_xyz(0.0, 3.0, 0.0),
             ))
             .id();

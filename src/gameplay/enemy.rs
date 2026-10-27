@@ -59,7 +59,7 @@ pub(super) fn spawn_enemy_barrels(
     enemies: Query<Entity, Added<EnemyTank>>,
 ) {
     for enemy in &enemies {
-        let barrel = visual::mount_barrel(&mut commands, &assets, enemy, visual::ENEMY_BARREL);
+        let barrel = visual::mount_barrel(&mut commands, &assets, enemy, visual::ENEMY_BARREL.path);
         commands.entity(barrel).insert(Name::new("enemy_barrel"));
     }
 }
@@ -204,6 +204,7 @@ mod tests {
             .spawn((
                 Tank,
                 driving::tank_body(),
+                crate::tank::track::PLAYER_TRACKS,
                 Transform::from_xyz(0.0, 0.75, 0.0),
             ))
             .id();

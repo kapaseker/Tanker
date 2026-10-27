@@ -9,8 +9,10 @@ pub(super) fn arrange_combat(world: &mut World) {
     let mut enemies: Vec<_> = query.iter(world).collect();
     enemies.sort_by_key(|entity| entity.to_bits());
     for (index, entity) in enemies.into_iter().enumerate() {
+        // 首个靶车放 40 米外：lance 初速 1200 米/秒下约 2 帧飞行时间，观察系统
+        // 至少采样到一次移动；太近会被单帧生成即命中销毁，采不到位移。
         let position = if index == 0 {
-            Vec3::new(-12.0, 3.0, 0.0)
+            Vec3::new(-40.0, 3.0, 0.0)
         } else {
             Vec3::new(30.0 + index as f32 * 10.0, 3.0, 30.0)
         };
@@ -30,6 +32,19 @@ pub(super) fn check(
     report: &mut String,
     failures: &mut Vec<String>,
 ) -> Result<(), String> {
+    if frame == 1 {
+        // 首帧移除出生点正前方 25 米的混凝土墩：它挡在玩家与 40 米靶车之间的
+        // 直射弹道上，1200 米/秒的子弹会在靶车之前撞墩自毁。通用墩断言已在
+        // 预热后执行完毕，此处移除不影响其它场景。
+        let concrete = app
+            .world_mut()
+            .query_filtered::<Entity, With<crate::gameplay::obstacle::Concrete>>()
+            .iter(app.world())
+            .collect::<Vec<_>>();
+        for entity in concrete {
+            app.world_mut().despawn(entity);
+        }
+    }
     if frame == 24 {
         let evidence = app.world().resource::<Evidence>();
         record_check(

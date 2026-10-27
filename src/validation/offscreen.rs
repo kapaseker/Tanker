@@ -436,6 +436,8 @@ mod tests {
             .spawn((
                 crate::gameplay::player::Tank,
                 crate::tank::driving::tank_body(),
+                // 驾驶系统按履带装备读取速度，缺省组件会导致坦克不动。
+                crate::tank::track::PLAYER_TRACKS,
                 Transform::from_xyz(0.0, 0.75, 0.0),
             ))
             .id();

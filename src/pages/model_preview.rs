@@ -29,12 +29,12 @@ impl Entry {
 pub(crate) const ENTRIES: [Entry; 9] = [
     Entry {
         category: 0,
-        path: visual::PLAYER_BARREL,
+        path: visual::PLAYER_BARREL.path,
         enemy: false,
     },
     Entry {
         category: 0,
-        path: visual::ENEMY_BARREL,
+        path: visual::ENEMY_BARREL.path,
         enemy: true,
     },
     Entry {
@@ -163,15 +163,15 @@ pub(crate) fn spawn(
                 assets,
                 content,
                 if entry.enemy {
-                    visual::ENEMY_BARREL
+                    visual::ENEMY_BARREL.path
                 } else {
-                    visual::PLAYER_BARREL
+                    visual::PLAYER_BARREL.path
                 },
             );
         }
         // 伴随子弹：炮管 lance（唯一配置）在正上方叠加，表达与炮管的组合关系；
         // 不改变模型中心，也不参与尺寸与包围盒（测量时按 BulletCompanion 排除）。
-        if entry.path == visual::PLAYER_BARREL {
+        if entry.path == visual::PLAYER_BARREL.path {
             let bullet = commands
                 .spawn((
                     BulletCompanion,

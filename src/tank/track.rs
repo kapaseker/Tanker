@@ -26,9 +26,13 @@ pub(crate) struct TrackSpec {
     canvas: (u32, u32, u32),
     /// 内腔竖直开区间，单位体素格；完整旋转包络必须在其中。
     clearance: (f32, f32),
+    /// 履带驱动的前进速度，单位：米/秒；驾驶系统按此换算水平推力。
+    pub(crate) forward_speed: f32,
+    /// 履带驱动的倒车速度，单位：米/秒。
+    pub(crate) reverse_speed: f32,
 }
 
-/// 玩家默认底盘适配的 cleat 履带。
+/// 玩家默认底盘适配的 cleat 履带，速度按用户指定：前进 16 米/秒、倒车 8 米/秒。
 pub(crate) const PLAYER_TRACKS: TrackSpec = TrackSpec {
     path: "tank/tracks/player/cleat/track.vox",
     size: TANK_SIZE,
@@ -38,9 +42,12 @@ pub(crate) const PLAYER_TRACKS: TrackSpec = TrackSpec {
     ],
     canvas: crate::tank::model::player::CANVAS,
     clearance: (1.0, 11.0),
+    forward_speed: 16.0,
+    reverse_speed: 8.0,
 };
 /// 默认敌人底盘适配的 crawl 履带，左右各四个负重轮和两个端轮。
 /// 尺寸与敌人生成同源：直接推导自敌人模型契约，不依赖敌人生成模块。
+/// 敌人当前零输入不驾驶，速度为未设定占位值，接入敌方 AI 前需赋真实数值。
 pub(crate) const ENEMY_TRACKS: TrackSpec = TrackSpec {
     path: "tank/tracks/enemy/crawl/track.vox",
     size: Vec3::from_array(crate::tank::model::enemy::COLLISION_SIZE),
@@ -50,6 +57,8 @@ pub(crate) const ENEMY_TRACKS: TrackSpec = TrackSpec {
     ],
     canvas: crate::tank::model::enemy::CANVAS,
     clearance: crate::tank::model::enemy::WHEEL_CLEARANCE,
+    forward_speed: 0.0,
+    reverse_speed: 0.0,
 };
 /// 相位变体节点名，顺序 [左, 右] × [0, 1, 2]，与履带包场景图一致。
 const VARIANT_NAMES: [[&str; TRACK_PHASES as usize]; 2] = [

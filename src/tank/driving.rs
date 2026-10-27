@@ -15,10 +15,7 @@ pub(crate) const TANK_SIZE: Vec3 = Vec3::new(
     (crate::tank::model::player::COLLISION_MAX[1] - crate::tank::model::player::COLLISION_MIN[1]) as f32
         * crate::tank::model::VOXEL_SIZE,
 );
-/// 前进与后退速度，单位：米/秒。
-const FORWARD_SPEED: f32 = 6.0;
-const REVERSE_SPEED: f32 = 4.0;
-/// 左右转向速度，单位：弧度/秒（90°/秒）。
+/// 转向速度与前进/倒车无关，由车体统一设定，单位：弧度/秒（90°/秒）。
 const TURN_SPEED: f32 = std::f32::consts::FRAC_PI_2;
 
 /// 转向平滑时间，单位：秒。数值越小响应越硬，越大越"绵"
@@ -93,8 +90,11 @@ pub(crate) fn body_for_size(size: Vec3) -> impl Bundle {
 /// 根据车头方向写入水平速度，保留重力及接触求解产生的竖直速度；
 /// 车头朝向由本函数独占：转向角速度按固定步长 dt 向目标（±TURN_SPEED 或 0）
 /// 指数渐近后直接积分进 heading，绕世界 Y 旋转。物理不参与偏航。
+/// 前进/倒车速度来自履带装备（cleat 等），换装备时速度随之改变。
 fn apply_input(
     input: &DrivingInput,
+    forward_speed: f32,
+    reverse_speed: f32,
     dt: f32,
     current_turn: &mut f32,
     linear: &mut Vec3,
@@ -103,9 +103,9 @@ fn apply_input(
     let throttle = input.throttle.clamp(-1.0, 1.0);
     let speed = throttle
         * if throttle >= 0.0 {
-            FORWARD_SPEED
+            forward_speed
         } else {
-            REVERSE_SPEED
+            reverse_speed
         };
     let forward = *heading * Vec3::NEG_X;
     linear.x = forward.x * speed;
@@ -120,19 +120,23 @@ fn apply_input(
 }
 
 /// 在物理准备完成后逐车应用输入，避免共享转向状态或渲染姿态滞后一帧。
+/// 前进/倒车速度按每辆车的履带装备（[`TrackSpec`]）读取。
 /// `pub(crate)` 仅供 `gameplay::player` 的输入系统声明"输入先于驾驶"的调度边。
 pub(crate) fn drive_tank(
     time: Res<Time>,
     mut tanks: Query<(
         &DrivingInput,
+        &super::track::TrackSpec,
         &mut TurnRate,
         &mut Rotation,
         &mut LinearVelocity,
     )>,
 ) {
-    for (input, mut turn_rate, mut rotation, mut linear) in &mut tanks {
+    for (input, tracks, mut turn_rate, mut rotation, mut linear) in &mut tanks {
         apply_input(
             input,
+            tracks.forward_speed,
+            tracks.reverse_speed,
             time.delta_secs(),
             &mut turn_rate.0,
             &mut linear.0,
@@ -176,6 +180,8 @@ mod tests {
     #[test]
     fn inputs_control_speed_and_zero_input_stops() {
         const DT: f32 = 1.0 / 64.0;
+        let forward = crate::tank::track::PLAYER_TRACKS.forward_speed;
+        let reverse = crate::tank::track::PLAYER_TRACKS.reverse_speed;
         let mut current_turn = 0.0_f32;
         let mut linear = Vec3::new(1.0, -0.4, 1.0);
         let mut heading = Quat::IDENTITY;
@@ -184,12 +190,14 @@ mod tests {
                 throttle: -1.0,
                 turn: 0.0,
             },
+            forward,
+            reverse,
             DT,
             &mut current_turn,
             &mut linear,
             &mut heading,
         );
-        assert!(linear.abs_diff_eq(Vec3::new(4.0, -0.4, 0.0), 1e-5));
+        assert!(linear.abs_diff_eq(Vec3::new(reverse, -0.4, 0.0), 1e-5));
         assert!(heading.abs_diff_eq(Quat::IDENTITY, 1e-5));
         // 方向相反的输入抵消后为零，立即停止水平驱动。
         apply_input(
@@ -197,6 +205,8 @@ mod tests {
                 throttle: 0.0,
                 turn: 0.0,
             },
+            forward,
+            reverse,
             DT,
             &mut current_turn,
             &mut linear,
@@ -210,6 +220,8 @@ mod tests {
                 throttle: 0.0,
                 turn: 0.0,
             },
+            forward,
+            reverse,
             DT,
             &mut current_turn,
             &mut linear,
@@ -225,6 +237,8 @@ mod tests {
     #[test]
     fn movement_follows_heading_and_turning_does_not_reverse_when_backing() {
         const DT: f32 = 1.0 / 64.0;
+        let forward = crate::tank::track::PLAYER_TRACKS.forward_speed;
+        let reverse = crate::tank::track::PLAYER_TRACKS.reverse_speed;
         let mut current_turn = 0.0_f32;
         let mut linear = Vec3::ZERO;
         let mut heading = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
@@ -233,27 +247,31 @@ mod tests {
                 throttle: 1.0,
                 turn: 1.0,
             },
+            forward,
+            reverse,
             DT,
             &mut current_turn,
             &mut linear,
             &mut heading,
         );
-        assert!(linear.abs_diff_eq(Vec3::Z * 6.0, 1e-5));
+        assert!(linear.abs_diff_eq(Vec3::Z * forward, 1e-5));
         assert!(yaw(heading) > std::f32::consts::FRAC_PI_2);
         // 速度取积分前的朝向（本步先算速度、后积分偏航），车头略微越过 +Z。
-        let forward = heading * Vec3::NEG_X;
+        let forward_dir = heading * Vec3::NEG_X;
         apply_input(
             &DrivingInput {
                 throttle: -1.0,
                 turn: 1.0,
             },
+            forward,
+            reverse,
             DT,
             &mut current_turn,
             &mut linear,
             &mut heading,
         );
-        assert!(linear.abs_diff_eq(forward * -REVERSE_SPEED, 1e-5));
-        assert!(linear.abs_diff_eq(Vec3::NEG_Z * REVERSE_SPEED, 0.03));
+        assert!(linear.abs_diff_eq(forward_dir * -reverse, 1e-5));
+        assert!(linear.abs_diff_eq(Vec3::NEG_Z * reverse, 0.03));
         // 倒车不反转转向：角速度仍为正，偏航继续增大。
         let left_yaw = yaw(heading);
         // 单步渐变后角速度仍为正，需数步才越过 0 转为负，偏航随之回落。
@@ -263,6 +281,8 @@ mod tests {
                     throttle: -1.0,
                     turn: -1.0,
                 },
+                forward,
+                reverse,
                 DT,
                 &mut current_turn,
                 &mut linear,
@@ -300,7 +320,12 @@ mod tests {
         app.cleanup();
         let tank = app
             .world_mut()
-            .spawn((tank_body(), Transform::from_xyz(0.0, 4.0, 0.0)))
+            .spawn((
+                tank_body(),
+                // 驾驶系统按履带装备读取前进/倒车速度，必须随车挂载。
+                crate::tank::track::PLAYER_TRACKS,
+                Transform::from_xyz(0.0, 4.0, 0.0),
+            ))
             .id();
         for _ in 0..192 {
             app.update();
@@ -318,7 +343,10 @@ mod tests {
         for _ in 0..64 {
             app.update();
         }
-        assert!((app.world().get::<Transform>(tank).unwrap().translation.x + 6.0).abs() < 0.05);
+        // cleat 前进 16 米/秒，一秒推进 16 米（含物理求解的起步损失）。
+        assert!(
+            (app.world().get::<Transform>(tank).unwrap().translation.x + 16.0).abs() < 0.05
+        );
         app.world_mut().get_mut::<DrivingInput>(tank).unwrap().throttle = 0.0;
         let stopped = app.world().get::<Transform>(tank).unwrap().translation;
         for _ in 0..32 {
@@ -331,13 +359,13 @@ mod tests {
                 .translation
                 .abs_diff_eq(stopped, 0.01)
         );
-        // 倒车一秒应后退 4 米，再清零输入验证下一段转向不夹带直线速度。
+        // 倒车一秒应后退 8 米（cleat 倒车速度），再清零输入验证下一段转向不夹带直线速度。
         app.world_mut().get_mut::<DrivingInput>(tank).unwrap().throttle = -1.0;
         for _ in 0..64 {
             app.update();
         }
         let reversed = app.world().get::<Transform>(tank).unwrap().translation;
-        assert!((reversed.x - stopped.x - 4.0).abs() < 0.05);
+        assert!((reversed.x - stopped.x - 8.0).abs() < 0.05);
         app.world_mut().get_mut::<DrivingInput>(tank).unwrap().throttle = 0.0;
         app.world_mut().get_mut::<DrivingInput>(tank).unwrap().turn = 1.0;
         for _ in 0..64 {
@@ -355,7 +383,7 @@ mod tests {
             "朝向偏差异常：{heading:?} 期望 {expected:?}"
         );
         app.world_mut().get_mut::<DrivingInput>(tank).unwrap().turn = 0.0;
-        // 直行直到抵住 300 米处的墙：6 米/秒 × 53 秒 ≈ 318 米，足够贴墙并保持压力。
+        // 直行直到抵住 300 米处的墙：16 米/秒 × 19 秒已够，3400 帧余量充足。
         app.world_mut().get_mut::<DrivingInput>(tank).unwrap().throttle = 1.0;
         for _ in 0..3400 {
             app.update();

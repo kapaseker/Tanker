@@ -11,10 +11,10 @@ use bevy::{
     world_serialization::{WorldAsset, WorldInstance, WorldInstanceSpawner},
 };
 
-/// 点按与长按共用的最小发射间隔，单位：秒。
-const FIRE_INTERVAL: f32 = 0.5;
-/// 子弹的匀速飞行速度，单位：世界单位/秒。
-const BULLET_SPEED: f32 = 40.0;
+/// 点按与长按共用的最小发射间隔，单位：秒；由 lance 装备射速 12 发/分钟换算。
+const FIRE_INTERVAL: f32 = 60.0 / crate::tank::visual::PLAYER_BARREL.rate_of_fire;
+/// 子弹的匀速飞行速度即炮口初速，单位：米/秒；来自 lance 装备定义。
+const BULLET_SPEED: f32 = crate::tank::visual::PLAYER_BARREL.muzzle_velocity;
 /// 当前弹体为 4×4×4 格立方体，扫掠尺寸与资源保持一致，单位：米。
 const BULLET_SIZE: f32 = 0.4;
 /// 从出生点累计计算的最大飞行距离，单位：世界单位。
@@ -40,7 +40,7 @@ fn spawn_barrels(
     tanks: Query<Entity, Added<Tank>>,
 ) {
     for tank in &tanks {
-        let barrel = visual::mount_barrel(&mut commands, &assets, tank, visual::PLAYER_BARREL);
+        let barrel = visual::mount_barrel(&mut commands, &assets, tank, visual::PLAYER_BARREL.path);
         commands.entity(barrel).insert(PlayerBarrel);
     }
 }
@@ -94,7 +94,7 @@ impl Plugin for FiringPlugin {
 /// 启动时预加载子弹场景；加载完成前由发射系统忽略开火输入。
 fn load_bullet(mut commands: Commands, assets: Res<AssetServer>) {
     commands.insert_resource(Gun {
-        bullet_scene: assets.load("tank/barrels/player/lance/bullet.vox"),
+        bullet_scene: assets.load(crate::tank::visual::PLAYER_BARREL.bullet),
         cadence: default(),
     });
 }
@@ -110,7 +110,7 @@ fn report_bullet(gun: Res<Gun>, assets: Res<AssetServer>, mut reported: Local<bo
             *reported = true;
         }
         _ if assets.is_loaded_with_dependencies(&gun.bullet_scene) => {
-            info!("子弹资源加载完成：assets/tank/barrels/player/lance/bullet.vox");
+            info!("子弹资源加载完成：assets/{}", crate::tank::visual::PLAYER_BARREL.bullet);
             *reported = true;
         }
         _ => {}
@@ -211,7 +211,8 @@ fn move_bullets(
     let step = BULLET_SPEED * time.delta_secs();
     let shape = Collider::cuboid(BULLET_SIZE, BULLET_SIZE, BULLET_SIZE);
     // 子弹投射只认敌人和混凝土墩；越过场地边界（±FIELD_SIDE/2）即视为失效，
-    // 防止穿墙飞满射程。单帧最大位移约 0.7 米，越界误差可忽略。
+    // 防止穿墙飞满射程。单帧最大位移约 18.75 米（1/64 秒 × 1200 米/秒），
+    // 出界后最远深入一帧位移才被销毁，对 ±300 米场地无实质影响。
     let half_field = crate::terrain::FIELD_SIDE / 2.0;
     // Commands 在系统结束后才删除实体，同帧后续弹体必须主动跳过已击毁目标。
     let mut destroyed = Vec::new();
@@ -316,15 +317,13 @@ mod tests {
         (mesh_count, minimum, maximum)
     }
 
-    /// 验证立即首发及持续按住时每半秒发射一次。
+    /// 验证立即首发，随后按 lance 射速换算的间隔（60/12 = 5 秒）发射。
     #[test]
-    fn space_fires_immediately_then_every_half_second() {
+    fn space_fires_immediately_then_at_the_rated_interval() {
         let mut cadence = FireCadence::default();
         assert!(cadence.tick(true, 0.016));
-        assert!(!cadence.tick(true, 0.25));
-        assert!(cadence.tick(true, 0.25));
-        assert!(!cadence.tick(true, 0.25));
-        assert!(cadence.tick(true, 0.25));
+        assert!(!cadence.tick(true, 2.0));
+        assert!(cadence.tick(true, 3.0));
     }
 
     /// 快速点按与长按共用冷却，松开或同帧重按都不能提前发射。
@@ -333,21 +332,23 @@ mod tests {
         let mut cadence = FireCadence::default();
         assert!(cadence.tick(true, 0.0));
         assert!(!cadence.tick(true, 0.0));
-        assert!(!cadence.tick(false, 0.125));
-        assert!(!cadence.tick(true, 0.125));
-        assert!(!cadence.tick(false, 0.125));
-        assert!(cadence.tick(true, 0.125));
+        // 松开期间冷却继续走，但 4 秒仍不足 5 秒间隔。
+        assert!(!cadence.tick(false, 2.0));
+        assert!(!cadence.tick(true, 2.0));
+        assert!(!cadence.tick(false, 2.0));
+        // 松开累计已走完冷却，重按立即首发后的下一发。
+        assert!(cadence.tick(true, 0.0));
     }
 
     /// 验证松开或资源不可用时继续冷却，冷却结束后也不积攒发射次数。
     #[test]
     fn release_or_unavailable_assets_reset_firing_without_queued_shots() {
         let mut cadence = FireCadence::default();
-        assert!(!cadence.tick(false, 1.0));
         assert!(cadence.tick(true, 0.016));
-        assert!(!cadence.tick(false, 0.125));
-        assert!(!cadence.tick(true, 0.125));
-        assert!(!cadence.tick(false, 0.25));
+        assert!(!cadence.tick(false, 2.0));
+        assert!(!cadence.tick(true, 2.0));
+        assert!(!cadence.tick(false, 2.0));
+        // 冷却在松开期间走完，重按发射且不补发松开期间欠下的次数。
         assert!(cadence.tick(true, 0.0));
         assert!(!cadence.tick(false, 10.0));
         assert!(cadence.tick(true, 0.0));
@@ -359,7 +360,7 @@ mod tests {
     fn long_frames_do_not_leave_a_backlog() {
         let mut cadence = FireCadence::default();
         assert!(cadence.tick(true, 0.016));
-        assert!(cadence.tick(true, 2.0));
+        assert!(cadence.tick(true, 5.0));
         assert!(!cadence.tick(true, 0.016));
     }
 
@@ -568,22 +569,24 @@ mod tests {
     #[test]
     fn bullets_expire_outside_the_field() {
         let (mut app, _) = hit_test_app(&[]);
-        // 299 米处在界内（边界 ±300），一帧 20 米后越界，第二帧被销毁。
+        // 用 0.05 秒（60 米）小步长隔离越界与方向两种行为：
+        // 299 米处在界内（边界 ±300），一帧 60 米后越界，第二帧被销毁；
+        // 反向子弹同帧深入场内，不应受影响。
         let outbound = test_bullet(&mut app, Vec3::new(299.0, 1.2, 0.0), Vec3::X, 0.0);
         let inbound = test_bullet(&mut app, Vec3::new(299.0, 1.2, 0.0), Vec3::NEG_X, 0.0);
-        advance_test_bullets(&mut app, 0.5);
+        advance_test_bullets(&mut app, 0.05);
         assert!(app.world().get_entity(outbound).is_ok());
-        advance_test_bullets(&mut app, 0.5);
+        advance_test_bullets(&mut app, 0.05);
         assert!(app.world().get_entity(outbound).is_err());
         assert!(app.world().get_entity(inbound).is_ok());
     }
 
-    /// 用固定半秒步长验证飞行速度，以及越过场地边界后对子弹及其子实体的清理。
+    /// 用固定 0.05 秒步长验证飞行速度，以及越过场地边界后对子弹及其子实体的清理。
     #[test]
     fn bullets_move_independently_and_despawn_with_children_at_field_edge() {
         let mut app = App::new();
         let mut time = Time::<()>::default();
-        time.advance_by(Duration::from_secs_f32(0.5));
+        time.advance_by(Duration::from_secs_f32(0.05));
         app.insert_resource(time)
             .init_resource::<avian3d::collider_tree::ColliderTrees>()
             .add_message::<EnemyDestroyed>()
@@ -600,25 +603,26 @@ mod tests {
             .id();
         let child = app.world_mut().spawn(ChildOf(bullet)).id();
         app.update();
+        // lance 初速 1200 米/秒，0.05 秒推进 60 米。
         assert!(
             app.world()
                 .get::<Transform>(bullet)
                 .unwrap()
                 .translation
-                .abs_diff_eq(Vec3::new(-21.8, 0.45, -0.1), 1e-5)
+                .abs_diff_eq(Vec3::new(-61.8, 0.45, -0.1), 1e-5)
         );
-        assert_eq!(app.world().get::<Bullet>(bullet).unwrap().distance, 20.0);
+        assert_eq!(app.world().get::<Bullet>(bullet).unwrap().distance, 60.0);
         app.update();
-        assert_eq!(app.world().get::<Bullet>(bullet).unwrap().distance, 40.0);
+        assert_eq!(app.world().get::<Bullet>(bullet).unwrap().distance, 120.0);
         assert!(
             app.world()
                 .get::<Transform>(bullet)
                 .unwrap()
                 .translation
-                .abs_diff_eq(Vec3::new(-41.8, 0.45, -0.1), 1e-5)
+                .abs_diff_eq(Vec3::new(-121.8, 0.45, -0.1), 1e-5)
         );
-        // 出生点 x=-1.8，每帧向 -X 飞 20 米；第 15 帧后 x=-301.8 越界，下一帧销毁。
-        for _ in 2..15 {
+        // 出生点 x=-1.8，每帧向 -X 飞 60 米；第 5 帧后 x=-301.8 越界，下一帧销毁。
+        for _ in 2..5 {
             app.update();
         }
         assert!(app.world().get_entity(bullet).is_ok());
@@ -953,13 +957,20 @@ mod tests {
             app.world_mut().query::<&Bullet>().iter(app.world()).count(),
             1
         );
+        // 持续按住一个完整发射间隔（lance 射速 12 发/分钟 → 5 秒）后再次开火；
+        // 首发早已飞出场界销毁，场上恰好只剩新的一发，且位置回到炮口。
         app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f32(
-            0.25,
+            5.0,
         )));
         app.update();
+        let second = app
+            .world_mut()
+            .query_filtered::<Entity, With<Bullet>>()
+            .single(app.world())
+            .unwrap();
         assert_eq!(
-            app.world_mut().query::<&Bullet>().iter(app.world()).count(),
-            2
+            app.world().get::<Transform>(second).unwrap().translation,
+            MUZZLE_POSITION
         );
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
