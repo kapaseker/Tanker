@@ -80,6 +80,7 @@
 
           // 卡片内缩小展示并慢速自转；负延迟让各卡片错开相位
           const spin = buildModel(model);
+          attachBullet(spin, model); // 配置了伴随子弹的模型（炮管 lance）在正上方叠加子弹
           spin.classList.add('model--spin');
           spin.style.setProperty('--model-scale', '0.62');
           spin.style.animationDelay = `${-3 - mi * 2.6}s`;

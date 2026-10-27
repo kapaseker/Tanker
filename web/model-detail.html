@@ -29,28 +29,34 @@
   </header>
 
   <main class="stage">
-    <!-- 模型详情：鼠标拖拽旋转查看，下方展示三维尺寸 -->
+    <!-- 模型详情：鼠标拖拽旋转查看，三维尺寸以模型边沿的尺寸轴标注 -->
     <div class="screen is-active" id="screen-detail">
       <div class="detail">
         <div class="viewer" id="viewer" aria-label="模型查看区，按住鼠标拖拽可旋转模型"></div>
 
+        <!-- 三维尺寸改由模型边沿的三条尺寸轴标注（见下方脚本）；
+             左侧仅保留分类眉题，其余为占位参数行：样式与信息行一致，字段待玩法确定后替换 -->
         <div class="specs">
           <div class="specs__id">
             <p class="eyebrow" id="detail-cat">坦克</p>
           </div>
+          <!-- 占位值仅用于核对版式与字号，非真实数据 -->
           <div class="spec">
-            <span class="spec__label">长度</span>
-            <span class="spec__row"><span class="spec__value" id="detail-len">0</span><span class="spec__unit">米</span></span>
+            <span class="spec__label">质量</span>
+            <span class="spec__row"><span class="spec__value">32.4</span><span class="spec__unit">吨</span></span>
           </div>
           <div class="spec">
-            <span class="spec__label">宽度</span>
-            <span class="spec__row"><span class="spec__value" id="detail-w">0</span><span class="spec__unit">米</span></span>
+            <span class="spec__label">装甲</span>
+            <span class="spec__row"><span class="spec__value">45</span><span class="spec__unit">毫米</span></span>
           </div>
           <div class="spec">
-            <span class="spec__label">高度</span>
-            <span class="spec__row"><span class="spec__value" id="detail-h">0</span><span class="spec__unit">米</span></span>
+            <span class="spec__label">极速</span>
+            <span class="spec__row"><span class="spec__value">56</span><span class="spec__unit">千米/时</span></span>
           </div>
         </div>
+
+        <!-- 尺寸轴为纯图形标注，同步提供文字替代 -->
+        <p class="sr-only" id="detail-dims-sr"></p>
       </div>
     </div>
   </main>
@@ -86,9 +92,6 @@
 
       document.getElementById('detail-cat').textContent = category.name;
       document.getElementById('detail-name').textContent = modelCode;
-      model.dims.forEach((value, i) => {
-        document.getElementById(['detail-len', 'detail-w', 'detail-h'][i]).textContent = value;
-      });
 
       // ---------- 查看区：拖拽旋转 + 滚轮缩放 ----------
       const viewer = document.getElementById('viewer');
@@ -99,11 +102,151 @@
 
       // 详情页模型由 JS 直接写 transform，缩放与旋转合并应用
       const detailModel = buildModel(model);
+      // 伴随子弹只作组合示意展示，尺寸轴的包围盒只读 parts，不把子弹计入
+      attachBullet(detailModel, model);
       viewer.append(detailModel);
+
+      // ---------- 三维尺寸轴：贴合模型包围盒边沿的工程标注 ----------
+      // 轴线、端点刻度与延长线都是 .model 的子元素，天然跟随同一套旋转/缩放；
+      // 尺寸标签挂在查看区 2D 层，逐帧把轴上锚点投影为屏幕坐标：
+      // 字号恒定、不被模型切面遮挡或透视镜像，任意姿态下保持可读。
+      const AXIS = 'rgba(200, 219, 177, 0.9)';        // 主轴线
+      const TICK_COLOR = 'rgba(232, 244, 218, 0.95)'; // 端点刻度
+      const EXT = 'rgba(200, 219, 177, 0.30)';        // 角点延长线
+      const GAP = 14;      // 轴线与模型边沿的间距（模型空间 px，随缩放同步变化）
+      const HALF_TICK = 7; // 端点刻度半长（模型空间 px）
+
+      // 在模型空间画一条线段。kind 决定线段所在平面与延伸方向：
+      // gx：地面平面沿 X；gz：地面平面沿 Z；vx：竖直面(朝+Z)沿 Y；vz：竖直面(朝+X)沿 Y
+      function seg(kind, x, y, z, len, color) {
+        const el = document.createElement('div');
+        el.className = 'dims__seg';
+        el.style.background = color;
+        if (kind === 'gx') {
+          el.style.width = `${len}px`;
+          el.style.height = '1px';
+          el.style.transform = `translate3d(${x}px, ${y}px, ${z}px) rotateX(90deg)`;
+        } else if (kind === 'gz') {
+          el.style.width = `${len}px`;
+          el.style.height = '1px';
+          el.style.transform = `translate3d(${x}px, ${y}px, ${z}px) rotateX(90deg) rotateZ(90deg)`;
+        } else if (kind === 'vx') {
+          el.style.width = '1px';
+          el.style.height = `${len}px`;
+          el.style.transform = `translate3d(${x}px, ${y}px, ${z}px)`;
+        } else {
+          el.style.width = '1px';
+          el.style.height = `${len}px`;
+          el.style.transform = `translate3d(${x}px, ${y}px, ${z}px) rotateY(90deg)`;
+        }
+        return el;
+      }
+
+      // 竖直线的十字截面：两个互相垂直的细面叠成一条线，任意偏航角下都不会侧边消失
+      function vseg(x, y, z, len, color) {
+        const frag = document.createDocumentFragment();
+        frag.append(seg('vx', x, y, z, len, color), seg('vz', x, y, z, len, color));
+        return frag;
+      }
+
+      // 计算部件盒并集 → 模型空间包围盒（px，原点为 body 中心，Y 轴向下）
+      function bboxOf(m) {
+        const b = { x0: 0, x1: 0, y0: 0, y1: 0, z0: 0, z1: 0 };
+        for (const p of m.parts) {
+          b.x0 = Math.min(b.x0, (p.x || 0) - p.w / 2);
+          b.x1 = Math.max(b.x1, (p.x || 0) + p.w / 2);
+          b.y0 = Math.min(b.y0, (p.y || 0) - p.h / 2);
+          b.y1 = Math.max(b.y1, (p.y || 0) + p.h / 2);
+          b.z0 = Math.min(b.z0, (p.z || 0) - p.d / 2);
+          b.z1 = Math.max(b.z1, (p.z || 0) + p.d / 2);
+        }
+        return b;
+      }
+
+      function buildDimAxes(m) {
+        const b = bboxOf(m);
+        const yG = b.y1 + GAP; // 轴线地面：模型最低点再向下偏移 GAP
+        const group = document.createElement('div');
+        group.className = 'dims';
+        group.setAttribute('aria-hidden', 'true');
+        const tags = [];
+
+        // 长度轴：前缘正下方沿 X；宽度轴：右缘正下方沿 Z；两者在右前下角相接
+        group.append(
+          seg('gx', b.x0, yG, b.z1, b.x1 - b.x0, AXIS),
+          seg('gz', b.x1, yG, b.z0, b.z1 - b.z0, AXIS),
+        );
+        // 长度轴端点刻度 + 角点向下引出的延长线
+        for (const xe of [b.x0, b.x1]) {
+          group.append(seg('gz', xe, yG, b.z1 - HALF_TICK, HALF_TICK * 2, TICK_COLOR));
+          group.append(vseg(xe, b.y1, b.z1, GAP, EXT));
+        }
+        // 宽度轴端点刻度 + 延长线（右前角延长线已由长度轴画出，跳过）
+        for (const ze of [b.z0, b.z1]) {
+          group.append(seg('gx', b.x1 - HALF_TICK, yG, ze, HALF_TICK * 2, TICK_COLOR));
+          if (ze !== b.z1) group.append(vseg(b.x1, b.y1, ze, GAP, EXT));
+        }
+        // 高度轴：右前角外侧沿 Y；上下端由水平延长线引自模型角点，刻度取十字两向
+        group.append(vseg(b.x1 + GAP, b.y0, b.z1, b.y1 - b.y0, AXIS));
+        for (const ye of [b.y0, b.y1]) {
+          group.append(seg('gx', b.x1, ye, b.z1, GAP, EXT));
+          group.append(seg('gx', b.x1 + GAP - HALF_TICK, ye, b.z1, HALF_TICK * 2, TICK_COLOR));
+          group.append(seg('gz', b.x1 + GAP, ye, b.z1 - HALF_TICK, HALF_TICK * 2, TICK_COLOR));
+        }
+
+        // 尺寸标签锚点：长度/宽度钉在各自轴线中点，高度钉在轴外侧中点
+        const [lenM, widM, hgtM] = m.dims;
+        function tag(name, value, x, y, z) {
+          const el = document.createElement('span');
+          el.className = 'dims__tag';
+          el.innerHTML =
+            `<span class="dims__name">${name}</span>` +
+            `<span class="dims__val">${value}</span><span class="dims__unit">米</span>`;
+          tags.push({ el, x, y, z });
+        }
+        tag('长度', lenM, (b.x0 + b.x1) / 2, yG, b.z1);
+        tag('宽度', widM, b.x1, yG, (b.z0 + b.z1) / 2);
+        tag('高度', hgtM, b.x1 + GAP + 16, (b.y0 + b.y1) / 2, b.z1);
+        return { group, tags };
+      }
+
+      const axes = buildDimAxes(model);
+      detailModel.append(axes.group);
+      // 标签挂在查看区（.model 的兄弟节点），绘制顺序在模型之上
+      for (const { el } of axes.tags) viewer.append(el);
+      document.getElementById('detail-dims-sr').textContent =
+        `长度 ${model.dims[0]} 米，宽度 ${model.dims[1]} 米，高度 ${model.dims[2]} 米`;
+
+      const PERSPECTIVE = 1000; // 与 .viewer 的 perspective 保持一致
+      const LABEL_PUSH = 36;    // 标签沿离心方向推开的屏幕距离（px），避免压住模型
+
+      // 模型空间点 → 查看区屏幕坐标：复现 .model 的 rotateY→rotateX→scale
+      // 变换与浏览器 perspective 投影，让标签钉住轴上锚点的屏幕位置
+      function projectToScreen(x, y, z) {
+        const ay = yaw * Math.PI / 180;
+        const ax = pitch * Math.PI / 180;
+        const x1 = x * Math.cos(ay) + z * Math.sin(ay);
+        const z1 = -x * Math.sin(ay) + z * Math.cos(ay);
+        const y2 = y * Math.cos(ax) - z1 * Math.sin(ax);
+        const z2 = y * Math.sin(ax) + z1 * Math.cos(ax);
+        const f = PERSPECTIVE / (PERSPECTIVE - z2 * zoom);
+        return { x: x1 * zoom * f, y: y2 * zoom * f };
+      }
 
       function renderDetailModel() {
         detailModel.style.transform =
           `scale(${zoom}) rotateX(${pitch}deg) rotateY(${yaw}deg)`;
+        // 标签定位：投影轴上锚点后沿“锚点→屏幕外侧”方向推开 LABEL_PUSH，
+        // 旋转与缩放时跟随锚点移动；字号不随 zoom 缩放，保证可读
+        const cx = viewer.clientWidth / 2;
+        const cy = viewer.clientHeight / 2;
+        for (const { el, x, y, z } of axes.tags) {
+          const p = projectToScreen(x, y, z);
+          const len = Math.hypot(p.x, p.y);
+          const k = len > 1 ? LABEL_PUSH / len : 0;
+          el.style.transform =
+            `translate(${cx + p.x * (1 + k)}px, ${cy + p.y * (1 + k)}px) translate(-50%, -50%)`;
+        }
       }
       renderDetailModel();
 

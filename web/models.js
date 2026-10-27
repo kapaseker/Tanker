@@ -20,41 +20,66 @@ function face(w, h, transform, color) {
   return el;
 }
 
+// 单个部件盒子：按 tone 色阶拼六面，原点为盒子中心，translate3d 摆位
+function buildBox(part, tone) {
+  const box = document.createElement('div');
+  box.className = 'model__box';
+  const x = part.x || 0;
+  const y = part.y || 0;
+  const z = part.z || 0;
+  box.style.transform = `translate3d(${x}px, ${y}px, ${z}px)`;
+  const [light, mid, dark] = TONES[part.tone || tone];
+  const hw = part.w / 2;
+  const hh = part.h / 2;
+  const hd = part.d / 2;
+  box.append(
+    face(part.w, part.h, `translateZ(${hd}px)`, mid),
+    face(part.w, part.h, `rotateY(180deg) translateZ(${hd}px)`, dark),
+    face(part.d, part.h, `rotateY(-90deg) translateZ(${hw}px)`, dark),
+    face(part.d, part.h, `rotateY(90deg) translateZ(${hw}px)`, dark),
+    face(part.w, part.d, `rotateX(90deg) translateZ(${hh}px)`, light),
+    face(part.w, part.d, `rotateX(-90deg) translateZ(${hh}px)`, dark),
+  );
+  return box;
+}
+
 // 组合模型：整车示意以 body 中心为原点，与游戏内的旋转轴约定一致。
 function buildModel(model) {
   const el = document.createElement('div');
   el.className = 'model';
   el.setAttribute('aria-hidden', 'true');
   for (const part of model.parts) {
-    const box = document.createElement('div');
-    box.className = 'model__box';
-    const x = part.x || 0;
-    const y = part.y || 0;
-    const z = part.z || 0;
-    box.style.transform = `translate3d(${x}px, ${y}px, ${z}px)`;
-    const [light, mid, dark] = TONES[part.tone || model.tone];
-    const hw = part.w / 2;
-    const hh = part.h / 2;
-    const hd = part.d / 2;
-    box.append(
-      face(part.w, part.h, `translateZ(${hd}px)`, mid),
-      face(part.w, part.h, `rotateY(180deg) translateZ(${hd}px)`, dark),
-      face(part.d, part.h, `rotateY(-90deg) translateZ(${hw}px)`, dark),
-      face(part.d, part.h, `rotateY(90deg) translateZ(${hw}px)`, dark),
-      face(part.w, part.d, `rotateX(90deg) translateZ(${hh}px)`, light),
-      face(part.w, part.d, `rotateX(-90deg) translateZ(${hh}px)`, dark),
-    );
-    el.append(box);
+    el.append(buildBox(part, model.tone));
   }
   return el;
+}
+
+// 伴随子弹：把 model.bullet（可选）的占位盒子组附加到模型正上方，
+// 仅表达"子弹与炮管组合"，不改变模型中心，也不参与 dims 与尺寸轴包围盒计算。
+// spec.gap 为子弹与模型上缘的间距（px）；模型空间 Y 轴向下，越小越靠上。
+function attachBullet(modelEl, model) {
+  const spec = model.bullet;
+  if (!spec) return;
+  // 模型上缘 = 各部件最高点（Y 最小处）
+  let top = 0;
+  for (const p of model.parts) top = Math.min(top, (p.y || 0) - p.h / 2);
+  // 子弹组高度 = 子弹部件的最大高度
+  let h = 0;
+  for (const p of spec.parts) h = Math.max(h, p.h);
+  const group = document.createElement('div');
+  group.className = 'model__box'; // 复用绝对定位与 preserve-3d
+  group.style.transform = `translate3d(0px, ${top - spec.gap - h / 2}px, 0px)`;
+  for (const part of spec.parts) group.append(buildBox(part, model.tone));
+  modelEl.append(group);
 }
 
 // 分类与模型数据；ci/mi 为分类与模型下标，用于页面间 URL 传递
 // 与游戏当前九项真实清单同步；尺寸为可见几何长宽高（米）。
 // 网页盒子仅表达构图，游戏必须通过 VOX 加载器渲染真实资产。
+// bullet 为可选伴随子弹（正上方展示，不参与尺寸）；仅 lance 配了真实资产 bullet.vox。
 const CATEGORIES = [
   { name: '炮管', code: 'BR', models: [
-    { name: 'lance', tone: 'mint', dims: [4.5, 0.4, 0.4], parts: [{ w: 170, h: 16, d: 16 }] },
+    { name: 'lance', tone: 'mint', dims: [4.5, 0.4, 0.4], bullet: { gap: 30, parts: [{ w: 28, h: 12, d: 12 }] }, parts: [{ w: 170, h: 16, d: 16 }] },
     { name: 'spit', tone: 'sand', dims: [3.8, 0.4, 0.4], parts: [{ w: 144, h: 16, d: 16 }] },
   ] },
   { name: '履带', code: 'TR', models: [

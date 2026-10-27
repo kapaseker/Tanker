@@ -234,7 +234,7 @@
     align-items: center;
     gap: 12px;
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: 18px;
     letter-spacing: 4px;
     text-transform: uppercase;
     color: var(--mint);
@@ -779,7 +779,7 @@
 
   .spec__label {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: 18px;
     letter-spacing: 2px;
     text-transform: uppercase;
     color: var(--muted);
@@ -802,10 +802,77 @@
 
   .spec__unit {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: 14px;
     letter-spacing: 2px;
     text-transform: uppercase;
     color: var(--muted);
+  }
+
+  /* ---------- 三维尺寸轴：贴合模型包围盒边沿的工程标注 ---------- */
+  /* 轴线组是 .model 的子元素，跟随模型同一套旋转/缩放变换 */
+  .dims {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform-style: preserve-3d;
+  }
+
+  /* 线段：以左上角为变换原点，通过 translate3d + 旋转铺进模型空间对应平面 */
+  .dims__seg {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform-origin: 0 0;
+  }
+
+  /* 尺寸标签：2D 层元素，脚本逐帧把轴上锚点投影为屏幕坐标定位；
+     字号恒定、始终绘制在模型之上，不被模型切面遮挡（底板对齐 hud.plate 做法） */
+  .dims__tag {
+    position: absolute;
+    left: 0;
+    top: 0;
+    pointer-events: none;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 4px 8px;
+    background: rgba(15, 14, 12, 0.82);
+    border: 1px solid rgba(200, 219, 177, 0.28);
+    white-space: nowrap;
+  }
+
+  .dims__name {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--muted);
+  }
+
+  .dims__val {
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--mint-bright);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .dims__unit {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--muted);
+  }
+
+  /* 仅供屏幕阅读器的文字替代（如尺寸轴图形的数值） */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   /* ---------- 窗口适配 ---------- */

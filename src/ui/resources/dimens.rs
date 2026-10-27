@@ -24,8 +24,10 @@ pub(crate) mod title_bar {
     pub(crate) const BACK_ARROW_SIZE: f32 = 16.0;
     /// 电源符号显示边长（首页变体，与箭头同规格 16px；PNG 资产为 8 倍分辨率）。
     pub(crate) const POWER_ICON_SIZE: f32 = 16.0;
-    /// 页面标题在标题栏内的固定矩形与字号。
-    pub(crate) const TITLE_RECT: (f32, f32, f32, f32) = (182.0, 30.0, 300.0, 30.0);
+    /// 页面标题在标题栏内的固定矩形与字号。文字行盒（1.2×20，Bevy 文本在固定高
+    /// 节点内顶对齐）位于节点顶部；top=33 时实测墨迹中心 43.5，与 ESC 返回框
+    /// 中心（栏中心 44）及框内键帽墨迹中心对齐。
+    pub(crate) const TITLE_RECT: (f32, f32, f32, f32) = (182.0, 33.0, 300.0, 24.0);
     pub(crate) const TITLE_SIZE: f32 = 20.0;
 }
 
