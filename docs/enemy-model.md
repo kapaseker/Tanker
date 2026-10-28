@@ -6,7 +6,7 @@
 
 ## 尺寸与坐标
 
-权威定义在 `src/tank/model/enemy.rs`；每格0.1米，VOX +X 为车头、Y 为宽度、Z 为高度。生成器直接读取其中的画布、车体和炮管范围、炮轴、轮位及轮型参数，不读取旧模型。画布为114×34×26格，车体 X=[24,90)，画布中心X=57与车体中心一致。
+权威定义在 `src/tank/model/enemy.rs`；坐标一律按参考格（每格 0.1 米，`REFERENCE_VOXEL_SIZE`）。交付的车身、炮管与履带资产已按 0.02 米/格细分（`.vox.meta` 声明），契约数值不随细分改变；VOX +X 为车头、Y 为宽度、Z 为高度。参考画布为114×34×26格，车体 X=[24,90)，画布中心X=57与车体中心一致；细分后资产画布为570×170×130格。
 
 - 非炮管圆角碰撞体：长6.6米、高2.6米、宽3.4米，圆角0.2米。运行时尺寸由 `src/tank/model/enemy.rs` 的 `COLLISION_SIZE` 统一推导，高度沿用玩家底盘契约（同一权威值），资源测试同时核对两种模型高度契约。
 - 非炮管几何边界为[24,0,0]至[90,34,26]；地面至顶盖2.6米，零偏移挂载，底部与玩家一致。
@@ -19,7 +19,7 @@
 | tank/barrels/enemy/spit/barrel.vox | barrel | 炮管、抽烟器与炮口 |
 | tank/tracks/enemy/crawl/track.vox | track_l_0..2 / track_r_0..2、wheel_l_0..5 / wheel_r_0..5 | 六相位履带与十二个独立轮 |
 
-三包保留原敌人五色调色板：RGB(100,42,38)、(121,55,46)、(75,31,29)、(36,39,37)、(66,60,53)。车身、炮管与履带相位共用画布；独立轮使用局部居中画布，按契约轴心安装。每辆敌人共20个场景实例，根实体销毁时全部注销。
+三包保留原敌人五色调色板：RGB(100,42,38)、(121,55,46)、(75,31,29)、(36,39,37)、(66,60,53)。车身、炮管与履带相位共用画布；独立轮使用局部居中画布，按契约轴心安装。每辆敌人共20个场景根实例（车身、炮管、六相位与十二轮）；细分分块只增加子树实体，根实体销毁时整棵分块场景全部注销。
 
 ## 履带与轮组
 
@@ -34,7 +34,8 @@
 ## 生成与验收
 
 ```text
-python3 scripts/generate_enemy.py
+python3 scripts/generate_enemy.py           # 生成粗样→细分三包到0.02→原子发布交付资产
+python3 scripts/generate_enemy.py --check   # 只校验管线产物与交付资产逐字节一致，不写文件
 python3 -m unittest discover -s scripts -p test_generate_enemy.py
 python3 -m unittest discover -s scripts -p test_tracks.py
 cargo check
@@ -42,9 +43,9 @@ cargo test
 cargo run -- --offscreen-test wheels --output .scratch/offscreen/enemy-wheels --model enemy
 ```
 
-`wheels` 默认仍验收玩家；只有该预设接受 `--model enemy`。敌人模式将一辆真实敌人放在出生平地旁，脚本意图只写入该车，玩家与其它敌人保持原有输入逻辑。输出20张动作关键帧、side/front/rear/bounds/comparison图和报告；bounds仅画圆角碰撞体的外包围框。其余scene、drive、combat命令不变，combat已移除旧敌人的抬高台座，在平地验证玩家水平射击命中及爆炸清理。
+生成器只产出 0.1 米/格的粗样，交付必须经同一入口调用 `scripts/subdivide_vox.py` 五倍保色细分车身、炮管与履带并配对改写 `.vox.meta`；`--check` 对三包逐字节比对，防止把粗资产覆盖回 0.02 配置。资源测试解析场景树并还原分块坐标到参考格，检查三包对齐、炮盾接缝、全相位边界、配色、完整轮包络与净空；Rust 集成测试检查真实加载后的组合尺寸、网格轴心、运动方向、停车和整棵子树注销。
 
-几何测试检查三包对齐、炮盾接缝、全相位边界、配色、完整轮包络与车身/履带及其它轮之间的净空；真实资源测试检查节点就绪、网格轴心、运动方向、停车和实例注销。离屏结果必须检查报告和关键帧，编译或资源加载成功不能替代画面验收。
+`wheels` 默认仍验收玩家；只有该预设接受 `--model enemy`。敌人模式将一辆真实敌人放在出生平地旁，脚本意图只写入该车，输出20张动作关键帧、side/front/rear/bounds/comparison图和报告；bounds仅画圆角碰撞体的外包围框。敌人 drive 速度为占位 0，前进/倒车帧不产生里程（既有占位，非资产问题）；转向与停车帧仍验证相位推进、轮组角度和净空。其余scene、drive、combat命令不变，combat已移除旧敌人的抬高台座，在平地验证玩家水平射击命中及爆炸清理。
 
 ## 击毁爆炸
 
@@ -62,3 +63,13 @@ cargo run -- --offscreen-test wheels --output .scratch/offscreen/enemy-wheels --
 ### 爆炸放大验收
 
 `cargo check --offline`及47项Rust测试通过。`.scratch/offscreen/enemy-explosion-large-01/`的combat退出0，已读取第6、24、48、60帧，确认放大的起爆、外扩和消散效果；报告确认命中后爆炸生成，并在第120帧前清理完成。本次仍使用llvmpipe/Vulkan软件渲染，未启动可见窗口。
+
+## 0.02 细分验收（2026-10-29）
+
+- `cargo check`通过；串行`cargo test -- --test-threads=1` 113项（104单元、5+4集成）全部通过；Python 42项通过；`publish_player.py --check`三包逐字节一致；玩家生成器4项通过。
+- 敌方履带包改由`scripts/generate_enemy.py`生成粗样后经共享转换器细分到0.02并原子发布；`generate_enemy.py --check`对三包逐字节比对通过，`track.vox`由43 KB增至4.9 MB。
+- NVIDIA RTX 4060 / Vulkan：drive、combat退出0且报告通过；`wheels --model enemy`退出非0，仅帧30/60的直行里程断言失败，原因沿用既有的`ENEMY_TRACKS`速度0占位（敌人本身不移动），失败行与`legacy-wheels-enemy-01`基线完全一致；转向、停车及轮组其余断言通过。
+- 逐图比对`legacy-wheels-enemy-01`的帧0/75/90/120/250及side/front/rear/bounds/comparison共10张图：帧0/75/90/250与side完全一致，其余差异像素为18/379/306/338/236（总像素921600）、最大通道差29且无>32的像素，属细分后的光栅取样差异，轮廓、轮位与同场比例不变。已读取侧视图、转向帧与combat第120帧，确认无裂缝、端轮未错位、靶车清理无残留。
+- 击毁清理由`real_vox_assets_fire_and_clean_up_scene_instances`断言：20个场景根实例随根实体销毁全部注销，并逐个确认分块子实体不存在。
+- 证据（忽略目录，不提交）：`.scratch/vox-model-refinement/evidence/07-{drive-d86752,combat-92c312,enemy-wheels-a}/`。
+- 未启动可见窗口；未验证其它显卡/驱动及窗口输入行为。

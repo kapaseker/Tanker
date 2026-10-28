@@ -3,7 +3,7 @@ import math
 import struct
 import unittest
 import generate_enemy as enemy
-from test_tracks import read_models, read_reference_models, ENEMY_CANVAS
+from test_tracks import read_reference_models, ENEMY_CANVAS
 import subprocess
 import sys
 import subdivide_vox as sv
@@ -15,10 +15,7 @@ class EnemyModelTests(unittest.TestCase):
         self.assertEqual(packages, enemy.build_assets())
         palettes = []
         for path, data in zip(enemy.OUTPUTS, packages):
-            if path == enemy.TRACKS_OUTPUT:
-                self.assertEqual(data, path.read_bytes())
-            else:
-                self.assertEqual(sv.read_meta_unit(path.with_name(path.name + ".meta")), 0.02)
+            self.assertEqual(sv.read_meta_unit(path.with_name(path.name + ".meta")), 0.02)
             self.assertNotIn(b'_hidden', data)
             offset = 20
             while offset < len(data):
@@ -39,25 +36,27 @@ class EnemyModelTests(unittest.TestCase):
     def test_bounds_seams_and_rotating_wheel_clearance(self):
         body = read_reference_models(enemy.BODY_OUTPUT, ENEMY_CANVAS)["body"]
         barrel = read_reference_models(enemy.BARREL_OUTPUT, ENEMY_CANVAS)["barrel"]
-        tracks = read_models(enemy.TRACKS_OUTPUT)
+        tracks = read_reference_models(enemy.TRACKS_OUTPUT, ENEMY_CANVAS)
         self.assertEqual(len(tracks), 18)
         bounds = lambda cells: tuple((min(p[i] for p in cells),max(p[i] for p in cells)+1) for i in range(3))
         self.assertFalse(body.keys() & barrel.keys())
         self.assertEqual(bounds(barrel)[0], enemy.BARREL_X)
         self.assertTrue(any((enemy.BARREL_X[0]-1,y,z) in body and (enemy.BARREL_X[0],y,z) in barrel for y in range(34) for z in range(26)))
-        for left in tracks[:3]:
-            for right in tracks[3:6]:
-                self.assertFalse(body.keys() & left.keys())
-                self.assertFalse(body.keys() & right.keys())
-                self.assertEqual(bounds(body | left | right), ((24,90),(0,34),(0,26)))
-                self.assertEqual(bounds(body | barrel | left | right), ((24,114),(0,34),(0,26)))
+        for phase in range(3):
+            left = tracks[f'track_l_{phase}']
+            right = tracks[f'track_r_{phase}']
+            self.assertFalse(body.keys() & left.keys())
+            self.assertFalse(body.keys() & right.keys())
+            self.assertEqual(bounds(body | left | right), ((24,90),(0,34),(0,26)))
+            self.assertEqual(bounds(body | barrel | left | right), ((24,114),(0,34),(0,26)))
         for side in range(2):
             wheels = enemy.WHEELS[side*6:side*6+6]
             for i,(_,a,_,_,ar) in enumerate(wheels):
                 for _,b,_,_,br in wheels[:i]:
                     self.assertGreater(math.hypot(a[0]-b[0],a[2]-b[2]), ar+br)
-        for spec, cells in zip(enemy.WHEELS, tracks[6:]):
+        for spec in enemy.WHEELS:
             name, center, size, radius, envelope = spec
+            cells = tracks[name]
             self.assertIn(name.encode(), enemy.TRACKS_OUTPUT.read_bytes())
             for axis, extent in enumerate((envelope, 2, envelope)):
                 self.assertGreaterEqual(center[axis]-extent, (24,0,0)[axis])
@@ -71,12 +70,14 @@ class EnemyModelTests(unittest.TestCase):
                         self.assertLessEqual(math.hypot(a-size/2,b-size/2), envelope)
             self.assertGreater(center[2]-envelope, 1)
             self.assertLess(center[2]+envelope, 12)
-            for phase in tracks[:6]:
-                for x,y,z in body.keys() | phase.keys():
-                    if abs(y+0.5-center[1]) < 2:
-                        dx = max(x-center[0], center[0]-(x+1),0)
-                        dz = max(z-center[2], center[2]-(z+1),0)
-                        self.assertGreater(math.hypot(dx,dz), envelope, name)
+            for phase in range(3):
+                for side in ('l', 'r'):
+                    phase_cells = tracks[f'track_{side}_{phase}']
+                    for x,y,z in body.keys() | phase_cells.keys():
+                        if abs(y+0.5-center[1]) < 2:
+                            dx = max(x-center[0], center[0]-(x+1),0)
+                            dz = max(z-center[2], center[2]-(z+1),0)
+                            self.assertGreater(math.hypot(dx,dz), envelope, name)
 
 
 if __name__ == '__main__':

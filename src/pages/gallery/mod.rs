@@ -260,7 +260,9 @@ mod tests {
         app.world_mut()
             .entity_mut(content)
             .insert(WorldAssetRoot(missing));
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        // 履带细分后资产变大，缺失文件的失败回报在串行跑测时超过 5 秒（实测该测试
+        // 总耗时 6.23 秒即触发超时）；放宽到 10 秒，仍能暴露真正卡死的路径。
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         while app.world().resource::<Previews>().items[0].error.is_none() {
             app.update();
             assert!(std::time::Instant::now() < deadline, "失败资产没有结束等待");

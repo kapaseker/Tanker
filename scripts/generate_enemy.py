@@ -1,4 +1,7 @@
-"""确定性生成暗红敌人三包；尺寸和轮位读取 src/tank/model/enemy.rs。"""
+"""确定性生成暗红敌人三包；尺寸和轮位读取 src/tank/model/enemy.rs。
+
+三包粗样均经 scripts/subdivide_vox.py 细分到 0.02 米并原子发布，与玩家统一入口同流程。
+"""
 from pathlib import Path
 import ast
 import argparse
@@ -173,9 +176,9 @@ def build_assets():
 
 
 def main():
-    """粗源经共同转换器发布；旧履带暂时保持 0.1 米并验证未漂移。"""
-    from subdivide_vox import convert, rewrite_meta_unit, read_meta_unit
-    from publish_player import compare_pair
+    """三包粗源经共同转换器细分发布；--check 逐字节比对交付资产。"""
+    from subdivide_vox import convert, rewrite_meta_unit
+    from publish_player import COARSE_UNIT, FINE_UNIT, compare_pair
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--check', action='store_true')
@@ -185,17 +188,16 @@ def main():
     complete = False
     try:
         packages = build_assets()
-        if read_meta_unit(TRACKS_OUTPUT.with_name(TRACKS_OUTPUT.name + '.meta')) != 0.1 or packages[2] != TRACKS_OUTPUT.read_bytes():
-            raise ValueError('敌方履带尚未迁移，生成结果或单位与交付资产不一致')
         sources = []
-        for i, delivered in enumerate(OUTPUTS[:2]):
+        for i, delivered in enumerate(OUTPUTS):
             coarse = work / str(i) / delivered.name
             coarse.parent.mkdir()
             coarse.write_bytes(packages[i])
             meta = delivered.with_name(delivered.name + '.meta').read_text(encoding='utf-8')
-            coarse.with_name(coarse.name + '.meta').write_text(rewrite_meta_unit(meta, 0.1), encoding='utf-8')
+            coarse.with_name(coarse.name + '.meta').write_text(
+                rewrite_meta_unit(meta, COARSE_UNIT), encoding='utf-8')
             staging = work / f'staging-{i}'
-            stats = convert(coarse, 0.02, staging, publish=False)
+            stats = convert(coarse, FINE_UNIT, staging, publish=False)
             sources.append(coarse)
             if args.check:
                 problems = compare_pair(staging, coarse, delivered)
@@ -203,8 +205,8 @@ def main():
                     raise ValueError('; '.join(problems))
             print(f'{delivered.relative_to(ROOT)}：{stats["source_voxels"]} → {stats["output_voxels"]}')
         if not args.check:
-            for i, (coarse, delivered) in enumerate(zip(sources, OUTPUTS[:2])):
-                convert(coarse, 0.02, work / f'publish-{i}', publish=True, dest_path=delivered)
+            for i, (coarse, delivered) in enumerate(zip(sources, OUTPUTS)):
+                convert(coarse, FINE_UNIT, work / f'publish-{i}', publish=True, dest_path=delivered)
         complete = True
     finally:
         if complete:

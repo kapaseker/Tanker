@@ -777,10 +777,13 @@ mod tests {
 
         let (_, enemy_minimum, enemy_maximum) = scene_bounds(app.world(), enemy);
         assert!((enemy_maximum - enemy_minimum).abs_diff_eq(Vec3::new(9.0, 2.6, 3.4), 1e-4));
-        // 炮管和所有轮相位的实例也必须随敌人根注销。
+        // 炮管和所有轮相位的实例也必须随敌人根注销；分块后网格数变多，
+        // 因此同时记录整棵子树实体，销毁后逐个确认无残留。
         let mut pending = vec![enemy];
+        let mut enemy_entities = Vec::new();
         let mut enemy_instances = Vec::new();
         while let Some(root) = pending.pop() {
+            enemy_entities.push(root);
             if let Some(children) = app.world().get::<Children>(root) {
                 pending.extend(children.iter());
             }
@@ -788,11 +791,18 @@ mod tests {
                 enemy_instances.push(**instance);
             }
         }
+        // 车身、炮管、六相位与十二轮的场景根各一个；分块只增加子树实体。
         assert_eq!(enemy_instances.len(), 20);
         assert!(enemy_minimum.y.abs() < 1e-5, "敌人履带应贴合 Y=0 地面");
 
         app.world_mut().despawn(enemy);
         app.update();
+        assert!(
+            enemy_entities
+                .iter()
+                .all(|&entity| app.world().get_entity(entity).is_err()),
+            "敌人整棵分块场景与轮组子实体都应清理"
+        );
         assert!(enemy_instances.into_iter().all(|instance| {
             !app.world()
                 .resource::<WorldInstanceSpawner>()

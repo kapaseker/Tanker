@@ -10,23 +10,6 @@ import subdivide_vox as sv
 ASSETS = Path(__file__).resolve().parents[1] / 'assets' / 'tank'
 
 
-def read_models(path):
-    """读取生成产物的各相位体素；测试实际交付的资产而非生成器辅助函数。"""
-    data = path.read_bytes()
-    models = []
-    offset = 20
-    while offset < len(data):
-        tag, size, children = struct.unpack_from('<4sII', data, offset)
-        if tag == b'XYZI':
-            voxels = list(struct.iter_unpack('4B', data[offset+16:offset+12+size]))
-            cells = {v[:3]: v[3] for v in voxels}
-            if len(cells) != len(voxels):
-                raise AssertionError('履带包包含重复体素')
-            models.append(cells)
-        offset += 12+size+children
-    return models
-
-
 # 各车型共享画布契约（参考格数），与 Rust 侧 CANVAS 一致；必须显式传给解析器，
 # 避免对敌人包误套玩家画布。
 PLAYER_CANVAS = (135, 36, 26)
