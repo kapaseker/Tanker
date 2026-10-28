@@ -6,7 +6,7 @@
 
 ## 尺寸和坐标
 
-权威格坐标及非炮管碰撞边界在 `src/tank/model/player.rs`，生成器和运行时共同读取；坐标一律按参考格（每格 0.1 米，`REFERENCE_VOXEL_SIZE`）。交付的车身、炮管与履带资产已按 0.02 米/格细分（`.vox.meta` 声明），契约数值不随细分改变；子弹仍为 0.1 米/格。车身、炮管与六个履带相位统一参考画布为 135×36×26 格，VOX +X 为车头、Y 为宽度、Z 为高度。画布中心 X=67.5 正好为车体中心；车尾方向留空 30 格，加载后不需要位置补偿。
+权威格坐标及非炮管碰撞边界在 `src/tank/model/player.rs`，生成器和运行时共同读取；坐标一律按参考格（每格 0.1 米，`REFERENCE_VOXEL_SIZE`）。交付的车身、炮管、履带与子弹资产已按 0.02 米/格细分（`.vox.meta` 声明），契约数值不随细分改变。车身、炮管与六个履带相位统一参考画布为 135×36×26 格，VOX +X 为车头、Y 为宽度、Z 为高度。画布中心 X=67.5 正好为车体中心；车尾方向留空 30 格，加载后不需要位置补偿。子弹为 60×20×20 格（1.2×0.4×0.4 米），长轴沿世界 X。
 
 - 车体范围 X=[30,105)，长 7.5 米，宽含履带 3.6 米，地面至炮塔顶 2.6 米。
 - 炮塔正面 X=90，炮管 X=[90,135)，外露长 4.5 米；炮口相对车体中心前方 6.75 米，轴线离地 2 米。
@@ -22,14 +22,14 @@
 | tank/barrels/player/lance/barrel.vox | barrel | 炮管根部、管身、抽烟器、炮口 |
 | tank/tracks/player/cleat/track.vox | track_l_0..2 / track_r_0..2，wheel_l_0..6 / wheel_r_0..6 | 六个履带相位、十四个独立轮 |
 
-三部件统一按 `tank/<部件>/<车型>/<变体>/` 分包，变体目录名即型号 ID（玩家车体 `anvil`、炮管 `lance`、履带 `cleat`），包内主模型固定为 `body.vox` / `barrel.vox` / `track.vox`。子弹是 `lance` 炮管的附属资源，与其同目录的 `bullet.vox`；生成器与运行时均使用该路径。换装只需替换变体目录，详见 `docs/adr/0001-tank-asset-packages.md`。
+三部件统一按 `tank/<部件>/<车型>/<变体>/` 分包，变体目录名即型号 ID（玩家车体 `anvil`、炮管 `lance`、履带 `cleat`），包内主模型固定为 `body.vox` / `barrel.vox` / `track.vox`。子弹是 `lance` 炮管的附属资源，与其同目录的 `bullet.vox`，运行时与发布管线均使用该路径。换装只需替换变体目录，详见 `docs/adr/0001-tank-asset-packages.md`。
 
 三包共享调色板；车身、炮管和履带相位以全局画布零偏移挂载。轮子使用8×4×8（负重轮）或5×4×5（端轮）局部画布，按 `WHEELS` 的轴心安装。替换资源必须保持该契约；需要改变炮管长度或轴线时，先修改共享尺寸定义、生成器和相关测试，不通过运行时缩放掩盖不兼容。履带齿距三格、每行驶一格推进一相位，闭环168格。轮子按对应侧累计里程除以滚动半径绕游戏Z轴连续旋转，停车保留角度；每个节点必须完成加载和实例化，缺失节点会报错。
 
 ## 生成与验证
 
 ```powershell
-python scripts/publish_player.py           # 生成粗样→细分车身/炮管/履带到0.02→原子发布交付资产
+python scripts/publish_player.py           # 生成粗样→细分车身/炮管/履带/子弹到0.02→原子发布交付资产
 python scripts/publish_player.py --check   # 只校验管线产物与交付资产逐字节一致，不写文件
 rustc --edition 2024 --test scripts/generate_player.rs -o target/test_generate_player.exe
 ./target/test_generate_player.exe
@@ -39,7 +39,7 @@ cargo check
 cargo test
 ```
 
-生成器不读取旧玩家或敌人资源，相同输入输出相同字节，只产出 0.1 米/格的粗样；交付必须走 `publish_player.py`，由 `scripts/subdivide_vox.py` 五倍保色细分车身、炮管与履带并配对改写 `.vox.meta`，子弹保持原资产。直接运行 `generate_player.exe` 会在检测到交付配对 meta 单位不是 0.1 时拒绝写入，防止把粗资产覆盖回 0.02 配置。资源测试解析场景树并还原分块坐标到参考格，检查尺寸、三包不重叠和连接面；Rust 集成测试检查真实加载后的组合尺寸、炮口和清理。离屏运行 scene、drive、combat 和 wheels 并读取关键帧。wheels输出侧面逐帧动画序列及side/front/rear/bounds视点，覆盖前进、倒车、左右转向与停车。
+生成器不读取旧玩家或敌人资源，相同输入输出相同字节，只产出 0.1 米/格的粗样；交付必须走 `publish_player.py`，由 `scripts/subdivide_vox.py` 五倍保色细分车身、炮管、履带与子弹并配对改写 `.vox.meta`。子弹没有生成器：`scripts/fixtures/bullet.vox` 保存迁移前的 0.1 米/格粗源快照，作为细分管线的转换源，不从已细分成品再次细分。直接运行 `generate_player.exe` 会在检测到交付配对 meta 单位不是 0.1 时拒绝写入，防止把粗资产覆盖回 0.02 配置。资源测试解析场景树并还原分块坐标到参考格，检查尺寸、三包不重叠和连接面；Rust 集成测试检查真实加载后的组合尺寸、炮口和清理。离屏运行 scene、drive、combat 和 wheels 并读取关键帧。wheels输出侧面逐帧动画序列及side/front/rear/bounds视点，覆盖前进、倒车、左右转向与停车。
 
 ## 敌人尺寸兼容
 

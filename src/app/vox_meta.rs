@@ -125,8 +125,8 @@ mod tests {
     }
 
     /// 配置清单：九份受管理资产逐一列名，单位按迁移进度核对——
-    /// 玩家与敌方的 body/barrel/track 均为 0.02 米/格，子弹、爆炸与混凝土墩仍为 0.1。
-    /// 后续工单迁移更多文件时同步更新期望值。
+    /// 七个坦克文件（双方 body/barrel/track 与玩家子弹）均为 0.02 米/格，
+    /// 爆炸与混凝土墩仍为 0.1。后续工单迁移更多文件时同步更新期望值。
     #[test]
     fn manifest_lists_expected_units_per_asset() {
         const MANAGED: [(&str, f32); 9] = [
@@ -134,7 +134,7 @@ mod tests {
             ("obstacles/concrete/obstacle.vox", 0.1),
             ("tank/barrels/enemy/spit/barrel.vox", 0.02),
             ("tank/barrels/player/lance/barrel.vox", 0.02),
-            ("tank/barrels/player/lance/bullet.vox", 0.1),
+            ("tank/barrels/player/lance/bullet.vox", 0.02),
             ("tank/bodies/enemy/carapace/body.vox", 0.02),
             ("tank/bodies/player/anvil/body.vox", 0.02),
             ("tank/tracks/enemy/crawl/track.vox", 0.02),

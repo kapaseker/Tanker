@@ -16,7 +16,8 @@ use bevy::{
 pub(crate) const FIRE_INTERVAL: f32 = 60.0 / crate::tank::visual::PLAYER_BARREL.rate_of_fire;
 /// 子弹的匀速飞行速度即炮口初速，单位：米/秒；来自 lance 装备定义。
 const BULLET_SPEED: f32 = crate::tank::visual::PLAYER_BARREL.muzzle_velocity;
-/// 弹体资源为 12×4×4 格；扫掠碰撞仍按横向 4 格的立方体计算，单位：米。
+/// 弹体视觉资产为 60×20×20 格（0.02 米/格）；扫掠碰撞固定为 0.4 米立方体，
+/// 不随资产网格密度变化，单位：米。
 const BULLET_SIZE: f32 = 0.4;
 /// 从出生点累计计算的最大飞行距离，单位：世界单位。
 const BULLET_RANGE: f32 = 2000.0;
@@ -938,7 +939,8 @@ mod tests {
                 .instance_is_ready(instance)
         );
         let (_, bullet_minimum, bullet_maximum) = scene_bounds(app.world(), bullet);
-        // 视觉包围盒为 12×4×4 格的细长弹体（长轴沿世界 X，1 格 = 0.1 米）；
+        // 视觉包围盒为 60×20×20 格的细长弹体（长轴沿世界 X，0.02 米/格，
+        // 合计 1.2×0.4×0.4 米）；
         // 0.4³ 只是扫掠碰撞立方体，不代表视觉尺寸。体素网格带 ~6e-6 缝合
         // epsilon，容差取 1e-4。
         assert!(
@@ -988,7 +990,7 @@ mod tests {
             .resource::<Assets<StandardMaterial>>()
             .get(
                 &bullet_material
-                    .expect("子弹层级内应加载 12×4×4 格（1.2×0.4×0.4 米）的弹体网格"),
+                    .expect("子弹层级内应加载 60×20×20 格（1.2×0.4×0.4 米）的弹体网格"),
             )
             .unwrap();
         assert!(material.perceptual_roughness >= 0.8);

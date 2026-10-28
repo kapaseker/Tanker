@@ -3,10 +3,12 @@
 流程：rustc 编译 scripts/generate_player.rs（缺失或源更新时重编）→ 生成粗
 body/barrel/track 到临时目录 → 按交付 meta 复制字段并强制 0.1 单位生成粗样
 meta → body/barrel/track 走同一转换器细分到 0.02 并原子发布到 assets。
+子弹无生成器：直接以 scripts/fixtures/bullet.vox（0.1 粗源逐字节快照）为
+转换源，细分后原子发布到 lance 目录。
 
 - 默认模式：真实发布；每个部件转换与逐格验证通过后分别替换，失败保留该部件原资产。
 - --check：全流程只到临时目录，把管线产物与交付资产逐字节比对（body/barrel/track
-  细分对），不一致退出码非零；绝不写 assets/。这是"重新生成不会
+  细分对与子弹细分对），不一致退出码非零；绝不写 assets/。这是"重新生成不会
   把粗资产覆盖到 0.02 配置下"的可回归证明。
 - 工作目录放在 target/ 下：Windows 的 os.replace 要求源与目标同卷。
 """
@@ -26,6 +28,10 @@ REPO = Path(__file__).resolve().parents[1]
 BODY = REPO / 'assets/tank/bodies/player/anvil/body.vox'
 BARREL = REPO / 'assets/tank/barrels/player/lance/barrel.vox'
 TRACK = REPO / 'assets/tank/tracks/player/cleat/track.vox'
+BULLET = REPO / 'assets/tank/barrels/player/lance/bullet.vox'
+# 子弹的确定性粗源：迁移前的 0.1 米/格原始文件快照（含配对 meta），
+# 避免交付资产细分后无法重建；不从已细分成品再次细分。
+BULLET_FIXTURE = REPO / 'scripts/fixtures/bullet.vox'
 GENERATOR_RS = REPO / 'scripts/generate_player.rs'
 # 生成器经 #[path] 内嵌 model 模块，其下 player.rs/enemy.rs 契约更新同样需要重编；
 # 监视整个 src/tank/model 目录，避免陈旧 exe 通过 --check 并发布旧几何。
@@ -35,7 +41,7 @@ GENERATOR_EXE = REPO / 'target' / ('generate_player.exe' if sys.platform == 'win
 COARSE_UNIT = 0.1
 # 细分目标单位（米/格）。
 FINE_UNIT = 0.02
-# 玩家三包均按同一管线细分；子弹另由后续工单迁移。
+# 玩家三包由生成器产出粗样后细分；子弹单独走 fixture 粗源。
 SUBDIVIDED = {'body': BODY, 'barrel': BARREL, 'track': TRACK}
 
 
@@ -112,6 +118,19 @@ def run(check: bool) -> int:
                 print(f'已发布 {delivered.relative_to(REPO)}：体素 {stats["source_voxels"]}'
                       f' → {stats["output_voxels"]}，字节 {stats["source_bytes"]}'
                       f' → {stats["output_bytes"]}')
+        # 子弹不经生成器：fixture 即 0.1 粗源，转换器读取其配对 meta 后细分。
+        if check:
+            staging = work / 'staged-bullet'
+            convert(BULLET_FIXTURE, FINE_UNIT, staging, publish=False)
+            problems = compare_pair(staging, BULLET_FIXTURE, BULLET)
+            print(f'{"不一致" if problems else "一致"} {BULLET.relative_to(REPO)}')
+            failed += problems
+        else:
+            stats = convert(BULLET_FIXTURE, FINE_UNIT, work / 'staging-bullet',
+                            publish=True, dest_path=BULLET)
+            print(f'已发布 {BULLET.relative_to(REPO)}：体素 {stats["source_voxels"]}'
+                  f' → {stats["output_voxels"]}，字节 {stats["source_bytes"]}'
+                  f' → {stats["output_bytes"]}')
     finally:
         shutil.rmtree(work, ignore_errors=True)
     if failed:
