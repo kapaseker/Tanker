@@ -3,10 +3,11 @@
 pub(crate) mod chrome;
 pub(crate) mod state;
 pub(crate) mod transition;
+pub(crate) mod vox_meta;
 
 use avian3d::prelude::PhysicsPlugins;
 use bevy::prelude::*;
-use bevy_vox_scene::{VoxLoaderSettings, VoxScenePlugin};
+use bevy_vox_scene::VoxScenePlugin;
 
 use crate::{gameplay, pages, tank, terrain, ui, validation};
 use state::GameState;
@@ -22,6 +23,11 @@ pub(super) fn run(options: Option<validation::Options>) -> Result<(), String> {
         options.prepare()?;
     }
     let _watchdog = options.as_ref().map(validation::Options::watchdog);
+    // 资产单位配置完整性：缺配置的 VOX 会被插件静默按默认 1 米/格加载，
+    // 这里在任何加载开始前拦截，失败原因带路径直接 panic（与地形资产同策略）。
+    if let Err(reason) = vox_meta::validate(&bevy::asset::io::file::FileAssetReader::get_base_path().join("assets")) {
+        panic!("{reason}");
+    }
     let mut app = App::new();
     if options.is_some() {
         validation::configure(&mut app);
@@ -35,13 +41,9 @@ pub(super) fn run(options: Option<validation::Options>) -> Result<(), String> {
         }));
     }
     app.add_plugins((
-        // 统一资源尺寸：1 世界单位 = 1 米。
-        VoxScenePlugin {
-            global_settings: Some(VoxLoaderSettings {
-                voxel_size: crate::tank::model::VOXEL_SIZE,
-                ..default()
-            }),
-        },
+        // 每份 VOX 的单位（米/格）来自资产旁的 .vox.meta；global_settings 必须保持
+        // None，否则插件全局值会覆盖各文件配置（见 tests/vox_meta_settings.rs）。
+        VoxScenePlugin::default(),
         gameplay::combat::firing::FiringPlugin,
         PhysicsPlugins::default(),
         terrain::GroundPlugin,

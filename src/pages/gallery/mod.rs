@@ -117,12 +117,8 @@ mod tests {
             ImagePlugin::default(),
             WorldSerializationPlugin,
             TransformPlugin,
-            bevy_vox_scene::VoxScenePlugin {
-                global_settings: Some(bevy_vox_scene::VoxLoaderSettings {
-                    voxel_size: crate::tank::model::VOXEL_SIZE,
-                    ..default()
-                }),
-            },
+            // 单位来自资产旁 .vox.meta（global_settings 覆盖会掩盖缺配置）。
+            bevy_vox_scene::VoxScenePlugin::default(),
             crate::tank::track::TrackAnimationPlugin,
         ))
         .init_asset::<StandardMaterial>()

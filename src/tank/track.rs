@@ -404,7 +404,7 @@ mod tests {
         time::TimeUpdateStrategy,
         world_serialization::WorldSerializationPlugin,
     };
-    use bevy_vox_scene::{VoxLoaderSettings, VoxScenePlugin};
+    use bevy_vox_scene::VoxScenePlugin;
     use std::time::{Duration, Instant};
 
     /// 检查真实网格的继承可见性，避免只验证外层开关而漏掉资产内部的隐藏节点。
@@ -448,12 +448,7 @@ mod tests {
             WorldSerializationPlugin,
             TransformPlugin,
             VisibilityPlugin,
-            VoxScenePlugin {
-                global_settings: Some(VoxLoaderSettings {
-                    voxel_size: crate::tank::model::VOXEL_SIZE,
-                    ..default()
-                }),
-            },
+            VoxScenePlugin::default(),
             TrackAnimationPlugin,
         ))
         .init_asset::<Mesh>()

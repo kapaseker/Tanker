@@ -184,7 +184,7 @@ mod tests {
         time::TimeUpdateStrategy, transform::components::TransformTreeChanged,
         world_serialization::WorldSerializationPlugin,
     };
-    use bevy_vox_scene::{VoxLoaderSettings, VoxScenePlugin};
+    use bevy_vox_scene::VoxScenePlugin;
     use std::time::Instant;
 
     /// 返回唯一可见帧，重叠显示多帧也视为动画回归。
@@ -352,12 +352,7 @@ mod tests {
             ImagePlugin::default(),
             WorldSerializationPlugin,
             TransformPlugin,
-            VoxScenePlugin {
-                global_settings: Some(VoxLoaderSettings {
-                    voxel_size: crate::tank::model::VOXEL_SIZE,
-                    ..default()
-                }),
-            },
+            VoxScenePlugin::default(),
             ExplosionPlugin,
         ))
         .register_type::<Visibility>()

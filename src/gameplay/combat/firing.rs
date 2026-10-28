@@ -296,7 +296,7 @@ mod tests {
         transform::components::TransformTreeChanged,
         world_serialization::WorldSerializationPlugin,
     };
-    use bevy_vox_scene::{VoxLoaderSettings, VoxScenePlugin};
+    use bevy_vox_scene::VoxScenePlugin;
     use std::time::{Duration, Instant};
 
     /// 汇总场景后代网格的世界包围盒，覆盖模型坐标与根节点变换。
@@ -669,12 +669,7 @@ mod tests {
             ImagePlugin::default(),
             WorldSerializationPlugin,
             TransformPlugin,
-            VoxScenePlugin {
-                global_settings: Some(VoxLoaderSettings {
-                    voxel_size: crate::tank::model::VOXEL_SIZE,
-                    ..default()
-                }),
-            },
+            VoxScenePlugin::default(),
             FiringPlugin,
             crate::terrain::GroundPlugin,
             crate::tank::track::TrackAnimationPlugin,
