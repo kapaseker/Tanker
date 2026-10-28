@@ -28,7 +28,9 @@ impl Plugin for GalleryPlugin {
                 OnEnter(GameState::Gallery),
                 (spawn_previews, ui::spawn).chain(),
             )
-            .add_systems(Update, (prepare_previews, spin).chain().run_if(in_gallery))
+            // 场景实例在 Update 与 PostUpdate 之间的 SpawnScene 才生成，放在 Last 才能
+            // 给同帧新出现的网格补渲染层，避免测量/验收时遇到未分层实体。
+            .add_systems(Last, (prepare_previews, spin).chain().run_if(in_gallery))
             .add_systems(
                 Update,
                 (
@@ -134,7 +136,7 @@ mod tests {
         .register_type::<MeshMaterial3d<StandardMaterial>>()
         .register_type::<FogVolume>()
         .add_systems(Startup, spawn_previews)
-        .add_systems(Update, prepare_previews);
+        .add_systems(Last, prepare_previews);
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
         loop {
             app.update();

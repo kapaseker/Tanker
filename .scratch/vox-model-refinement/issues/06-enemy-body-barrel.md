@@ -1,6 +1,6 @@
 # 06: 敌方车身和炮管迁移到 0.02 米
 
-Status: ready-for-agent
+Status: done
 Type: task
 Blocked by: 05
 
@@ -19,7 +19,7 @@ Blocked by: 05
 ## Verification
 
 - [x] cargo check；敌方生成/装配/碰撞/预览的相关 Rust 与 Python 测试。
-- [ ] scene、gallery、detail 关键帧确认同场比例、炮管装配和材质不变；用户明确取消敌方 wheels 测试。
+- [x] scene、gallery、detail 关键帧确认同场比例、炮管装配和材质不变；用户明确取消敌方 wheels 测试（证据见评论区 2026-10-29 硬件 GPU 记录）。
 - [x] 检查玩家资产没有回退，非坦克资产哈希保持；保存粗源与目标的体积、位置和尺寸对照。
 
 ## 代码定位（实施前重新核对）
@@ -45,3 +45,13 @@ scripts/generate_enemy.py；敌方 body/barrel/meta；scripts/test_generate_enem
 详情离屏按原 120 秒上限重试多次，默认、优化编译及 llvmpipe 4/6/8/16 线程均未通过；`.scratch/vox-06-detail-retry2/` 和 `retry3/` 已保存九种型号、交互与缺失资源关键帧，但最终报告超时，不能视为完整通过。当前环境没有 `/dev/dri`，无法使用硬件 GPU。用户指定取消轮组测试不等于取消详情验收，因此工单仍待详情全流程通过；用户要求先提交现有进度。
 
 2026-10-29（续接）：实现与当前证据先提交，工单保持未完成。后续在能访问 Vulkan 硬件 GPU 的环境，从工程根目录执行 `cargo run -- --offscreen-test detail --output .scratch/vox-06-detail-gpu`（若目录已存在则使用新目录），检查退出码、报告和敌方车身/炮管/整车关键帧。通过后记录证据并完成工单；若仍失败，保留失败报告继续排查。敌方 wheels 测试已按用户要求取消。
+
+2026-10-29（完成）：在 Windows + NVIDIA RTX 4060（报告记为 Vulkan 后端）硬件环境完成详情验收。
+
+- 先修复详情间歇失败的真实竞态：`src/pages/model_preview.rs` 的 `prepare_previews` 原先注册在 Update，而场景实例在 Update 与 PostUpdate 之间的 SpawnScene 才生成，确定性晚到的网格会带着默认层进入验收，报“模型网格渲染层不匹配”。将 `prepare_previews`（画廊连同 `spin`、详情连同 `spawn_axes`）改到 Last 调度，同帧补层；断言未放宽。改动前复现一次失败（`.scratch/vox-06-detail-gpu-06/report.txt`，目录项 6），改动后连续三次通过。
+- `cargo check` 通过；`cargo test -- --test-threads=1` 104+5+4=113 项全部通过。
+- detail：连续三次 `exit 0`、报告“结果：通过”，证据 `.scratch/vox-06-detail-gpu-005143/`、`vox-06-detail-gpu-r005848-1/`、`vox-06-detail-gpu-r005959-2/`（27 个产物/次）。报告尺寸：敌方车身 6.5×3.2×2.1、炮管 3.8×0.4×0.4、整车 9.0×3.4×2.6 米，可见相位 2、轮 12，与粗源米制契约一致。
+- scene：`exit 0`、结果通过，`.scratch/vox-06-scene-gpu-005359/`；frame-000000 与 legacy-scene-02 同场比例一致，玩家绿色坦克、混凝土墩与 HUD 无变化。
+- gallery：`exit 0`、结果通过，`.scratch/vox-06-gallery-gpu-005408/`；gallery-top 中 lance/spit 炮管材质与子弹伴随位置不变，其余卡片为已知资产比例。
+- 关键帧目视对照：`.scratch/vox-06-detail-gpu-005143/detail-7-initial.png` 与工单 01 基准 `.scratch/vox-model-refinement/evidence/legacy-detail-01/detail-7-initial.png` 的敌方整车外轮廓、颜色分区、炮管装配位置一致；detail-5（车身）、detail-1（炮管）同样一致，未见分块裂缝、色差或内部面异常。
+- 环境说明：此前 Linux llvmpipe 的 120 秒超时已不再复现，硬件 GPU 下 detail 全流程约 60 秒。敌方 wheels 仍按用户要求不测（速度为 0 的既有占位，不属本工单）。

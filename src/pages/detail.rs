@@ -155,14 +155,17 @@ impl Plugin for DetailPlugin {
                 OnEnter(GameState::Detail),
                 (spawn_preview, spawn_ui).chain(),
             )
+            // 场景实例在 Update 与 PostUpdate 之间的 SpawnScene 才生成，放在 Last 才能
+            // 给同帧新出现的网格补渲染层，避免测量/验收时遇到未分层实体。
+            .add_systems(
+                Last,
+                (preview::prepare_previews, spawn_axes)
+                    .chain()
+                    .run_if(in_detail),
+            )
             .add_systems(
                 Update,
-                (
-                    preview::prepare_previews,
-                    spawn_axes,
-                    input.before(widgets::title_bar::interaction),
-                    update_view,
-                )
+                (input.before(widgets::title_bar::interaction), update_view)
                     .chain()
                     .run_if(in_detail),
             )
