@@ -28,8 +28,6 @@ pub(crate) struct TextOptics {
     ascender: f32,
     /// 所选来源的 descent 绝对值，基线下方深度（字体单位）。
     descender: f32,
-    /// 所选来源的 line_gap，排版行间距（字体单位）。
-    line_gap: f32,
     /// OS/2.sCapHeight 大写字母墨迹高度（字体单位）。
     cap_height: f32,
 }
@@ -43,7 +41,6 @@ impl TextOptics {
         let hhea = font.hhea().ok()?;
         let mut ascender = i16::from(hhea.ascender()) as f32;
         let mut descender = (i16::from(hhea.descender()) as f32).abs();
-        let mut line_gap = i16::from(hhea.line_gap()) as f32;
         let os2 = font.os2().ok();
         // sCapHeight 仅 OS/2 v2+ 提供且可能为 0；缺失时按大写字母 ≈ 0.7×ascender 近似。
         let cap_height = os2
@@ -52,7 +49,8 @@ impl TextOptics {
             .filter(|v| *v > 0)
             .map(|v| v as f32)
             .unwrap_or(ascender * 0.7);
-        // 与 skrifa 相同的行高度量来源选择：USE_TYPO_METRICS 置位则改用 OS/2 typo 三元组。
+        // 与 skrifa 相同的度量来源选择：USE_TYPO_METRICS 置位则改用 OS/2 typo 三元组；
+        // line_gap 不参与（Bevy 行高固定 1.2×font_size），不解析。
         if let Some(os2) = &os2
             && os2
                 .fs_selection()
@@ -60,13 +58,11 @@ impl TextOptics {
         {
             ascender = i16::from(os2.s_typo_ascender()) as f32;
             descender = (i16::from(os2.s_typo_descender()) as f32).abs();
-            line_gap = i16::from(os2.s_typo_line_gap()) as f32;
         }
         (upem > 0.0 && ascender > 0.0).then_some(Self {
             upem,
             ascender,
             descender,
-            line_gap,
             cap_height,
         })
     }

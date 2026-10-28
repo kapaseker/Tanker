@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>战斗 HUD · 装填 · V-Tank</title>
-<meta name="description" content="V-Tank 游戏内战斗 HUD 设计稿：空格开火触发后坐与炮口火光，装填进度叠加在真实开局画面上，完毕后收起并允许再次开火。">
+<meta name="description" content="V-Tank 游戏内战斗 HUD 设计稿：空格开火触发后坐与炮口火光，左下状态簇显示生命与五格装填，满格后降低强调并允许再次开火。">
 <meta name="theme-color" content="#0f0e0c">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230f0e0c'/%3E%3Cpath d='M16 5l11 6-11 6-11-6z' fill='%23e2edcf'/%3E%3Cpath d='M5 11v9l11 6v-9z' fill='%23b7cb9f'/%3E%3Cpath d='M27 11v9l-11 6v-9z' fill='%2391a97a'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
@@ -21,27 +21,62 @@
     <div class="battle__scan"></div>
   </div>
 
-  <!-- 装填进度条：贴在玩家炮台右侧，分格显示装填进度；满格即消失。
-       外层取景盒与场景 cover 区域同尺寸，4:3 或超宽窗口下仍对齐炮台 -->
+  <!-- 左下固定状态簇：上为车体生命（连续条），下为装填（5 分格）。
+       两块轨道同宽同左对齐，用线性图标代替文字标签；
+       外层取景盒取居中的 16:9 任务区，状态簇锚定其左下安全边距 -->
   <div class="hudbox">
-    <section class="reload" id="reload" role="progressbar" aria-label="装填进度"
-             aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-hidden="true">
-      <div class="reload__track">
-        <div class="reload__fill" id="reload-fill"></div>
-        <div class="reload__ticks" aria-hidden="true"></div>
+    <section class="status" aria-label="车体状态">
+      <!-- 生命条：静态 76% 仅用于设计稿展示，接入玩法后由真实生命值驱动 -->
+      <div class="status__row">
+        <svg class="status__icon" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M8 2 13 3.9v3.8c0 3-2 5.3-5 6.6-3-1.3-5-3.6-5-6.6V3.9z"
+                fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="miter"/>
+        </svg>
+        <div class="bar" id="health" role="progressbar" aria-label="车体生命值"
+             aria-valuemin="0" aria-valuemax="100" aria-valuenow="76">
+          <div class="bar__fill" style="width:76%"></div>
+        </div>
+      </div>
+
+      <!-- 装填条：轨道 5 等分，每格 1 秒；满格后保持满格，即可再次开火 -->
+      <div class="status__row">
+        <!-- 子弹图标：圆头弹体 + 弹壳分界 + 加宽底缘 -->
+        <svg class="status__icon" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M5.4 13.4V6.6C5.4 4.7 6.3 3.2 8 2c1.7 1.2 2.6 2.7 2.6 4.6v6.8z"
+                fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="miter"/>
+          <path d="M5.4 9h5.2" fill="none" stroke="currentColor" stroke-width="1.4"/>
+          <path d="M4.5 13.4h7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="square"/>
+        </svg>
+        <div class="bar bar--reload" id="reload" role="progressbar" aria-label="装填进度"
+             aria-valuemin="0" aria-valuemax="100" aria-valuenow="100">
+          <div class="bar__fill bar__fill--reload" id="reload-fill" style="width:100%"></div>
+          <div class="bar__ticks" aria-hidden="true"></div>
+        </div>
       </div>
     </section>
   </div>
 
   <script>
     (() => {
+      // ---------- 16:9 任务区水平锚点 ----------
+      // clientWidth/clientHeight 不随根元素 zoom 变化（见 scale.js 实测注释），
+      // 据此计算居中 16:9 任务区左缘写入 CSS 变量；不在 CSS 中用 vw/vh，
+      // 避免 zoom < 1 时视口单位被二次缩放导致锚点漂移
+      const root = document.documentElement;
+      const layoutTaskArea = () => {
+        const left = Math.max(0, (root.clientWidth - root.clientHeight * 16 / 9) / 2);
+        root.style.setProperty('--task-left', `${left.toFixed(2)}px`);
+      };
+      layoutTaskArea();
+      addEventListener('resize', layoutTaskArea);
+
       // ---------- 装填状态 ----------
       // 装填时长取自 lance 射速 12 发/分钟 → 5 秒，与 src/gameplay/combat/firing.rs 的发射间隔一致；
-      // 进度条固定 5 格（.reload__ticks 每格 20%），一格即 1 秒，射速变化时两处需同步
+      // 装填条固定 5 格（.bar__ticks 每格 20%），一格即 1 秒，射速变化时两处需同步
       const RELOAD_MS = 5000;
       const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-      const plate = document.getElementById('reload');
+      const reloadBar = document.getElementById('reload');
       const fill = document.getElementById('reload-fill');
       const scene = document.getElementById('scene');
       const muzzle = document.getElementById('muzzle');
@@ -61,7 +96,7 @@
         const percent = Math.round(progress * 100);
         if (percent !== lastPercent) {
           lastPercent = percent;
-          plate.setAttribute('aria-valuenow', String(percent));
+          reloadBar.setAttribute('aria-valuenow', String(percent));
         }
 
         if (progress >= 1) {
@@ -77,10 +112,8 @@
         startedAt = performance.now();
         lastPercent = -1;
 
-        // 进入装填：进度条立即出现，从 0 开始
-        plate.classList.add('is-visible');
-        plate.removeAttribute('aria-hidden');
-        plate.setAttribute('aria-valuenow', '0');
+        // 进入装填：轨道从 0 开始推进
+        reloadBar.setAttribute('aria-valuenow', '0');
         fill.style.width = '0%';
 
         shoot();
@@ -88,16 +121,14 @@
         raf = requestAnimationFrame(tick);
       }
 
-      // 满格即收起进度条，不显示任何完成文字
+      // 满格后保持满格显示：不消失、不降低强调，保证状态簇高度稳定
       function finish() {
         loading = false;
         fill.style.width = '100%';
-        plate.setAttribute('aria-valuenow', '100');
-        plate.classList.remove('is-visible');
-        plate.setAttribute('aria-hidden', 'true');
+        reloadBar.setAttribute('aria-valuenow', '100');
       }
 
-      // 开火反馈：截图画面的短促下坐 + 炮口火光；减少动态偏好下只保留进度板
+      // 开火反馈：截图画面的短促下坐 + 炮口火光；减少动态偏好下只保留状态簇
       function shoot() {
         if (reduceMotion) return;
         clearTimeout(kickTimer);

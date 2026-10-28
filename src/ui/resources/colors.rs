@@ -120,6 +120,21 @@ pub(crate) mod index {
     pub(crate) const EXIT_OUTLINE: Color = Color::srgb_u8(48, 46, 41);
 }
 
+/// 战斗 HUD 状态簇配色；透明值按明亮地形上的线性等效换算，随离屏对照微调。
+pub(crate) mod hud {
+    use super::*;
+
+    /// 底板：CSS rgba(15,14,12,0.4)。bevy_ui 在线性空间混合，暗色叠在明亮
+    /// 地形上直接用 0.4 会比网页明显偏透；0.62 为线性等效近似值。
+    pub(crate) const PLATE: Color = with_alpha(index::BACKGROUND, 0.62);
+    /// 底板边框：CSS rgba(200,219,177,0.38) 在底板暗色上的线性等效近似值。
+    pub(crate) const PLATE_BORDER: Color = with_alpha(PRIMARY, 0.28);
+    /// 进度轨道底色（不透明），稍亮于底板保证空槽可见。
+    pub(crate) const TRACK: Color = Color::srgb_u8(35, 32, 26);
+    /// 装填分格线（不透明）：CSS rgba(8,7,6,0.85) 在轨道色上的合成结果。
+    pub(crate) const TICK: Color = Color::srgb_u8(12, 11, 9);
+}
+
 /// Bevy 的 Alpha trait 不能用于常量求值；本文件的颜色均明确使用 sRGB。
 const fn with_alpha(color: Color, alpha: f32) -> Color {
     match color {

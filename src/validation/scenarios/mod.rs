@@ -4,6 +4,7 @@ mod combat;
 mod detail;
 mod drive;
 mod gallery;
+mod hud;
 mod index;
 pub(super) mod scene;
 mod wheels;
@@ -33,6 +34,8 @@ pub(super) enum Scenario {
     Gallery,
     /// 单模型详情：八项资源、真实输入、返回恢复与重复清理。
     Detail,
+    /// 战斗 HUD：开火后装填条按真实冷却推进、满格常驻，生命条满血。
+    Hud,
 }
 
 impl Scenario {
@@ -43,6 +46,8 @@ impl Scenario {
             // 先直行 1 秒，再持续前进左转；路径不会触及 25 米外的混凝土墩。
             Self::Drive => &[0, 60, 180],
             Self::Combat => &[0, 6, 24, 48, 60, 120],
+            // 开火 1 秒后看装填中段；330 帧（5.5 秒）超过 5 秒冷却，看满格常驻。
+            Self::Hud => &[0, 60, 330],
             Self::Wheels => &[
                 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 75, 90, 105, 120, 130, 240, 250,
             ],
@@ -57,6 +62,7 @@ impl Scenario {
             (Self::Drive, 1..=60) => &[KeyCode::ArrowUp],
             (Self::Drive, 61..=180) => &[KeyCode::ArrowUp, KeyCode::ArrowLeft],
             (Self::Combat, 1) => &[KeyCode::Space],
+            (Self::Hud, 1) => &[KeyCode::Space],
             (Self::Wheels, 1..=30) => &[KeyCode::ArrowUp],
             (Self::Wheels, 31..=60) => &[KeyCode::ArrowDown],
             (Self::Wheels, 61..=90) => &[KeyCode::ArrowLeft],
@@ -167,6 +173,9 @@ pub(super) fn run_scenario(
         }
         if options.scenario == Scenario::Combat {
             combat::check(app, frame, report, &mut failures)?;
+        }
+        if options.scenario == Scenario::Hud {
+            hud::check(app, frame, report, &mut failures)?;
         }
         if options.scenario.frames().contains(&frame) {
             let (state, tracks) = subject_state(app.world_mut())?;

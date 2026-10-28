@@ -955,64 +955,80 @@
     opacity: 0.16;
   }
 
-  /* ---------- 战斗 HUD：装填进度条 ---------- */
-  /* 取景盒与场景 cover 区域同尺寸（16:9 内容居中裁切），
-     进度条按画面坐标定位，任意窗口比例都贴在炮台右侧 */
+  /* ---------- 战斗 HUD：左下状态簇 ---------- */
+  /* 取景盒铺满整个窗口（inset:0，与 .battle 同机制）。不用 vw/vh：
+     根元素 zoom < 1 时不同引擎对视口单位与 zoom 的叠加不一致，
+     固定 px 偏移 + 脚本计算的 CSS 变量在所有引擎下行为一致 */
   .hudbox {
     position: fixed;
-    left: 50%;
-    top: 50%;
+    inset: 0;
     z-index: 3;
-    width: max(100vw, 177.7778vh);
-    height: max(56.25vw, 100vh);
-    transform: translate(-50%, -50%);
     pointer-events: none;
   }
 
-  /* 贴在玩家炮台右侧的小进度条：只有分格进度和一块带边框的暗底板，
-     用于在棕色地形与场景高光上保持可读，不显示标签或倒计时 */
-  .reload {
+  /* 生命（上）与装填（下）聚合成一簇：同一左对齐、同宽轨道，
+     低位单调变化不会带动整组位移；两块轨道共用一个暗底板保证可读。
+     水平锚定居中 16:9 任务区左缘（--task-left 由 hud-reload.html 脚本
+     按窗口尺寸计算，超宽窗口不贴画面最外侧），垂直贴住窗口底边；
+     24px 取 hud.safe-inset */
+  .status {
     position: absolute;
-    left: 55%;
-    top: 57%;
-    /* 原 200px 的 2/3；内部轨道均分 5 格，对应 5 秒冷却 */
-    width: 133.33px;
-    transform: translateY(-50%);
-    padding: 3px;
-    background: rgba(15, 14, 12, 0.78);
+    left: calc(var(--task-left, 0px) + 24px);
+    bottom: 24px;
+    /* 内宽 222px：16px 图标 + 8px 间距 + 198px 轨道 */
+    width: 240px;
+    padding: 8px;
+    display: grid;
+    gap: 8px;
+    /* 底板不透明度 0.4：比通用 hud.plate（0.80）更通透，为该面板单独指定 */
+    background: rgba(15, 14, 12, 0.4);
     border: 1px solid rgba(200, 219, 177, 0.38);
     pointer-events: none;
-    /* 出现立即生效（状态延迟 0），满格后 140ms 淡出再隐藏 */
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 140ms ease, visibility 0s linear 140ms;
   }
 
-  .reload.is-visible {
-    opacity: 1;
-    visibility: visible;
-    /* 不声明 opacity 过渡：装填开始必须立即呈现真实状态 */
-    transition: visibility 0s;
+  .status__row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 
-  .reload__track {
+  /* 16px 线性图标代替文字标签：盾形表示车体生命，子弹表示装填；
+     图标只作辅助，轨道本身与 aria-label 仍完整表达状态 */
+  .status__icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    color: var(--mint);
+  }
+
+  .bar {
     position: relative;
-    height: 8px;
-    /* 稍亮于底板，空槽里也能看清 5 个格子 */
+    flex: 1;
+    height: 10px;
+    /* 稍亮于底板，空槽里也能看清轨道范围 */
     background: #23201a;
     overflow: hidden;
   }
 
-  /* 填充使用交互渐变，右端最亮，表示当前装填到的位置 */
-  .reload__fill {
+  /* 装填轨道略矮，与生命条形成主次，但仍同宽同左对齐 */
+  .bar--reload {
+    height: 8px;
+  }
+
+  .bar__fill {
     position: absolute;
     inset: 0 auto 0 0;
     width: 0;
+    background: var(--mint);
+  }
+
+  /* 装填填充沿用交互渐变，右端最亮表示当前装填到的位置 */
+  .bar__fill--reload {
     background: linear-gradient(90deg, var(--mint-deep), var(--mint) 70%, var(--mint-bright));
   }
 
   /* 5 秒冷却 → 轨道 5 等分，每格 1 秒；冷却时长变化时同步改 20% */
-  .reload__ticks {
+  .bar__ticks {
     position: absolute;
     inset: 0;
     background-image: repeating-linear-gradient(
@@ -1021,6 +1037,9 @@
       rgba(8, 7, 6, 0.85) calc(20% - 1px) 20%
     );
   }
+
+  /* 图标与进度条始终完全不透明：半透明（0.6）只用于底板，
+     内容不随状态改变明度，装填满格即表示可再次开火 */
 
   /* ---------- 窗口适配 ---------- */
   /* 游戏式整体缩放：不设布局断点、不做窄屏重排，窗口窄于参考分辨率时
@@ -1041,7 +1060,6 @@
     .exit-dialog { animation: none; }
     .exit-dialog__btn,
     .exit-dialog__btn kbd { transition: none; }
-    .reload { transition: none; }
     .battle__shake.is-kick,
     .battle__flash.is-firing::before { animation: none; }
   }

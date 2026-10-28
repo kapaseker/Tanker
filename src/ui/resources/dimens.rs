@@ -9,6 +9,25 @@ pub(crate) const LINE_HEIGHT: f32 = 4.0 / 3.0;
 /// UI 细边框宽度。
 pub(crate) const BORDER_WIDTH: f32 = 1.0;
 
+/// 战斗 HUD 左下状态簇逻辑像素（以网页设计稿 style.css 的 .status 为基准）。
+pub(crate) mod hud {
+    /// 状态簇距屏幕左、下边缘的安全边距（hud.safe-inset）。
+    pub(crate) const INSET: f32 = 24.0;
+    /// 簇总宽（含边框与内边距）；内宽 222 = 16 图标 + 8 间距 + 198 轨道。
+    pub(crate) const WIDTH: f32 = 240.0;
+    /// 簇内边距，上下左右一致。
+    pub(crate) const PADDING: f32 = 8.0;
+    /// 行间距、图标与轨道的水平间距（网页 gap 8px）。
+    pub(crate) const ROW_GAP: f32 = 8.0;
+    /// 图标显示边长（PNG 资产为 8 倍分辨率）。
+    pub(crate) const ICON_SIZE: f32 = 16.0;
+    /// 生命轨道高 10px；装填轨道略矮 8px，形成主次。
+    pub(crate) const HEALTH_TRACK_HEIGHT: f32 = 10.0;
+    pub(crate) const RELOAD_TRACK_HEIGHT: f32 = 8.0;
+    /// 装填分格数：5 秒冷却 → 5 格，每格 1 秒；间隔变化时与 firing 同步。
+    pub(crate) const RELOAD_TICKS: u32 = 5;
+}
+
 /// 统一标题栏逻辑像素：全页面共用一个标题栏控件（高度、ESC 返回框、标题、全屏宽底部分割线），
 /// 以画廊网页设计稿 .header/.back 为基准；新页面直接复用本模块常量，不再各自定义。
 pub(crate) mod title_bar {

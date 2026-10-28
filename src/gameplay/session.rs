@@ -11,7 +11,7 @@ use bevy::{
 };
 
 use crate::app::transition;
-use crate::gameplay::{camera, combat, enemy, player};
+use crate::gameplay::{camera, combat, enemy, health, player};
 use crate::terrain;
 use crate::tank;
 
@@ -86,6 +86,8 @@ pub(crate) fn setup(
         WorldAssetRoot(scene.clone()),
         tank::driving::tank_body(),
         tank_transform,
+        // 生命上限 100 点；当前无伤害系统，固定满血，HUD 由此读出比例。
+        health::Health::full(100),
     ));
     commands.insert_resource(VoxScene(scene));
 

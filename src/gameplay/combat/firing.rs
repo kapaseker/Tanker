@@ -56,7 +56,7 @@ pub(crate) struct Bullet {
 
 /// 当前坦克共用的武器资源，持有子弹场景和连发计时状态。
 #[derive(Resource)]
-struct Gun {
+pub(crate) struct Gun {
     /// 预加载并由各颗子弹复用的场景句柄，保持资源存活。
     bullet_scene: Handle<WorldAsset>,
     /// 每次发射后的剩余冷却时间，松开空格或资源未就绪也继续计时。
@@ -144,6 +144,22 @@ fn muzzle_pose(tank: &GlobalTransform) -> (Vec3, Vec3) {
         tank.transform_point(MUZZLE_POSITION),
         tank.affine().transform_vector3(Vec3::NEG_X).normalize(),
     )
+}
+
+/// 将剩余冷却时间换算为装填进度 0..=1：0 表示刚开火，1 表示可再次开火。
+/// HUD 与离屏断言共用同一换算，避免表现层各自实现冷却语义。
+pub(crate) fn reload_progress(remaining: f32, interval: f32) -> f32 {
+    if interval <= 0.0 {
+        return 1.0;
+    }
+    (1.0 - remaining / interval).clamp(0.0, 1.0)
+}
+
+impl Gun {
+    /// 距下一发可开火的装填进度，间隔取 FIRE_INTERVAL，供 HUD 只读。
+    pub(crate) fn reload_progress(&self) -> f32 {
+        reload_progress(self.cadence.remaining, FIRE_INTERVAL)
+    }
 }
 
 /// 处理空格连发；仅在唯一坦克实例及双方资源依赖就绪后生成独立子弹根节点。
@@ -324,6 +340,17 @@ mod tests {
         assert!(cadence.tick(true, 0.016));
         assert!(!cadence.tick(true, 2.0));
         assert!(cadence.tick(true, 3.0));
+    }
+
+    /// 验证装填进度换算：空、满、中值、越界钳制与除零防护。
+    #[test]
+    fn reload_progress_maps_remaining_onto_clamped_unit_interval() {
+        assert_eq!(reload_progress(5.0, 5.0), 0.0);
+        assert_eq!(reload_progress(2.5, 5.0), 0.5);
+        assert_eq!(reload_progress(0.0, 5.0), 1.0);
+        assert_eq!(reload_progress(-1.0, 5.0), 1.0, "剩余时间为负时钳制到满");
+        assert_eq!(reload_progress(6.0, 5.0), 0.0, "超出间隔时钳制到空");
+        assert_eq!(reload_progress(1.0, 0.0), 1.0, "零间隔视为无需装填");
     }
 
     /// 快速点按与长按共用冷却，松开或同帧重按都不能提前发射。
