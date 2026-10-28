@@ -287,6 +287,63 @@ class ConvertTests(unittest.TestCase):
         with self.assertRaises(sv.ConvertError):
             self.convert(src, staging)
 
+    def test_publish_to_dest_pair(self):
+        """dest 发布：细分产物替换目标资产对，源粗样保持原样（统一发布入口用）。"""
+        voxels = [(0, 0, 0, 1)]
+        data = build_vox([((2, 1, 1), voxels)], root_scene('body', 0))
+        src = self.write_source(data)
+        delivered = self.root / 'delivered'
+        delivered.mkdir()
+        dest = delivered / 'body.vox'
+        dest.write_bytes(b'old coarse bytes')
+        (delivered / 'body.vox.meta').write_text(META, encoding='utf-8')
+        staging = self.root / 'staging'
+
+        stats = sv.convert(src, 0.02, staging, True, dest)
+        self.assertTrue(stats['published'])
+        out = sv.parse_vox(dest.read_bytes(), 'dest')
+        self.assertEqual(sum(m.voxel_count for m in out.models), 125)
+        self.assertIn('voxel_size: 0.02,',
+                      (delivered / 'body.vox.meta').read_text(encoding='utf-8'))
+        # 源粗样（含 meta）不受影响；备份不残留，staging 已清空。
+        self.assertEqual(src.read_bytes(), data)
+        self.assertIn('voxel_size: 0.1,',
+                      (self.root / 'sample.vox.meta').read_text(encoding='utf-8'))
+        self.assertFalse((delivered / 'body.vox.subdiv-bak').exists())
+        self.assertFalse(staging.exists() and any(staging.iterdir()))
+
+    def test_publish_dest_rollback_keeps_dest_pair(self):
+        """dest 发布中途失败：目标对成对回滚，源粗样与源 meta 不受影响。"""
+        voxels = [(0, 0, 0, 1)]
+        data = build_vox([((2, 1, 1), voxels)], root_scene('body', 0))
+        src = self.write_source(data)
+        delivered = self.root / 'delivered'
+        delivered.mkdir()
+        dest = delivered / 'body.vox'
+        dest.write_bytes(b'old coarse bytes')
+        dest_meta = delivered / 'body.vox.meta'
+        dest_meta.write_text(META, encoding='utf-8')
+        staging = self.root / 'staging'
+
+        real_replace = os.replace
+        calls = {'n': 0}
+
+        def flaky_replace(src_path, dst_path):
+            calls['n'] += 1
+            if calls['n'] == 3:
+                raise OSError('注入的 meta 替换失败')
+            return real_replace(src_path, dst_path)
+
+        with mock.patch('os.replace', side_effect=flaky_replace):
+            with self.assertRaises(OSError):
+                sv.convert(src, 0.02, staging, True, dest)
+
+        self.assertEqual(dest.read_bytes(), b'old coarse bytes', '目标 VOX 未回滚')
+        self.assertEqual(dest_meta.read_text(encoding='utf-8'), META, '目标 meta 未保持原样')
+        self.assertEqual(src.read_bytes(), data, '源粗样不应被 dest 发布改动')
+        self.assertFalse((delivered / 'body.vox.subdiv-bak').exists())
+        self.assertTrue(staging.exists())
+
 
 class UnitGateTests(unittest.TestCase):
     """单位校验：比例必须恰为 5 倍，重复细分被拒绝。"""

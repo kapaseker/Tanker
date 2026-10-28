@@ -124,20 +124,21 @@ mod tests {
         validate(Path::new("assets")).expect("受管理 VOX 的单位配置应全部合法");
     }
 
-    /// 阶段 A 配置清单：现有九份资产逐一列名且全部为 0.1 米/格。
-    /// 阶段 B 细分后七个坦克文件改为 0.02，清单随该工单同步更新。
+    /// 配置清单：九份受管理资产逐一列名，单位按迁移进度核对——
+    /// 工单 04 已把玩家 body/barrel 细分为 0.02 米/格，其余仍为 0.1。
+    /// 后续工单迁移更多文件时同步更新期望值。
     #[test]
-    fn stage_a_manifest_lists_all_nine_assets_at_point_one() {
-        const MANAGED: [&str; 9] = [
-            "effects/explosion.vox",
-            "obstacles/concrete/obstacle.vox",
-            "tank/barrels/enemy/spit/barrel.vox",
-            "tank/barrels/player/lance/barrel.vox",
-            "tank/barrels/player/lance/bullet.vox",
-            "tank/bodies/enemy/carapace/body.vox",
-            "tank/bodies/player/anvil/body.vox",
-            "tank/tracks/enemy/crawl/track.vox",
-            "tank/tracks/player/cleat/track.vox",
+    fn manifest_lists_expected_units_per_asset() {
+        const MANAGED: [(&str, f32); 9] = [
+            ("effects/explosion.vox", 0.1),
+            ("obstacles/concrete/obstacle.vox", 0.1),
+            ("tank/barrels/enemy/spit/barrel.vox", 0.1),
+            ("tank/barrels/player/lance/barrel.vox", 0.02),
+            ("tank/barrels/player/lance/bullet.vox", 0.1),
+            ("tank/bodies/enemy/carapace/body.vox", 0.1),
+            ("tank/bodies/player/anvil/body.vox", 0.02),
+            ("tank/tracks/enemy/crawl/track.vox", 0.1),
+            ("tank/tracks/player/cleat/track.vox", 0.1),
         ];
         let found = managed_vox_paths(Path::new("assets")).expect("应能遍历 assets 目录");
         let found: Vec<String> = found
@@ -148,12 +149,12 @@ mod tests {
             })
             .collect();
         assert_eq!(found.len(), MANAGED.len(), "受管理 .vox 数量应与配置清单一致：{found:?}");
-        for expected in MANAGED {
+        for (expected, want_size) in MANAGED {
             assert!(found.contains(&expected.to_string()), "清单缺少 {expected}，实际 {found:?}");
             let size = meta_settings(Path::new("assets").join(expected).as_path())
                 .unwrap_or_else(|err| panic!("{expected} 配置非法：{err}"))
                 .voxel_size;
-            assert_eq!(size, 0.1, "{expected} 应配置为 0.1 米/格");
+            assert_eq!(size, want_size, "{expected} 应配置为 {want_size} 米/格");
         }
     }
 

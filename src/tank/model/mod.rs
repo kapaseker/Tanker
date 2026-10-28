@@ -4,10 +4,11 @@
 pub(crate) mod enemy;
 pub(crate) mod player;
 
-/// 作者化参考网格的单格边长，单位：米。仅用于旧尺寸/轮位契约换算米制值，
+/// 作者化参考网格的单格边长，单位：米。仅用于尺寸/轮位/炮口契约换算米制值，
 /// 不是资产加载单位——后者来自每个 `.vox` 旁的 `.vox.meta`（voxel_size 字段）。
-/// 阶段 A 二者同为 0.1；阶段 B 细分资产为 0.02 后本常量仍表示参考格。
-pub(crate) const VOXEL_SIZE: f32 = 0.1;
+/// 细分迁移（0.02 米/格资产）不改动本常量：它始终表示参考格，
+/// 契约数值按参考格书写，乘本常量即得米制。
+pub(crate) const REFERENCE_VOXEL_SIZE: f32 = 0.1;
 
 /// 单轮安装契约；VOX 坐标用体素格，允许半格轴心。
 #[derive(Clone, Copy)]

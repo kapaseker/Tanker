@@ -9,11 +9,11 @@ use bevy::prelude::*;
 /// 玩家车身与履带的单一碰撞框（X 长、Y 高、Z 宽），不包含伸出的炮管，单位米。
 pub(crate) const TANK_SIZE: Vec3 = Vec3::new(
     (crate::tank::model::player::COLLISION_MAX[0] - crate::tank::model::player::COLLISION_MIN[0]) as f32
-        * crate::tank::model::VOXEL_SIZE,
+        * crate::tank::model::REFERENCE_VOXEL_SIZE,
     (crate::tank::model::player::COLLISION_MAX[2] - crate::tank::model::player::COLLISION_MIN[2]) as f32
-        * crate::tank::model::VOXEL_SIZE,
+        * crate::tank::model::REFERENCE_VOXEL_SIZE,
     (crate::tank::model::player::COLLISION_MAX[1] - crate::tank::model::player::COLLISION_MIN[1]) as f32
-        * crate::tank::model::VOXEL_SIZE,
+        * crate::tank::model::REFERENCE_VOXEL_SIZE,
 );
 /// 转向速度与前进/倒车无关，由车体统一设定，单位：弧度/秒（90°/秒）。
 const TURN_SPEED: f32 = std::f32::consts::FRAC_PI_2;

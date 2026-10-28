@@ -1,12 +1,12 @@
 # 玩家坦克模型契约
 
-模块导航：共享体素尺度和 `WheelSpec` 位于 `src/tank/model/mod.rs`；生成器 `scripts/generate_player.rs` 复用车型契约。驾驶、履带、炮管挂载归 `src/tank/`，对局生成归 `src/gameplay/session.rs`。目录整理验收见 [任务 10](testing/architecture-step10-20261023.md)。
+模块导航：共享体素尺度和 `WheelSpec` 位于 `src/tank/model/mod.rs`；生成器 `scripts/generate_player.rs` 复用车型契约，交付资产统一经 `scripts/publish_player.py`（生成→细分→发布）产出。驾驶、履带、炮管挂载归 `src/tank/`，对局生成归 `src/gameplay/session.rs`。目录整理验收见 [任务 10](testing/architecture-step10-20261023.md)。
 
 默认玩家为原创现代主战坦克体素造型：橄榄绿倾斜首上、低矮棱角炮塔、侧裙板和深灰履带。保持现有驾驶速度、整车朝向开炮，不支持独立瞄准或游戏内换装。
 
 ## 尺寸和坐标
 
-权威格坐标及非炮管碰撞边界在 `src/tank/model/player.rs`，生成器和运行时共同读取；每格 0.1 米。车身、炮管与六个履带相位统一 SIZE 为 135×36×26，VOX +X 为车头、Y 为宽度、Z 为高度。画布中心 X=67.5 正好为车体中心；车尾方向留空 30 格，加载后不需要位置补偿。
+权威格坐标及非炮管碰撞边界在 `src/tank/model/player.rs`，生成器和运行时共同读取；坐标一律按参考格（每格 0.1 米，`REFERENCE_VOXEL_SIZE`）。交付的车身与炮管资产已按 0.02 米/格细分（`.vox.meta` 声明），契约数值不随细分改变；履带与子弹仍为 0.1 米/格。车身、炮管与六个履带相位统一 SIZE 为 135×36×26，VOX +X 为车头、Y 为宽度、Z 为高度。画布中心 X=67.5 正好为车体中心；车尾方向留空 30 格，加载后不需要位置补偿。
 
 - 车体范围 X=[30,105)，长 7.5 米，宽含履带 3.6 米，地面至炮塔顶 2.6 米。
 - 炮塔正面 X=90，炮管 X=[90,135)，外露长 4.5 米；炮口相对车体中心前方 6.75 米，轴线离地 2 米。
@@ -29,8 +29,8 @@
 ## 生成与验证
 
 ```powershell
-rustc --edition 2024 -O scripts/generate_player.rs -o target/generate_player.exe
-./target/generate_player.exe
+python scripts/publish_player.py           # 生成粗样→细分车身/炮管到0.02→原子发布交付资产
+python scripts/publish_player.py --check   # 只校验管线产物与交付资产逐字节一致，不写文件
 rustc --edition 2024 --test scripts/generate_player.rs -o target/test_generate_player.exe
 ./target/test_generate_player.exe
 python -m unittest discover -s scripts -p test_player.py
@@ -39,7 +39,7 @@ cargo check
 cargo test
 ```
 
-生成器不读取旧玩家或敌人资源，相同输入输出相同字节。生成器测试对比交付文件；资源测试检查尺寸、三包不重叠和连接面，Rust 集成测试检查真实加载后的组合尺寸、炮口和清理。离屏运行 scene、drive、combat 和 wheels 并读取关键帧。wheels输出侧面逐帧动画序列及side/front/rear/bounds视点，覆盖前进、倒车、左右转向与停车。
+生成器不读取旧玩家或敌人资源，相同输入输出相同字节，只产出 0.1 米/格的粗样；交付必须走 `publish_player.py`，由 `scripts/subdivide_vox.py` 五倍保色细分车身与炮管并配对改写 `.vox.meta`，履带与子弹按粗字节直发。直接运行 `generate_player.exe` 会在检测到交付配对 meta 单位不是 0.1 时拒绝写入，防止把粗资产覆盖回 0.02 配置。资源测试解析场景树并还原分块坐标到参考格，检查尺寸、三包不重叠和连接面；Rust 集成测试检查真实加载后的组合尺寸、炮口和清理。离屏运行 scene、drive、combat 和 wheels 并读取关键帧。wheels输出侧面逐帧动画序列及side/front/rear/bounds视点，覆盖前进、倒车、左右转向与停车。
 
 ## 敌人尺寸兼容
 

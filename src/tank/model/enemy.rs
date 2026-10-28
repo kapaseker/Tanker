@@ -18,9 +18,9 @@ pub const COLLISION_MAX: [i32; 3] = [HULL_X.1, CANVAS.1 as i32, CANVAS.2 as i32]
 /// 高度复用玩家底盘的权威值；运行时驾驶刚体、履带规格与敌人生成共同读取，
 /// 避免在业务模块复制常量。
 pub const COLLISION_SIZE: [f32; 3] = [
-    (COLLISION_MAX[0] - COLLISION_MIN[0]) as f32 * super::VOXEL_SIZE,
-    (super::player::COLLISION_MAX[2] - super::player::COLLISION_MIN[2]) as f32 * super::VOXEL_SIZE,
-    (COLLISION_MAX[1] - COLLISION_MIN[1]) as f32 * super::VOXEL_SIZE,
+    (COLLISION_MAX[0] - COLLISION_MIN[0]) as f32 * super::REFERENCE_VOXEL_SIZE,
+    (super::player::COLLISION_MAX[2] - super::player::COLLISION_MIN[2]) as f32 * super::REFERENCE_VOXEL_SIZE,
+    (COLLISION_MAX[1] - COLLISION_MIN[1]) as f32 * super::REFERENCE_VOXEL_SIZE,
 ];
 
 /// 履带内腔的竖直净空，供轮组完整旋转包络校验。

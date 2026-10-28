@@ -9,8 +9,8 @@
 - 只接受七个真实文件所需的格式（版本 150；SIZE/XYZI/RGBA/MATL/nTRN/nGRP/nSHP/LAYR）；
   多帧动画、多模型 nSHP、非空 ShapeModel 属性、未知块一律明确报错。
 - 命名节点帧：`_t` 各分量 ×5，`_r` 原样保留；根节点的帧被运行时忽略，原样复制。
-- 默认只写 staging（先 .vox 后 .vox.meta）；--publish 用 os.replace 原子替换源文件，
-  任一步失败保留 staging 目录供取证，绝不降低源资产质量。
+- 默认只写 staging（先 .vox 后 .vox.meta）；--publish 用 os.replace 原子替换发布目标
+  （--dest 指定，缺省为源文件），任一步失败保留 staging 目录供取证，绝不降低源资产质量。
 - 写出后用独立于写出路径的映射关系回读 staged 文件核对：每源格 125 个子格恰好
   各出现一次、颜色一致、总格数为 125 倍；任何不一致以非零退出码失败。
 """
@@ -561,8 +561,13 @@ def check_frames(out_frames, src_frames, is_root: bool, name: str, factor: int) 
 # ---------------------------------------------------------------------------
 
 def convert(src_path: Path, target_unit: float, staging_dir: Path,
-            publish: bool) -> dict:
-    """完整流程：读 → 校验 → 细分 → 写 staging → 验证 →（可选）发布。返回统计。"""
+            publish: bool, dest_path: Path | None = None) -> dict:
+    """完整流程：读 → 校验 → 细分 → 写 staging → 验证 →（可选）发布。返回统计。
+
+    dest_path 为发布目标（缺省即 src_path 自身）：允许以临时目录里的粗产物为
+    转换源，把验证后的细分对原子发布到交付资产路径（publish_player 统一入口）。
+    单位门与 meta 改写始终读取 src 旁的 meta，dest 只承担替换目标。
+    """
     name = src_path.name
     source = parse_vox(src_path.read_bytes(), name)
     meta_path = src_path.with_name(src_path.name + '.meta')
@@ -586,15 +591,17 @@ def convert(src_path: Path, target_unit: float, staging_dir: Path,
     out_voxels = verify_staged(staged_bytes, source, FACTOR, name)
 
     if publish:
-        # 配对发布：源 VOX 先原子移入同目录备份（同文件系统），随后依次替换
+        # 配对发布：目标 VOX 先原子移入同目录备份（同文件系统），随后依次替换
         # VOX 与 meta；任一步失败把备份移回，保证资产与配置不成对损坏（方案 §8）。
-        backup = src_path.with_name(src_path.name + '.subdiv-bak')
-        os.replace(src_path, backup)
+        target = dest_path if dest_path is not None else src_path
+        target_meta = target.with_name(target.name + '.meta')
+        backup = target.with_name(target.name + '.subdiv-bak')
+        os.replace(target, backup)
         try:
-            os.replace(staged_vox, src_path)
-            os.replace(staged_meta, meta_path)
+            os.replace(staged_vox, target)
+            os.replace(staged_meta, target_meta)
         except OSError:
-            os.replace(backup, src_path)
+            os.replace(backup, target)
             raise
         # 发布成功后清理备份与空 staging 目录；失败时保留 staging 供取证。
         os.remove(backup)
@@ -621,11 +628,15 @@ def main(argv: list[str]) -> int:
     parser.add_argument('--staging', type=Path, default=None,
                         help='staging 目录；缺省时使用临时目录（仅与 --publish 搭配）')
     parser.add_argument('--publish', action='store_true',
-                        help='验证通过后用 os.replace 原子替换源文件')
+                        help='验证通过后用 os.replace 原子替换发布目标（默认源文件）')
+    parser.add_argument('--dest', type=Path, default=None,
+                        help='发布目标 .vox（仅与 --publish 搭配）；staging 必须与目标同卷')
     args = parser.parse_args(argv)
 
     if not args.publish and args.staging is None:
         parser.error('未指定 --publish 时必须给出 --staging')
+    if args.dest is not None and not args.publish:
+        parser.error('--dest 仅在 --publish 时有意义')
     if args.publish:
         staging = Path(tempfile.mkdtemp(prefix='subdivide-'))
     else:
@@ -634,7 +645,7 @@ def main(argv: list[str]) -> int:
     tracemalloc.start()
     started = time.perf_counter()
     try:
-        stats = convert(args.source, args.target_unit, staging, args.publish)
+        stats = convert(args.source, args.target_unit, staging, args.publish, args.dest)
     except ConvertError as exc:
         print(f'转换失败：{exc}', file=sys.stderr)
         print(f'staging 保留在：{staging}', file=sys.stderr)
@@ -643,7 +654,7 @@ def main(argv: list[str]) -> int:
     _, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
 
-    where = '源文件（已发布）' if stats['published'] else f'{staging}'
+    where = f'{args.dest or args.source}（已发布）' if stats['published'] else f'{staging}'
     print(f'完成 {args.source.name} → {where}')
     print(f'  体素：{stats["source_voxels"]} → {stats["output_voxels"]}'
           f'（×{FACTOR ** 3}）')

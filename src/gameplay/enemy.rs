@@ -143,8 +143,8 @@ fn spawn_enemies(
     info!(
         "已随机放置 {ENEMY_COUNT} 辆敌人坦克；碰撞尺寸 {ENEMY_SIZE:?} 米，炮管 {:.1} 米、轴高 {:.1} 米",
         (crate::tank::model::enemy::BARREL_X.1 - crate::tank::model::enemy::BARREL_X.0) as f32
-            * crate::tank::model::VOXEL_SIZE,
-        crate::tank::model::enemy::BORE_HEIGHT * crate::tank::model::VOXEL_SIZE
+            * crate::tank::model::REFERENCE_VOXEL_SIZE,
+        crate::tank::model::enemy::BORE_HEIGHT * crate::tank::model::REFERENCE_VOXEL_SIZE
     );
 }
 

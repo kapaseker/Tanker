@@ -6,8 +6,8 @@
 
 ## 度量约定
 
-- 世界单位：1 世界单位 = 1 米，由 `VoxScenePlugin` 的全局 `VoxLoaderSettings` 统一设定（`src/app/mod.rs`）。
-- 体素格：MagicaVoxel 单格边长 = 0.1 米（`VOXEL_SIZE`，`src/tank/model/mod.rs`）；所有 `.vox` 模型尺寸都按“格数 × 0.1”换算。
+- 世界单位：1 世界单位 = 1 米；VOX 加载单位按每个 `.vox` 旁的 `.vox.meta`（voxel_size）配置，无全局覆盖（`VoxScenePlugin::default()`，`src/app/mod.rs`）。
+- 参考体素格：作者化契约网格单格边长 = 0.1 米（`REFERENCE_VOXEL_SIZE`，`src/tank/model/mod.rs`）；尺寸/轮位/炮口契约按“格数 × 0.1”换算米制。资产加载单位另由每个 `.vox` 旁的 `.vox.meta`（voxel_size）决定，已细分资产为 0.02 米/格，两者不可混用。
 - 地形栅格：地形图按 0.5 米采样作者化，视觉网格与碰撞体统一量化到 0.1 米台阶（`AUTHOR_RES` / `TERRAIN_STEP`，`src/terrain/mod.rs`）。
 - VOX 轴向映射：VOX 的 Z 为高度（→ Bevy +Y），VOX 的 Y 为宽度（→ Bevy Z），VOX 的 +X 为车头方向（→ Bevy −X）。
 - 尺寸约定：下表 X 为车长方向、Y 为高度、Z 为车宽方向；坦克车头朝局部 −X（`src/tank/driving.rs`）。

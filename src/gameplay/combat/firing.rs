@@ -23,10 +23,10 @@ const BULLET_RANGE: f32 = 2000.0;
 /// 炮口与作者化炮管共用格坐标；子弹中心前移半边长，避免与炮口重叠。
 const MUZZLE_POSITION: Vec3 = Vec3::new(
     -(crate::tank::model::player::BARREL_X.1 as f32 - crate::tank::model::player::CANVAS.0 as f32 / 2.0)
-        * crate::tank::model::VOXEL_SIZE
+        * crate::tank::model::REFERENCE_VOXEL_SIZE
         - BULLET_SIZE / 2.0,
     (crate::tank::model::player::BORE_HEIGHT - crate::tank::model::player::CANVAS.2 as f32 / 2.0)
-        * crate::tank::model::VOXEL_SIZE,
+        * crate::tank::model::REFERENCE_VOXEL_SIZE,
     0.0,
 );
 
@@ -949,27 +949,37 @@ mod tests {
             .unwrap()
             .iter()
             .collect();
-        let mut meshes = app
-            .world_mut()
-            .query::<(&Mesh3d, &MeshMaterial3d<StandardMaterial>)>();
-        // 按 1.2×0.4×0.4 的半尺寸定位细长弹体网格，区别于同场景中的坦克网格。
-        let (_, material) = meshes
-            .iter(app.world())
-            .find(|(mesh, _)| {
-                app.world()
-                    .resource::<Assets<Mesh>>()
-                    .get(&mesh.0)
-                    .unwrap()
-                    .get_aabb()
-                    .is_some_and(|aabb| {
+        // 弹体网格只在子弹自身层级内查找：车体细分后分块网格的 AABB 可能
+        // 恰好等于 1.2×0.4×0.4 米的弹体半尺寸，全局按半尺寸匹配会有歧义。
+        let mut bullet_material = None;
+        let mut pending = vec![bullet];
+        while let Some(entity) = pending.pop() {
+            if let Some(children) = app.world().get::<Children>(entity) {
+                pending.extend(children.iter());
+            }
+            if let (Some(mesh), Some(material)) = (
+                app.world().get::<Mesh3d>(entity),
+                app.world().get::<MeshMaterial3d<StandardMaterial>>(entity),
+            ) && app
+                .world()
+                .resource::<Assets<Mesh>>()
+                .get(&mesh.0)
+                .is_some_and(|loaded| {
+                    loaded.get_aabb().is_some_and(|aabb| {
                         aabb.half_extents.abs_diff_eq(Vec3::new(0.6, 0.2, 0.2).into(), 1e-5)
                     })
-            })
-            .expect("应加载 12×4×4 格（1.2×0.4×0.4 米）的子弹网格");
+                })
+            {
+                bullet_material = Some(material.0.clone());
+            }
+        }
         let material = app
             .world()
             .resource::<Assets<StandardMaterial>>()
-            .get(&material.0)
+            .get(
+                &bullet_material
+                    .expect("子弹层级内应加载 12×4×4 格（1.2×0.4×0.4 米）的弹体网格"),
+            )
             .unwrap();
         assert!(material.perceptual_roughness >= 0.8);
         assert_eq!(material.metallic, 0.0);

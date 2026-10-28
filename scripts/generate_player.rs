@@ -1,4 +1,7 @@
 //! 直接生成现代主战坦克的车身、炮管与六相位履带，纯标准库、确定性输出。
+//! 日常发布请走统一入口：python -X utf8 scripts/publish_player.py
+//! （生成粗源 → 转换器细分 body/barrel → 验证后发布）；直接运行本生成器仅在
+//! 交付 meta 仍是参考网格 0.1 时允许，细分迁移后会被拒绝，防止粗几何写回细配置。
 //! rustc --edition 2024 -O scripts/generate_player.rs -o target/generate_player.exe
 //! 车体与履带共享画布；局部轮模型以轴心居中，运行时按共享契约安装。
 
@@ -266,7 +269,43 @@ fn package(models: &[(String, Vec<Voxel>)]) -> Vec<u8> {
     out
 }
 
+/// 粗资产的参考网格单位（米/格），与运行时 `REFERENCE_VOXEL_SIZE` 一致。
+const COARSE_UNIT: f32 = 0.1;
+
+/// 配对 meta 已存在且单位不是 0.1 时拒绝直写：细分迁移后粗几何不得落到
+/// 0.02 配置下（工单 04 验收项），必须改走 scripts/publish_player.py。
+/// meta 不存在（初始生成或发布入口写临时目录）时放行。
+fn refuse_if_migrated(path: &std::path::Path) {
+    let mut meta_os = path.as_os_str().to_os_string();
+    meta_os.push(".meta");
+    let Ok(text) = fs::read_to_string(std::path::PathBuf::from(meta_os)) else {
+        return;
+    };
+    let parse = |label: &str| -> f32 {
+        let after = text
+            .find("voxel_size")
+            .unwrap_or_else(|| panic!("{label}：meta 缺少 voxel_size 字段，无法判定单位，拒绝直写粗资产"));
+        let after = &text[after + "voxel_size".len()..];
+        let colon = after.find(':').unwrap_or_else(|| panic!("{label}：voxel_size 字段格式异常，拒绝直写"));
+        let tail = after[colon + 1..].trim_start();
+        let end = tail
+            .find(|c: char| c == ',' || c == ')' || c.is_whitespace())
+            .unwrap_or(tail.len());
+        tail[..end]
+            .parse()
+            .unwrap_or_else(|_| panic!("{label}：voxel_size 值 {:?} 无法解析，拒绝直写", &tail[..end]))
+    };
+    let path_label = path.display().to_string();
+    let unit = parse(&path_label);
+    if (unit - COARSE_UNIT).abs() > 1e-6 {
+        panic!(
+            "{path_label} 已配置为 {unit} 米/格（细分资产），生成器的粗输出不得覆盖；\n请运行：python -X utf8 scripts/publish_player.py",
+        );
+    }
+}
+
 /// 输出三个默认资源包，可传工程根目录；不读取旧模型或敌人资源。
+/// 细分迁移后 body/barrel 会被配对 meta 守卫拒绝，改走 publish_player.py。
 fn main() {
     let root = PathBuf::from(env::args().nth(1).unwrap_or_else(|| ".".into()));
     for (path, models) in [
@@ -281,6 +320,7 @@ fn main() {
         ("assets/tank/tracks/player/cleat/track.vox", tracks()),
     ] {
         let path = root.join(path);
+        refuse_if_migrated(&path);
         fs::create_dir_all(path.parent().unwrap()).expect("创建模型目录失败");
         let data = package(&models);
         fs::write(&path, &data).expect("写出玩家模型失败");
@@ -389,24 +429,6 @@ fn push_dict(out: &mut Vec<u8>, entries: &[(&str, &str)]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// 检查提交的二进制资源确实来自当前生成器，也锁定稳定的字节顺序。
-    #[test]
-    fn generated_packages_match_delivered_assets() {
-        for (path, models) in [
-            (
-                "assets/tank/bodies/player/anvil/body.vox",
-                vec![("body".into(), body())],
-            ),
-            (
-                "assets/tank/barrels/player/lance/barrel.vox",
-                vec![("barrel".into(), barrel())],
-            ),
-            ("assets/tank/tracks/player/cleat/track.vox", tracks()),
-        ] {
-            assert_eq!(package(&models), fs::read(path).unwrap(), "{path}");
-        }
-    }
 
     /// 按全部履带相位与车身的真实格边界核对碰撞尺寸和零中心偏移。
     #[test]
