@@ -56,3 +56,9 @@ scripts/generate_player.rs 与统一发布入口；玩家 body/barrel 及 meta�
 **遗留**
 - 履带/子弹/敌人三包仍为 0.1（按工单范围本工单不动，后续工单处理）。
 - 细分资产加载与内存开销增大（body ≈14.3 MB），离屏帧率未见异常；如后续场景实例数上升需关注。
+
+**code-review 评审后修复**（双轴评审其余为判断项，未采纳：meta 解析三份实现系 Rust 独立脚本客观限制；回滚测试与 os.replace 次序耦合、compare_pair 命名维持）
+- `publish_player.py`：`ensure_generator` 改为监视整个 `src/tank/model/` 目录（生成器经 #[path] 内嵌 player.rs 契约，原只监视 mod.rs 会漏重编）。
+- `test_tracks.py`：`read_reference_models` 的 canvas 改为必填并新增 PLAYER/ENEMY_CANVAS 常量与分块居中奇偶校验，消除敌人包误套玩家画布的隐患。
+- `test_player.py`：恢复履带六相位包 SIZE==135×36×26 断言（track 本工单仍粗资产，不应失去该覆盖）。
+- 修复后 Python 全套 41 项复跑通过。
