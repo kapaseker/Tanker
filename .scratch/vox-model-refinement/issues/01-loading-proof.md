@@ -1,6 +1,6 @@
 # 01: 冻结基准并验证模型配置先于加载生效
 
-Status: ready-for-agent
+Status: done
 Type: task
 Blocked by: None
 
