@@ -125,7 +125,7 @@ mod tests {
     }
 
     /// 配置清单：九份受管理资产逐一列名，单位按迁移进度核对——
-    /// 工单 04 已把玩家 body/barrel 细分为 0.02 米/格，其余仍为 0.1。
+    /// 玩家 body/barrel/track 为 0.02 米/格，其余仍为 0.1。
     /// 后续工单迁移更多文件时同步更新期望值。
     #[test]
     fn manifest_lists_expected_units_per_asset() {
@@ -138,7 +138,7 @@ mod tests {
             ("tank/bodies/enemy/carapace/body.vox", 0.1),
             ("tank/bodies/player/anvil/body.vox", 0.02),
             ("tank/tracks/enemy/crawl/track.vox", 0.1),
-            ("tank/tracks/player/cleat/track.vox", 0.1),
+            ("tank/tracks/player/cleat/track.vox", 0.02),
         ];
         let found = managed_vox_paths(Path::new("assets")).expect("应能遍历 assets 目录");
         let found: Vec<String> = found

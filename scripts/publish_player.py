@@ -2,19 +2,17 @@
 
 流程：rustc 编译 scripts/generate_player.rs（缺失或源更新时重编）→ 生成粗
 body/barrel/track 到临时目录 → 按交付 meta 复制字段并强制 0.1 单位生成粗样
-meta → body/barrel 走工单 03 的同一转换器细分到 0.02 并原子发布到 assets；
-track 本工单仍为粗资产，直接按生成字节发布（交付 meta 必须仍为 0.1）。
+meta → body/barrel/track 走同一转换器细分到 0.02 并原子发布到 assets。
 
-- 默认模式：真实发布；转换与逐格验证全部通过后才替换目标，失败保留原资产。
-- --check：全流程只到临时目录，把管线产物与交付资产逐字节比对（body/barrel
-  细分对、track 粗包），不一致退出码非零；绝不写 assets/。这是"重新生成不会
+- 默认模式：真实发布；每个部件转换与逐格验证通过后分别替换，失败保留该部件原资产。
+- --check：全流程只到临时目录，把管线产物与交付资产逐字节比对（body/barrel/track
+  细分对），不一致退出码非零；绝不写 assets/。这是"重新生成不会
   把粗资产覆盖到 0.02 配置下"的可回归证明。
 - 工作目录放在 target/ 下：Windows 的 os.replace 要求源与目标同卷。
 """
 from __future__ import annotations
 
 import argparse
-import os
 import shutil
 import subprocess
 import sys
@@ -22,7 +20,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from subdivide_vox import ConvertError, convert, read_meta_unit, rewrite_meta_unit
+from subdivide_vox import ConvertError, convert, rewrite_meta_unit
 
 REPO = Path(__file__).resolve().parents[1]
 BODY = REPO / 'assets/tank/bodies/player/anvil/body.vox'
@@ -37,8 +35,8 @@ GENERATOR_EXE = REPO / 'target' / ('generate_player.exe' if sys.platform == 'win
 COARSE_UNIT = 0.1
 # 细分目标单位（米/格）。
 FINE_UNIT = 0.02
-# 本入口负责细分发布的部件 → 交付路径；其余部件（track/bullet）仍为粗资产。
-SUBDIVIDED = {'body': BODY, 'barrel': BARREL}
+# 玩家三包均按同一管线细分；子弹另由后续工单迁移。
+SUBDIVIDED = {'body': BODY, 'barrel': BARREL, 'track': TRACK}
 
 
 class PublishError(Exception):
@@ -114,24 +112,6 @@ def run(check: bool) -> int:
                 print(f'已发布 {delivered.relative_to(REPO)}：体素 {stats["source_voxels"]}'
                       f' → {stats["output_voxels"]}，字节 {stats["source_bytes"]}'
                       f' → {stats["output_bytes"]}')
-        # track 本工单不细分：粗字节直接发布；交付 meta 仍是 0.1 才允许，
-        # 若后续工单细分了 track，本入口必须同步升级而不是把粗包写回。
-        track_unit = read_meta_unit(TRACK.with_name(TRACK.name + '.meta'))
-        if track_unit != COARSE_UNIT:
-            raise PublishError(
-                f'track 交付单位是 {track_unit}，本入口只负责粗 track；请升级发布入口')
-        if check:
-            ok = coarse['track'].read_bytes() == TRACK.read_bytes()
-            print(f'{"不一致" if not ok else "一致"} {TRACK.relative_to(REPO)}')
-            if not ok:
-                failed.append('track.vox 体素字节与生成器粗产物不一致')
-        elif coarse['track'].read_bytes() != TRACK.read_bytes():
-            staged = work / 'track.vox'
-            shutil.copyfile(coarse['track'], staged)
-            os.replace(staged, TRACK)
-            print(f'已发布 {TRACK.relative_to(REPO)}（粗资产，meta 不变）')
-        else:
-            print(f'无变化 {TRACK.relative_to(REPO)}')
     finally:
         shutil.rmtree(work, ignore_errors=True)
     if failed:

@@ -165,31 +165,43 @@ pub(crate) fn spawn_tracks(
     }
 }
 
-/// 在变体子树中查找第一个 mesh 并返回其模型空间 AABB 的 (min, max) 角点。
-/// 履带包节点无旋转/平移变换，mesh AABB 即变体几何。
-fn first_mesh_aabb(
+/// 合并子树中所有网格在根节点局部坐标系下的包围盒。
+fn subtree_mesh_aabb(
     root: Entity,
     children: &Query<&Children>,
+    transforms: &Query<&Transform>,
     meshes: &Query<&Mesh3d>,
     assets: &Assets<Mesh>,
 ) -> Option<(Vec3, Vec3)> {
-    let mut pending = vec![root];
-    while let Some(entity) = pending.pop() {
+    let mut pending = vec![(root, bevy::math::Affine3A::IDENTITY)];
+    let mut bounds: Option<(Vec3, Vec3)> = None;
+    while let Some((entity, transform)) = pending.pop() {
         if let Ok(kids) = children.get(entity) {
-            pending.extend(kids.iter());
+            for child in kids.iter() {
+                let local = transforms
+                    .get(child)
+                    .map_or(bevy::math::Affine3A::IDENTITY, Transform::compute_affine);
+                pending.push((child, transform * local));
+            }
         }
         if let Ok(mesh) = meshes.get(entity) {
-            return assets.get(&mesh.0).and_then(|m| {
-                // 0.20 将 MeshAabb 的方法由 compute_aabb 更名为 get_aabb。
-                m.get_aabb().map(|a| {
-                    let center = Vec3::from(a.center);
-                    let half = Vec3::from(a.half_extents);
-                    (center - half, center + half)
-                })
-            });
+            let aabb = assets.get(&mesh.0)?.get_aabb()?;
+            let center = Vec3::from(aabb.center);
+            let half = Vec3::from(aabb.half_extents);
+            for x in [-1.0, 1.0] {
+                for y in [-1.0, 1.0] {
+                    for z in [-1.0, 1.0] {
+                        let corner = transform.transform_point3(center + half * Vec3::new(x, y, z));
+                        bounds = Some(match bounds {
+                            Some((low, high)) => (low.min(corner), high.max(corner)),
+                            None => (corner, corner),
+                        });
+                    }
+                }
+            }
         }
     }
-    None
+    bounds
 }
 
 /// 几何校验：履带包与底盘的宽度契约。左右相位 0 变体的模型空间 AABB
@@ -207,6 +219,7 @@ fn validate_tracks(
     anims: Query<(Entity, &TrackSpec, &TrackAnim), Without<TracksValidated>>,
     children: Query<&Children>,
     mesh_parts: Query<&Mesh3d>,
+    transforms: Query<&Transform>,
 ) {
     for (tank, spec, anim) in &anims {
         // 每个相位与独立轮均需实例和网格就绪；空节点不能被当成加载成功。
@@ -233,7 +246,9 @@ fn validate_tracks(
                 || !instance.is_some_and(|i| spawner.instance_is_ready(**i))
             {
                 ready = false;
-            } else if first_mesh_aabb(root, &children, &mesh_parts, &mesh_assets).is_none() {
+            } else if subtree_mesh_aabb(root, &children, &transforms, &mesh_parts, &mesh_assets)
+                .is_none()
+            {
                 failure = Some(format!("履带或轮节点缺少网格：{root:?}"));
                 break;
             }
@@ -244,7 +259,7 @@ fn validate_tracks(
                 for (index, &root) in entities.iter().enumerate() {
                     let wheel = &spec.wheels[side][index];
                     if let Some((low, high)) =
-                        first_mesh_aabb(root, &children, &mesh_parts, &mesh_assets)
+                        subtree_mesh_aabb(root, &children, &transforms, &mesh_parts, &mesh_assets)
                     {
                         let size = Vec3::new(
                             wheel.size.0 as f32,
@@ -275,13 +290,22 @@ fn validate_tracks(
             continue;
         }
         // 宽度只检查履带相位，不把局部轮的 AABB 混入共同画布。
-        let Some(left) = first_mesh_aabb(anim.variants[0][0], &children, &mesh_parts, &mesh_assets)
-        else {
+        let Some(left) = subtree_mesh_aabb(
+            anim.variants[0][0],
+            &children,
+            &transforms,
+            &mesh_parts,
+            &mesh_assets,
+        ) else {
             continue;
         };
-        let Some(right) =
-            first_mesh_aabb(anim.variants[1][0], &children, &mesh_parts, &mesh_assets)
-        else {
+        let Some(right) = subtree_mesh_aabb(
+            anim.variants[1][0],
+            &children,
+            &transforms,
+            &mesh_parts,
+            &mesh_assets,
+        ) else {
             continue;
         };
         let half = spec.size.z / 2.0;
@@ -502,11 +526,9 @@ mod tests {
         loop {
             app.update();
             let world = app.world_mut();
-            let mesh_count = world.query::<&Mesh3d>().iter(world).count();
-            if mesh_count == 56
-                && [tank, enemies[0], idle_enemy]
-                    .into_iter()
-                    .all(|entity| world.get::<TracksValidated>(entity).is_some())
+            if [tank, enemies[0], idle_enemy]
+                .into_iter()
+                .all(|entity| world.get::<TracksValidated>(entity).is_some())
             {
                 break;
             }
@@ -566,6 +588,15 @@ mod tests {
             .copied()
             .chain(anim.wheels.iter().flatten().copied())
             .collect();
+        // 保存整个子树，销毁后逐个检查，分块数量变化也不能掩盖残留。
+        let mut descendants = roots.clone();
+        let mut index = 0;
+        while index < descendants.len() {
+            if let Some(children) = app.world().get::<Children>(descendants[index]) {
+                descendants.extend(children.iter());
+            }
+            index += 1;
+        }
         let instances: Vec<_> = roots
             .iter()
             .map(|entity| {
@@ -577,8 +608,8 @@ mod tests {
             .collect();
         app.world_mut().despawn(enemies[0]);
         app.update();
-        for root in roots {
-            assert!(app.world().get_entity(root).is_err());
+        for entity in descendants {
+            assert!(app.world().get_entity(entity).is_err());
         }
         let spawner = app
             .world()
@@ -586,8 +617,6 @@ mod tests {
         for instance in instances {
             assert!(!spawner.instance_is_ready(instance));
         }
-        let world = app.world_mut();
-        assert_eq!(world.query::<&Mesh3d>().iter(world).count(), 38);
         assert_visible_tracks(&mut app, player);
         assert_visible_tracks(&mut app, idle_enemy);
         // 敌人每侧仅6轮：误声明玩家7轮规格必须报错，不能静默缺轮。
@@ -611,6 +640,46 @@ mod tests {
         assert!(app.world().get::<TrackAnim>(broken).is_none());
         assert!(app.world().get::<TracksValidated>(broken).is_none());
         app.world_mut().despawn(broken);
+        // 玩家履带包含分块，检查销毁后所有场景实例和子实体都已清理。
+        let anim = app.world().get::<TrackAnim>(player).unwrap();
+        let mut descendants: Vec<_> = anim
+            .variants
+            .iter()
+            .flatten()
+            .copied()
+            .chain(anim.wheels.iter().flatten().copied())
+            .collect();
+        let instances: Vec<_> = descendants
+            .iter()
+            .map(|&root| {
+                **app
+                    .world()
+                    .get::<bevy::world_serialization::WorldInstance>(root)
+                    .unwrap()
+            })
+            .collect();
+        let mut index = 0;
+        while index < descendants.len() {
+            if let Some(children) = app.world().get::<Children>(descendants[index]) {
+                descendants.extend(children.iter());
+            }
+            index += 1;
+        }
+        app.world_mut().despawn(player);
+        app.update();
+        assert!(
+            descendants
+                .iter()
+                .all(|&entity| app.world().get_entity(entity).is_err())
+        );
+        let spawner = app
+            .world()
+            .resource::<bevy::world_serialization::WorldInstanceSpawner>();
+        assert!(
+            instances
+                .into_iter()
+                .all(|instance| !spawner.instance_is_ready(instance))
+        );
     }
     /// 运动学在真实加载网格上验证；轮轴不随角度漂移，左右里程互相独立。
     fn assert_wheels(app: &App, tank: Entity) {
@@ -628,34 +697,46 @@ mod tests {
                         .abs_diff_eq(expected.translation, 1e-5)
                 );
                 assert!(transform.rotation.abs_diff_eq(expected.rotation, 1e-5));
-                let mut pending = vec![entity];
-                let mut count = 0;
-                while let Some(child) = pending.pop() {
+                let mut pending = vec![(entity, bevy::math::Affine3A::IDENTITY)];
+                let mut bounds: Option<(Vec3, Vec3)> = None;
+                while let Some((child, affine)) = pending.pop() {
                     if let Some(children) = app.world().get::<Children>(child) {
-                        pending.extend(children.iter());
+                        for next in children.iter() {
+                            let local = app
+                                .world()
+                                .get::<Transform>(next)
+                                .map_or(bevy::math::Affine3A::IDENTITY, Transform::compute_affine);
+                            pending.push((next, affine * local));
+                        }
                     }
                     if let Some(mesh) = app.world().get::<Mesh3d>(child) {
-                        count += 1;
                         assert!(app.world().get::<InheritedVisibility>(child).unwrap().get());
                         let mesh = app.world().resource::<Assets<Mesh>>().get(&mesh.0).unwrap();
-                        let bounds = mesh.get_aabb().unwrap();
-                        assert!(
-                            Vec3::from(bounds.center).length() < 1e-5,
-                            "真实局部网格必须轴心居中"
-                        );
-                        let global = app.world().get::<GlobalTransform>(child).unwrap();
-                        let axis = app
-                            .world()
-                            .get::<GlobalTransform>(entity)
-                            .unwrap()
-                            .translation();
-                        assert!(
-                            global.translation().distance(axis) < 1e-5,
-                            "场景内部不得偏移轴心"
-                        );
+                        let aabb = mesh.get_aabb().unwrap();
+                        for x in [-1.0, 1.0] {
+                            for y in [-1.0, 1.0] {
+                                for z in [-1.0, 1.0] {
+                                    let corner = affine.transform_point3(
+                                        Vec3::from(aabb.center)
+                                            + Vec3::from(aabb.half_extents) * Vec3::new(x, y, z),
+                                    );
+                                    bounds = Some(match bounds {
+                                        Some((low, high)) => (low.min(corner), high.max(corner)),
+                                        None => (corner, corner),
+                                    });
+                                }
+                            }
+                        }
                     }
                 }
-                assert_eq!(count, 1);
+                let (low, high) = bounds.expect("轮节点应包含网格");
+                let size = Vec3::new(spec.size.0 as f32, spec.size.2 as f32, spec.size.1 as f32)
+                    * crate::tank::model::REFERENCE_VOXEL_SIZE;
+                assert!((high + low).length() < 1e-4, "轮子整体应绕轴心居中");
+                assert!(
+                    (high - low).abs_diff_eq(size, 1e-4),
+                    "轮子整体尺寸应保持不变"
+                );
             }
         }
     }

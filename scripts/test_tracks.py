@@ -74,6 +74,9 @@ def read_reference_models(path, canvas):
                 t_chunk = sv.frame_t(chunk.frames)
                 model = source.nodes[chunk.child].models[0][0]
                 model = source.models[model]
+                # 轮子使用局部画布，细分后单模型仍小于 256 格。
+                if name.startswith('wheel_'):
+                    full = model.size
                 # 转换器保证居中平移为整格；奇偶违例说明产物与契约不符。
                 if any((f - s) % 2 for f, s in zip(full, model.size)):
                     raise AssertionError(f'{path.name}: {name} 分块 {model.size} 无法在画布 {full} 居中')

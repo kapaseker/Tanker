@@ -1,7 +1,7 @@
 """锁定玩家三包的米制尺寸、接缝与统一坐标契约。
 
 体素占用统一经 read_reference_models 还原到参考网格（0.1 米/格）：粗资产直接
-取用，细分资产（body/barrel，0.02 米/格）按场景树分块平移还原后降采样，断言
+取用，细分资产（body/barrel/track，0.02 米/格）按场景树分块平移还原后降采样，断言
 与迁移前逐字一致，证明细分不改变米制契约。
 """
 import unittest
@@ -84,10 +84,7 @@ class PlayerTests(unittest.TestCase):
         body = read_reference_models(BODY, PLAYER_CANVAS)['body']
         barrel = read_reference_models(BARREL, PLAYER_CANVAS)['barrel']
         track = read_reference_models(TRACK, PLAYER_CANVAS)
-        # 履带本工单仍是粗资产：六个相位包的 SIZE 必须逐字等于共享画布契约。
-        source = sv.parse_vox(TRACK.read_bytes(), TRACK.name)
-        for model in source.models[:6]:
-            self.assertEqual(model.size, PLAYER_CANVAS)
+        self.assertEqual(sv.read_meta_unit(TRACK.with_name(TRACK.name + '.meta')), 0.02)
         self.assertEqual(len(track), 20)
         self.assertFalse(body.keys() & barrel.keys())
         for name in ('track_l_0', 'track_r_0'):
