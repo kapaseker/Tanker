@@ -12,7 +12,8 @@ use bevy::{
 };
 
 /// 点按与长按共用的最小发射间隔，单位：秒；由 lance 装备射速 12 发/分钟换算。
-const FIRE_INTERVAL: f32 = 60.0 / crate::tank::visual::PLAYER_BARREL.rate_of_fire;
+/// 同时是装填条"一格一秒"的间隔来源（hud::reload_ticks 按它推导分格数）。
+pub(crate) const FIRE_INTERVAL: f32 = 60.0 / crate::tank::visual::PLAYER_BARREL.rate_of_fire;
 /// 子弹的匀速飞行速度即炮口初速，单位：米/秒；来自 lance 装备定义。
 const BULLET_SPEED: f32 = crate::tank::visual::PLAYER_BARREL.muzzle_velocity;
 /// 弹体资源为 12×4×4 格；扫掠碰撞仍按横向 4 格的立方体计算，单位：米。
@@ -932,7 +933,15 @@ mod tests {
                 .instance_is_ready(instance)
         );
         let (_, bullet_minimum, bullet_maximum) = scene_bounds(app.world(), bullet);
-        assert!((bullet_maximum - bullet_minimum).abs_diff_eq(Vec3::splat(0.4), 1e-5));
+        // 视觉包围盒为 12×4×4 格的细长弹体（长轴沿世界 X，1 格 = 0.1 米）；
+        // 0.4³ 只是扫掠碰撞立方体，不代表视觉尺寸。体素网格带 ~6e-6 缝合
+        // epsilon，容差取 1e-4。
+        assert!(
+            (bullet_maximum - bullet_minimum).abs_diff_eq(Vec3::new(1.2, 0.4, 0.4), 1e-4),
+            "子弹视觉包围盒实际为 {:?}，中心 {:?}",
+            bullet_maximum - bullet_minimum,
+            (bullet_minimum + bullet_maximum) / 2.0,
+        );
         let bullet_center = (bullet_minimum + bullet_maximum) / 2.0;
         assert!(bullet_center.abs_diff_eq(
             app.world().get::<Transform>(bullet).unwrap().translation,
@@ -948,7 +957,7 @@ mod tests {
         let mut meshes = app
             .world_mut()
             .query::<(&Mesh3d, &MeshMaterial3d<StandardMaterial>)>();
-        // 按 0.2 的半尺寸定位子弹网格，区别于同场景中的坦克网格。
+        // 按 1.2×0.4×0.4 的半尺寸定位细长弹体网格，区别于同场景中的坦克网格。
         let (_, material) = meshes
             .iter(app.world())
             .find(|(mesh, _)| {
@@ -958,10 +967,10 @@ mod tests {
                     .unwrap()
                     .get_aabb()
                     .is_some_and(|aabb| {
-                        aabb.half_extents.abs_diff_eq(Vec3::splat(0.2).into(), 1e-5)
+                        aabb.half_extents.abs_diff_eq(Vec3::new(0.6, 0.2, 0.2).into(), 1e-5)
                     })
             })
-            .expect("应加载边长 0.4 的子弹网格");
+            .expect("应加载 12×4×4 格（1.2×0.4×0.4 米）的子弹网格");
         let material = app
             .world()
             .resource::<Assets<StandardMaterial>>()
@@ -969,11 +978,12 @@ mod tests {
             .unwrap();
         assert!(material.perceptual_roughness >= 0.8);
         assert_eq!(material.metallic, 0.0);
-        // 0.23 将单色模型直接存为材质颜色，不再生成调色板纹理。
+        // 0.23 将单色模型直接存为材质颜色，不再生成调色板纹理；
+        // 当前弹体资产为深灰单色（vox 调色板索引 2+ = 32,35,33）。
         assert!(material.base_color_texture.is_none());
         assert_eq!(
             material.base_color.to_srgba().to_u8_array(),
-            [139, 90, 43, 255]
+            [32, 35, 33, 255]
         );
 
         app.world_mut()

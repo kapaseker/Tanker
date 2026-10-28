@@ -28,6 +28,8 @@ bevy = { version = "0.20", default-features = false, features = [
   "bevy_ui",
   # 0.20 起 UI 渲染独立成插件（bevy_ui 只含布局/焦点），缺它则 UI 完全不可见
   "bevy_ui_render",
+  # BSN 场景宏（HUD 迁移引入）；ScenePlugin 随 DefaultPlugins 自动注册
+  "bevy_scene",
   # 离屏关键帧使用 PNG 编码；复用 Bevy 已有图像依赖。
   "png",
   # 3D 渲染管线

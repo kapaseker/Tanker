@@ -21,7 +21,7 @@ const VOX_SCENE_PATH: &str = "tank/bodies/player/anvil/body.vox";
 
 /// 仅对局拥有的根实体标记；删除时连同场景实例与后代一起回收。
 /// 玩家、敌人、混凝土墩、炮弹、爆炸与对局相机都挂此标记，[`cleanup`] 统一销毁。
-#[derive(Component)]
+#[derive(Component, Default, Clone)]
 pub(crate) struct SessionEntity;
 
 /// 启动注入的生成随机配置：`fixed_seed=Some` 为离屏验证的固定种子布局，

@@ -24,8 +24,6 @@ pub(crate) mod hud {
     /// 生命轨道高 10px；装填轨道略矮 8px，形成主次。
     pub(crate) const HEALTH_TRACK_HEIGHT: f32 = 10.0;
     pub(crate) const RELOAD_TRACK_HEIGHT: f32 = 8.0;
-    /// 装填分格数：5 秒冷却 → 5 格，每格 1 秒；间隔变化时与 firing 同步。
-    pub(crate) const RELOAD_TICKS: u32 = 5;
 }
 
 /// 统一标题栏逻辑像素：全页面共用一个标题栏控件（高度、ESC 返回框、标题、全屏宽底部分割线），
