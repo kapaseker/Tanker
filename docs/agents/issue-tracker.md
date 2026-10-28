@@ -1,18 +1,6 @@
 # Issue tracker: Local Markdown
 
-Issues and specs use local Markdown. The default location is `.scratch/`;
-the registered Git-tracked plans below are explicit exceptions and take precedence.
-
-## Registered Git-tracked plans
-
-| Feature | Authoritative directory | Plan |
-| --- | --- | --- |
-| `vox-model-refinement` | `docs/plans/vox-model-refinement/` | [Execution plan](../plans/vox-model-refinement/plan.md) |
-
-For a registered feature, read and update its `spec.md` and `issues/<NN>-<slug>.md`
-in the authoritative directory. Do not create or execute a duplicate in `.scratch/`.
-The old `.scratch/vox-model-refinement/` documents are superseded; only runtime
-evidence remains there. Publish new tickets for this feature in the registered directory.
+Issues and specs for this repo live as markdown files in `.scratch/`.
 
 ## Conventions
 
@@ -29,13 +17,6 @@ Create a new file under `.scratch/<feature-slug>/` (creating the directory if ne
 ## When a skill says "fetch the relevant ticket"
 
 Read the file at the referenced path. The user will normally pass the path or the issue number directly.
-
-If given a feature name and ticket number, resolve it in that feature's authoritative
-directory above, or the default `.scratch/<feature>/issues/` for an unregistered feature.
-Read the linked specification, plan and blocking tickets before implementing.
-A bare ticket number is ambiguous across features: ask which feature rather than
-choosing the first matching file. Record completion and verification evidence in the
-same authoritative ticket; never update the superseded copy.
 
 ## Wayfinding operations
 
