@@ -1,6 +1,10 @@
 """确定性生成暗红敌人三包；尺寸和轮位读取 src/tank/model/enemy.rs。"""
 from pathlib import Path
 import ast
+import argparse
+import shutil
+import sys
+import tempfile
 import math
 import re
 import struct
@@ -168,8 +172,46 @@ def build_assets():
     return build_vox([('body',body_cells())]), build_vox([('barrel',barrel_cells())]), build_vox(models)
 
 
+def main():
+    """粗源经共同转换器发布；旧履带暂时保持 0.1 米并验证未漂移。"""
+    from subdivide_vox import convert, rewrite_meta_unit, read_meta_unit
+    from publish_player import compare_pair
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--check', action='store_true')
+    args = parser.parse_args()
+    (ROOT / 'target').mkdir(exist_ok=True)
+    work = Path(tempfile.mkdtemp(prefix='publish-enemy-', dir=ROOT / 'target'))
+    complete = False
+    try:
+        packages = build_assets()
+        if read_meta_unit(TRACKS_OUTPUT.with_name(TRACKS_OUTPUT.name + '.meta')) != 0.1 or packages[2] != TRACKS_OUTPUT.read_bytes():
+            raise ValueError('敌方履带尚未迁移，生成结果或单位与交付资产不一致')
+        sources = []
+        for i, delivered in enumerate(OUTPUTS[:2]):
+            coarse = work / str(i) / delivered.name
+            coarse.parent.mkdir()
+            coarse.write_bytes(packages[i])
+            meta = delivered.with_name(delivered.name + '.meta').read_text(encoding='utf-8')
+            coarse.with_name(coarse.name + '.meta').write_text(rewrite_meta_unit(meta, 0.1), encoding='utf-8')
+            staging = work / f'staging-{i}'
+            stats = convert(coarse, 0.02, staging, publish=False)
+            sources.append(coarse)
+            if args.check:
+                problems = compare_pair(staging, coarse, delivered)
+                if problems:
+                    raise ValueError('; '.join(problems))
+            print(f'{delivered.relative_to(ROOT)}：{stats["source_voxels"]} → {stats["output_voxels"]}')
+        if not args.check:
+            for i, (coarse, delivered) in enumerate(zip(sources, OUTPUTS[:2])):
+                convert(coarse, 0.02, work / f'publish-{i}', publish=True, dest_path=delivered)
+        complete = True
+    finally:
+        if complete:
+            shutil.rmtree(work)
+        else:
+            print(f'失败证据保留在 {work}', file=sys.stderr)
+
+
 if __name__ == '__main__':
-    for path,data in zip(OUTPUTS,build_assets()):
-        path.parent.mkdir(parents=True,exist_ok=True)
-        path.write_bytes(data)
-        print(f'已生成 {path}')
+    main()

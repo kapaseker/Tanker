@@ -125,17 +125,17 @@ mod tests {
     }
 
     /// 配置清单：九份受管理资产逐一列名，单位按迁移进度核对——
-    /// 玩家 body/barrel/track 为 0.02 米/格，其余仍为 0.1。
+    /// 玩家 body/barrel/track 和敌方 body/barrel 为 0.02 米/格，其余仍为 0.1。
     /// 后续工单迁移更多文件时同步更新期望值。
     #[test]
     fn manifest_lists_expected_units_per_asset() {
         const MANAGED: [(&str, f32); 9] = [
             ("effects/explosion.vox", 0.1),
             ("obstacles/concrete/obstacle.vox", 0.1),
-            ("tank/barrels/enemy/spit/barrel.vox", 0.1),
+            ("tank/barrels/enemy/spit/barrel.vox", 0.02),
             ("tank/barrels/player/lance/barrel.vox", 0.02),
             ("tank/barrels/player/lance/bullet.vox", 0.1),
-            ("tank/bodies/enemy/carapace/body.vox", 0.1),
+            ("tank/bodies/enemy/carapace/body.vox", 0.02),
             ("tank/bodies/player/anvil/body.vox", 0.02),
             ("tank/tracks/enemy/crawl/track.vox", 0.1),
             ("tank/tracks/player/cleat/track.vox", 0.02),

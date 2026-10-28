@@ -3,7 +3,10 @@ import math
 import struct
 import unittest
 import generate_enemy as enemy
-from test_tracks import read_models
+from test_tracks import read_models, read_reference_models, ENEMY_CANVAS
+import subprocess
+import sys
+import subdivide_vox as sv
 
 
 class EnemyModelTests(unittest.TestCase):
@@ -12,7 +15,10 @@ class EnemyModelTests(unittest.TestCase):
         self.assertEqual(packages, enemy.build_assets())
         palettes = []
         for path, data in zip(enemy.OUTPUTS, packages):
-            self.assertEqual(data, path.read_bytes())
+            if path == enemy.TRACKS_OUTPUT:
+                self.assertEqual(data, path.read_bytes())
+            else:
+                self.assertEqual(sv.read_meta_unit(path.with_name(path.name + ".meta")), 0.02)
             self.assertNotIn(b'_hidden', data)
             offset = 20
             while offset < len(data):
@@ -25,9 +31,14 @@ class EnemyModelTests(unittest.TestCase):
         self.assertEqual(palettes, [palettes[0]]*3)
         self.assertEqual(palettes[0][:20], bytes((100,42,38,255,121,55,46,255,75,31,29,255,36,39,37,255,66,60,53,255)))
 
+    def test_publish_pipeline_matches_delivered_assets(self):
+        proc = subprocess.run([sys.executable, "scripts/generate_enemy.py", "--check"],
+                              cwd=enemy.ROOT, capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+
     def test_bounds_seams_and_rotating_wheel_clearance(self):
-        body, = read_models(enemy.BODY_OUTPUT)
-        barrel, = read_models(enemy.BARREL_OUTPUT)
+        body = read_reference_models(enemy.BODY_OUTPUT, ENEMY_CANVAS)["body"]
+        barrel = read_reference_models(enemy.BARREL_OUTPUT, ENEMY_CANVAS)["barrel"]
         tracks = read_models(enemy.TRACKS_OUTPUT)
         self.assertEqual(len(tracks), 18)
         bounds = lambda cells: tuple((min(p[i] for p in cells),max(p[i] for p in cells)+1) for i in range(3))
