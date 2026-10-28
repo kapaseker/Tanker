@@ -87,7 +87,7 @@
 
 ### Issue tracker
 
-创建、读取或更新工单与规格时，先读 `docs/agents/issue-tracker.md`。工单位于 `.scratch/<feature>/`，不使用远程 tracker；该目录被 Git 忽略，仅在本机保留，不随仓库共享。
+创建、读取或更新工单与规格时，先读 `docs/agents/issue-tracker.md`，按其中登记的权威目录定位。不使用远程 tracker；默认工单位于被 Git 忽略的 `.scratch/<feature>/`，用户要求版本管理的计划使用该文档登记的 Git 跟踪目录。
 
 ### Triage labels
 
