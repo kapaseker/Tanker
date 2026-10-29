@@ -345,6 +345,7 @@ mod tests {
     /// 同时兜底 scripts/generate_explosion.py 手写 nSHP 多模型字节布局的正确性。
     #[test]
     fn explosion_asset_plays_twelve_frames_then_self_destructs() {
+        let _asset_guard = crate::tank::model::lock_real_assets();
         let mut app = App::new();
         app.add_plugins((
             MinimalPlugins,

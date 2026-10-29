@@ -41,7 +41,7 @@ pub(crate) const PLAYER_TRACKS: TrackSpec = TrackSpec {
         &crate::tank::model::player::WHEELS[1],
     ],
     canvas: crate::tank::model::player::CANVAS,
-    clearance: (1.0, 11.0),
+    clearance: crate::tank::model::player::WHEEL_CLEARANCE,
     forward_speed: 16.0,
     reverse_speed: 8.0,
 };
@@ -464,6 +464,7 @@ mod tests {
     /// 多车真实履带在前进、倒车、原地转向及停车时独立显隐，销毁后注销全部实例。
     #[test]
     fn real_tracks_remain_visible_when_moving_turning_and_stopping() {
+        let _asset_guard = crate::tank::model::lock_real_assets();
         let mut app = App::new();
         app.add_plugins((
             MinimalPlugins,
@@ -522,7 +523,8 @@ mod tests {
         }
         let idle_enemy = enemies[1];
         // 异步加载用墙钟限时；游戏时间固定步进，不依赖机器帧率。
-        let deadline = Instant::now() + Duration::from_secs(10);
+        // 玩家包 24 个命名节点各自触发一次带 label 的资源加载，慢机器上 10 秒会临界抖动。
+        let deadline = Instant::now() + Duration::from_secs(30);
         loop {
             app.update();
             let world = app.world_mut();
@@ -619,7 +621,7 @@ mod tests {
         }
         assert_visible_tracks(&mut app, player);
         assert_visible_tracks(&mut app, idle_enemy);
-        // 敌人每侧仅6轮：误声明玩家7轮规格必须报错，不能静默缺轮。
+        // 敌人每侧仅6轮：误声明玩家9轮规格必须报错，不能静默缺轮。
         let broken = app
             .world_mut()
             .spawn((
@@ -631,7 +633,9 @@ mod tests {
                 Visibility::Inherited,
             ))
             .id();
-        let deadline = Instant::now() + Duration::from_secs(10);
+        // 缺失 label 的加载失败上报实测约 13 秒（每个缺失节点独立走一遍文件加载），
+        // 10 秒会临界抖动，放宽到 30 秒。
+        let deadline = Instant::now() + Duration::from_secs(30);
         while app.world().get::<TracksFailed>(broken).is_none() {
             app.update();
             assert!(Instant::now() < deadline, "缺失轮节点必须报告失败");

@@ -477,7 +477,7 @@ pub(crate) fn validate(world: &World) -> Result<String, String> {
             }
         }
         if matches!(preview.entry.category, 1 | 3)
-            && (visible_phases != 2 || wheels != if preview.entry.enemy { 12 } else { 14 })
+            && (visible_phases != 2 || wheels != if preview.entry.enemy { 12 } else { 18 })
         {
             return Err(format!("履带可见相位/轮组异常：{visible_phases}/{wheels}"));
         }

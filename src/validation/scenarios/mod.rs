@@ -125,7 +125,7 @@ pub(super) fn run_scenario(
     report.push_str(if options.enemy_wheels {
         "轮组目标：敌人4+2\n"
     } else {
-        "轮组目标：玩家5+2\n"
+        "轮组目标：玩家7+2\n"
     });
     for _ in 0..120 {
         update(app, STEP, None)?;

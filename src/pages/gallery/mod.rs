@@ -103,6 +103,7 @@ mod tests {
     /// 无 GPU 和窗口，使用真实加载器验收所有预览的几何、轮组及资源清理。
     #[test]
     fn real_previews_measure_visible_geometry_and_clean_instances() {
+        let _asset_guard = crate::tank::model::lock_real_assets();
         use bevy::{
             asset::AssetApp,
             camera::ScalingMode,
@@ -151,7 +152,7 @@ mod tests {
         let expected = [
             Vec3::new(4.86, 0.4, 0.4),
             Vec3::new(3.8, 0.4, 0.4),
-            Vec3::new(7.66, 1.46, 3.76),
+            Vec3::new(7.66, 0.94, 3.76),
             Vec3::new(6.6, 1.4, 3.4),
             Vec3::new(7.66, 2.26, 3.56),
             Vec3::new(6.5, 2.1, 3.2),
@@ -248,8 +249,8 @@ mod tests {
             .iter(app.world())
             .map(|i| **i)
             .collect();
-        // 85 个模型实例 + lance 伴随子弹 1 个场景实例。
-        assert_eq!(instances.len(), 86);
+        // 93 个模型实例（含玩家履带 6 相位 + 18 轮 ×2 处预览）+ lance 伴随子弹 1 个场景实例。
+        assert_eq!(instances.len(), 94);
         // 模拟真实文件缺失，不修改任何资产；失败项必须结束等待并保留返回能力。
         let missing = app
             .world()
@@ -260,9 +261,9 @@ mod tests {
         app.world_mut()
             .entity_mut(content)
             .insert(WorldAssetRoot(missing));
-        // 履带细分后资产变大，缺失文件的失败回报在串行跑测时超过 5 秒（实测该测试
-        // 总耗时 6.23 秒即触发超时）；放宽到 10 秒，仍能暴露真正卡死的路径。
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        // 履带细分后资产变大，缺失文件的失败回报在串行跑测时超过 5 秒；03 十八轮
+        // 细网格后实测超过 10 秒，放宽到 30 秒，仍能暴露真正卡死的路径。
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
         while app.world().resource::<Previews>().items[0].error.is_none() {
             app.update();
             assert!(std::time::Instant::now() < deadline, "失败资产没有结束等待");

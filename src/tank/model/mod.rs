@@ -10,6 +10,20 @@ pub(crate) mod player;
 /// 契约数值按参考格书写，乘本常量即得米制。
 pub(crate) const REFERENCE_VOXEL_SIZE: f32 = 0.1;
 
+#[cfg(test)]
+/// 真实 `.vox` 资产集成测试的串行锁：多个 App 并发加载同一批资产会互相饿死 IO，
+/// 墙钟超时会临界抖动。涉及真实资产加载的测试（履带、开炮、爆炸、画廊）必须先持锁。
+/// 中毒（某测试 panic 时持锁）不回退为失败，否则会级联拖垮后续跑测。
+pub(crate) static REAL_ASSET_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// 获取 [`REAL_ASSET_TEST_LOCK`]，忽略中毒状态。
+#[cfg(test)]
+pub(crate) fn lock_real_assets() -> std::sync::MutexGuard<'static, ()> {
+    REAL_ASSET_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
 /// 单轮安装契约；VOX 坐标用体素格，允许半格轴心。
 #[derive(Clone, Copy)]
 pub struct WheelSpec {

@@ -22,6 +22,13 @@ TURRET = literal('TURRET_X')
 ROOF = literal('TURRET_TOP')
 BARREL = tuple(round(5 * n) for n in literal('BARREL_X'))
 BORE = round(5 * literal('BORE_HEIGHT'))
+# 独立轮安装契约：从 Rust 侧 wheel() 调用解析，end 决定局部画布与细节半径。
+WHEEL_END = {name: end == 'true' for name, end in
+             re.findall(r'wheel\("(\w+)", [\d.]+, [\d.]+, (true|false)\)', CONTRACT)}
+# 履带闭环顶段高度，单位资产格；0.84 米，恰与负重轮轮顶相接。
+TRACK_TOP = 42
+# 三条不对称辐条角度（弧度），沿用粗源约定，避免低速转动混淆。
+SPOKE_ANGLES = (0.0, 1.7, 4.0)
 
 
 def box(cells, x, y, z, color, bevel=0):
@@ -37,8 +44,61 @@ def box(cells, x, y, z, color, bevel=0):
             cells[start:start + len(row)] = row
 
 
+def track_rim():
+    """梯形闭环（资产格）：下段贴地、顶段 0.84 米与轮顶相接、两端斜坡内收 4 格。
+
+    周长 840 = 齿距 15 × 56，保证接缝处齿图案连续。
+    """
+    rim = ([(x, TRACK_TOP) for x in range(HULL[0] + 4, HULL[1] - 5)]
+           + [(HULL[1] - 1 - (z * 4) // 42, z) for z in range(TRACK_TOP, 0, -1)]
+           + [(x, 0) for x in range(HULL[1] - 1, HULL[0] - 1, -1)]
+           + [(HULL[0] + (z * 4) // 42, z) for z in range(1, TRACK_TOP)])
+    assert len(rim) == len(set(rim)) == 840
+    return rim
+
+
+def wheel_geometry(name):
+    """作者化独立轮细网格；返回（局部画布, 体素串）。轴心在画布中心（size/2），
+    轮胎深灰（色 3）、轮毂橄榄绿（色 1）、中心盖暗橄榄（色 2）、辐条间透空。
+    保留条件为整格最远角不超旋转包络，保证运行时 AABB 与净空契约一致。"""
+    end = WHEEL_END[name]
+    size = (25, 20, 25) if end else (40, 20, 40)
+    # 画布为偶数或奇数时几何中心都在 size/2（资产格连续坐标），保证 AABB 居中。
+    center = size[0] / 2.0
+    envelope, tire_in, hub, cap = ((13.0, 10.0, 5.0, 2.0) if end
+                                   else (20.5, 15.0, 9.0, 3.0))
+    cells = bytearray(size[0] * size[1] * size[2])
+    for x in range(size[0]):
+        for z in range(size[2]):
+            # 检查整个格的四个角，不能只查体素中心；否则旋转时越出包络。
+            far = max(abs(x - center), abs(x + 1 - center)) ** 2 \
+                + max(abs(z - center), abs(z + 1 - center)) ** 2
+            if far > envelope ** 2:
+                continue
+            dx, dz = x + 0.5 - center, z + 0.5 - center
+            r = (dx * dx + dz * dz) ** 0.5
+            if r >= tire_in:
+                color = 3  # 轮胎深灰
+            elif r <= cap:
+                color = 2  # 中心盖暗橄榄
+            elif r <= hub:
+                color = 1  # 轮毂橄榄绿
+            else:
+                color = 0
+                for angle in SPOKE_ANGLES:
+                    along = dx * math.cos(angle) + dz * math.sin(angle)
+                    across = -dx * math.sin(angle) + dz * math.cos(angle)
+                    if along > 0.0 and abs(across) < 1.6:
+                        color = 1  # 辐条橄榄绿，其余透空
+                        break
+            if color:
+                for y in range(size[1]):
+                    cells[(x * size[1] + y) * size[2] + z] = color
+    return size, cells
+
+
 def geometry(name):
-    """直接表达真实尺度主体；五轮与附件细节是 02 的阶段状态。"""
+    """直接表达真实尺度主体；七负重轮与履带闭环由 03 交付。"""
     cells = bytearray(CANVAS[0] * CANVAS[1] * CANVAS[2])
     if name == 'body':
         box(cells, HULL, (40, 150), (22, 56), 1, 15)
@@ -74,26 +134,21 @@ def geometry(name):
     else:
         side, phase = name.split('_')[1:]
         phase = int(phase)
-        y, outer, inner = ((5, 35), (1, 5), (35, 40)) if side == 'l' else ((155, 185), (185, 189), (150, 155))
-        # 闭环 900 格；齿距 15 格，每相位推进 5 格，仍为 0.1 米。
-        rim = ([(x, 68) for x in range(HULL[0], HULL[1])]
-               + [(HULL[1]-1, z) for z in range(67, 0, -1)]
-               + [(x, 0) for x in range(HULL[1]-1, HULL[0]-1, -1)]
-               + [(HULL[0], z) for z in range(1, 68)])
-        assert len(rim) == len(set(rim)) == 900
-        box(cells, (HULL[0]+5, HULL[1]-5), inner, (25, 35), 4)
-        for i, (x, z) in enumerate(rim):
+        y, outer = ((5, 35), (1, 5)) if side == 'l' else ((155, 185), (185, 189))
+        # 梯形闭环 840 格 = 齿距 15 × 56；每相位推进 5 格，仍为 0.1 米。
+        # 内侧面板已删除，实现轮间透空；顶齿凸耳位于 0.84 米带上方 4 格。
+        for i, (x, z) in enumerate(track_rim()):
             tooth = (i - phase*5) % 15 < 5
             box(cells, (x, x+1), y, (z, z+1), 5 if tooth else 4)
             if tooth:
                 box(cells, (x, x+1), outer, (z, z+1), 5)
-                if z == 68:
-                    box(cells, (x, x+1), y, (69, 73), 5)
+                if z == TRACK_TOP:
+                    box(cells, (x, x+1), y, (TRACK_TOP+1, TRACK_TOP+5), 5)
     return cells
 
 
 def author_package(path):
-    """复用现有分块规划和配对发布；独立轮保留 Rust 粗源细分结果。"""
+    """复用现有分块规划和配对发布；履带闭环与独立轮均为 0.02 米作者几何。"""
     source = sv.parse_vox(path.read_bytes(), str(path))
     models, nodes, expected = [], [], {}
 
@@ -112,18 +167,17 @@ def author_package(path):
         group.children.append(named.node_id)
         pieces = []
         if name.startswith('wheel_'):
-            for child in source.nodes[old.child].children:
-                trn = source.nodes[child]
-                model = source.models[source.nodes[trn.child].models[0][0]]
-                pieces.append((model, sv.frame_t(trn.frames)))
-            # 轮子小于单块上限，局部画布原点就是轮轴画布的最小角。
-            if len(pieces) != 1 or any(pieces[0][1]):
-                raise sv.ConvertError(f'独立轮局部画布异常：{name}')
-            model = pieces[0][0]
-            wheel_cells = bytearray(math.prod(model.size))
-            for x, y, z, color in struct.iter_unpack('<BBBB', model.xyzi):
-                wheel_cells[(x*model.size[1]+y)*model.size[2]+z] = color
-            expected[name] = (model.size, hashlib.sha256(wheel_cells).digest())
+            # 独立轮不复制粗源细分结果，直接作者化 0.02 米细节；单块即整轮。
+            size, wheel_cells = wheel_geometry(name)
+            expected[name] = (size, hashlib.sha256(bytes(wheel_cells)).digest())
+            data = bytearray()
+            for x in range(size[0]):
+                for y in range(size[1]):
+                    for z in range(size[2]):
+                        color = wheel_cells[(x*size[1]+y)*size[2]+z]
+                        if color:
+                            data.extend((x, y, z, color))
+            pieces.append((sv.Model(size, bytes(data)), (0, 0, 0)))
         else:
             cells = geometry(name)
             expected[name] = (CANVAS, hashlib.sha256(cells).digest())

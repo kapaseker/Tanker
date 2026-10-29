@@ -315,8 +315,8 @@ mod tests {
                 assert!(spec.center[axis] - extent >= model::player::COLLISION_MIN[axis] as f32);
                 assert!(spec.center[axis] + extent <= model::player::COLLISION_MAX[axis] as f32);
             }
-            assert!(spec.center[2] - spec.envelope > 1.0);
-            assert!(spec.center[2] + spec.envelope < 11.0);
+            assert!(spec.center[2] - spec.envelope > model::player::WHEEL_CLEARANCE.0);
+            assert!(spec.center[2] + spec.envelope < model::player::WHEEL_CLEARANCE.1);
         }
     }
 

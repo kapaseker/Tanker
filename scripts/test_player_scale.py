@@ -59,8 +59,9 @@ class PlayerScaleTests(unittest.TestCase):
         self.assertEqual(bounds(body, 'body', section_x=(350, 355))[1][2], 132)
         self.assertEqual(bounds(barrel, 'barrel', section_x=(650, 655)),
                          ((650, 90, 99), (655, 100, 109)))
-        self.assertEqual(bounds(track, 'track_l_0'), ((169, 1, 0), (552, 40, 73)))
-        self.assertEqual(bounds(track, 'track_r_0'), ((169, 150, 0), (552, 189, 73)))
+        # 梯形闭环：下段贴地、顶段 z=42 加凸耳至 47；内侧面板已删除，宽度外沿即履带带体。
+        self.assertEqual(bounds(track, 'track_l_0'), ((169, 1, 0), (552, 35, 47)))
+        self.assertEqual(bounds(track, 'track_r_0'), ((169, 155, 0), (552, 189, 47)))
         for path in (body, barrel, track):
             self.assertEqual(sv.read_meta_unit(path.with_suffix('.vox.meta')), 0.02)
 

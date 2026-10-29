@@ -23,35 +23,45 @@ pub const COLLISION_MIN: [i32; 3] = [HULL_X.0, 0, 0];
 /// 主要几何向外取 0.1 米后的碰撞上界；不以附件最高点扩高。
 pub const COLLISION_MAX: [i32; 3] = [HULL_X.1, 38, 27];
 
-/// 左右各五个负重轮和两个端轮；生成器和运行时共享节点名及安装位置。
-pub const WHEELS: [[WheelSpec; 7]; 2] = [
+/// 左右各七个负重轮和两个端轮（诱导轮在前、主动轮在后），共十八个独立轮节点；
+/// 生成器和运行时共享节点名及安装位置。轴高统一 4.2 参考格，轮胎恰好骑在下段履带上。
+pub const WHEELS: [[WheelSpec; 9]; 2] = [
     [
-        wheel("wheel_l_0", 45.0, 4.5, false),
-        wheel("wheel_l_1", 58.5, 4.5, false),
-        wheel("wheel_l_2", 72.0, 4.5, false),
-        wheel("wheel_l_3", 85.5, 4.5, false),
-        wheel("wheel_l_4", 99.0, 4.5, false),
-        wheel("wheel_l_5", 37.0, 4.5, true),
-        wheel("wheel_l_6", 107.0, 4.5, true),
+        wheel("wheel_l_0", 44.5, 4.5, false),
+        wheel("wheel_l_1", 53.4, 4.5, false),
+        wheel("wheel_l_2", 62.3, 4.5, false),
+        wheel("wheel_l_3", 71.2, 4.5, false),
+        wheel("wheel_l_4", 80.1, 4.5, false),
+        wheel("wheel_l_5", 89.0, 4.5, false),
+        wheel("wheel_l_6", 97.9, 4.5, false),
+        wheel("wheel_l_7", 36.8, 4.5, true),
+        wheel("wheel_l_8", 107.0, 4.5, true),
     ],
     [
-        wheel("wheel_r_0", 45.0, 33.5, false),
-        wheel("wheel_r_1", 58.5, 33.5, false),
-        wheel("wheel_r_2", 72.0, 33.5, false),
-        wheel("wheel_r_3", 85.5, 33.5, false),
-        wheel("wheel_r_4", 99.0, 33.5, false),
-        wheel("wheel_r_5", 37.0, 33.5, true),
-        wheel("wheel_r_6", 107.0, 33.5, true),
+        wheel("wheel_r_0", 44.5, 33.5, false),
+        wheel("wheel_r_1", 53.4, 33.5, false),
+        wheel("wheel_r_2", 62.3, 33.5, false),
+        wheel("wheel_r_3", 71.2, 33.5, false),
+        wheel("wheel_r_4", 80.1, 33.5, false),
+        wheel("wheel_r_5", 89.0, 33.5, false),
+        wheel("wheel_r_6", 97.9, 33.5, false),
+        wheel("wheel_r_7", 36.8, 33.5, true),
+        wheel("wheel_r_8", 107.0, 33.5, true),
     ],
 ];
 
-/// 区分负重轮与端轮的名义半径和连续旋转净空。
+/// 轮组旋转包络的竖直开区间，单位参考格：上界 8.4 即顶段履带下表面（0.84 米），
+/// 负重轮包络顶 8.3 保持净空；下界 0.05 低于下段履带上表面（0.2 格），
+/// 允许包络角探入履带板带、名义轮胎底面恰好骑在履带面上。完整包络必须落在其间。
+pub const WHEEL_CLEARANCE: (f32, f32) = (0.05, 8.4);
+
+/// 区分负重轮与端轮的名义滚动半径和连续旋转净空；轴高统一 4.2 参考格。
 const fn wheel(name: &'static str, x: f32, y: f32, end: bool) -> WheelSpec {
     WheelSpec {
         name,
-        center: [x, y, if end { 6.5 } else { 6.0 }],
+        center: [x, y, 4.2],
         size: if end { (5, 4, 5) } else { (8, 4, 8) },
         radius: if end { 2.5 } else { 4.0 },
-        envelope: if end { 2.8 } else { 4.3 },
+        envelope: if end { 2.6 } else { 4.1 },
     }
 }

@@ -82,15 +82,16 @@ def read_reference_models(path, canvas, asset_grid=False):
 
 class TrackLoopTests(unittest.TestCase):
     def test_both_chassis_roll_around_the_rim(self):
-        for chassis, end, top, bevel in (('player', 382, 68, False), ('enemy', 65, 12, True)):
+        for chassis, top in (('player', 42), ('enemy', 12)):
             with self.subTest(chassis=chassis):
                 # VOX +X 是车头：前进时上段向 +X、前端向下、下段向 −X、后端向上。
-                rim = ([(x, top) for x in range(end+1)]
-                       + [(end, z) for z in range(top-1, 0, -1)]
-                       + [(x, 0) for x in range(end-int(bevel), int(bevel)-1, -1)]
-                       + [(0, z) for z in range(1, top)])
                 if chassis == 'player':
-                    rim = [(x+169, z) for x,z in rim]
+                    # 梯形闭环（资产格）：下段 z=0 x169..551、顶段 z=42 x173..546，
+                    # 两端斜坡自下向上内收 4 格；周长 840 = 齿距 15 × 56。
+                    rim = ([(x, 42) for x in range(173, 547)]
+                           + [(551 - (z*4)//42, z) for z in range(42, 0, -1)]
+                           + [(x, 0) for x in range(551, 168, -1)]
+                           + [(169 + (z*4)//42, z) for z in range(1, 42)])
                 else:
                     rim = ([(x,12) for x in range(24,90)] + [(89,z) for z in range(11,1,-1)]
                            + [(88,1)] + [(x,0) for x in range(87,25,-1)]
@@ -99,7 +100,7 @@ class TrackLoopTests(unittest.TestCase):
                 self.assertEqual(len(rim) % 3, 0, '闭环接缝的齿距也必须连续')
                 canvas = PLAYER_CANVAS if chassis == 'player' else ENEMY_CANVAS
                 track = read_reference_models(ASSETS / 'tracks' / chassis / ('cleat' if chassis == 'player' else 'crawl') / 'track.vox', canvas, asset_grid=chassis == 'player')
-                self.assertEqual(len(track), 20 if chassis == 'player' else 18)
+                self.assertEqual(len(track), 24 if chassis == 'player' else 18)
                 body = read_reference_models(ASSETS / 'bodies' / chassis / ('anvil' if chassis == 'player' else 'carapace') / 'body.vox', canvas, asset_grid=chassis == 'player')['body']
                 sides = ((0,1,5),(1,188,184)) if chassis == 'player' else ((0,0,1),(1,33,32))
                 for side, outer_y, face_y in sides:
@@ -120,7 +121,9 @@ class TrackLoopTests(unittest.TestCase):
                         if chassis == 'enemy':
                             self.assertFalse(any((x,face_y,6) in cells for x in (44,57,70)), '敌人轮间必须透空')
                         else:
-                            self.assertFalse(any((x, face_y, 6) in cells for x in (255, 320, 390, 460)), '玩家轮间必须透空')
+                            # 闭环内部（含原内侧面板位置）不得有任何填充体素。
+                            self.assertFalse(any((x, y, 6) in cells for x in (255, 320, 390, 460)
+                                                 for y in (6, 20, 34)), '玩家轮间必须透空')
                         next_positions = {rim[(s+step) % len(rim)] for s, point in enumerate(rim)
                                           if point in outer}
                         next_cells = phases[(phase+1) % 3]

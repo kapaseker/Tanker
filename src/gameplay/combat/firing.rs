@@ -664,6 +664,7 @@ mod tests {
     /// 无需渲染窗口，使用真实 VOX 加载器验证连发、尺寸、材质和实例注销。
     #[test]
     fn real_vox_assets_fire_and_clean_up_scene_instances() {
+        let _asset_guard = crate::tank::model::lock_real_assets();
         let mut app = App::new();
         app.add_plugins((
             MinimalPlugins,
@@ -1047,10 +1048,10 @@ mod tests {
                 .resource::<WorldInstanceSpawner>()
                 .instance_is_ready(instance)
         );
-        // 玩家销毁后，车身、炮管、六个履带与十四个轮实例都必须注销。
+        // 玩家销毁后，车身、炮管、六个履带与十八个轮实例都必须注销。
         let mut scene_roots = app.world_mut().query::<&WorldInstance>();
         let player_instances: Vec<_> = scene_roots.iter(app.world()).map(|i| **i).collect();
-        assert_eq!(player_instances.len(), 22);
+        assert_eq!(player_instances.len(), 26);
         app.world_mut().despawn(tank);
         app.update();
         assert!(player_instances.into_iter().all(|i| {
