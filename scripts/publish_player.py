@@ -2,7 +2,7 @@
 
 流程：rustc 编译 scripts/generate_player.rs（缺失或源更新时重编）→ 生成粗
 body/barrel/track 到临时目录 → 按交付 meta 复制字段并强制 0.1 单位生成粗样
-meta → body/barrel/track 走同一转换器细分到 0.02 并原子发布到 assets。
+meta → 三包细分到 0.02 → player_fine.py 作者化尾舱 → 验证后配对发布到 assets。
 子弹无生成器：直接以 scripts/fixtures/bullet.vox（0.1 粗源逐字节快照）为
 转换源，细分后原子发布到 lance 目录。
 
@@ -22,7 +22,8 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from subdivide_vox import ConvertError, convert, rewrite_meta_unit
+from subdivide_vox import ConvertError, convert, rewrite_meta_unit, publish_pair
+from player_fine import author_body
 
 REPO = Path(__file__).resolve().parents[1]
 BODY = REPO / 'assets/tank/bodies/player/anvil/body.vox'
@@ -106,18 +107,18 @@ def run(check: bool) -> int:
         coarse = generate_coarse(gen_root)
         for name, delivered in SUBDIVIDED.items():
             write_coarse_meta(coarse[name], gen_root)
+            staging = work / f'staged-{name}'
+            convert(coarse[name], FINE_UNIT, staging, publish=False)
+            if name == 'body':
+                author_body(staging / delivered.name)
             if check:
-                staging = work / f'staged-{name}'
-                convert(coarse[name], FINE_UNIT, staging, publish=False)
                 problems = compare_pair(staging, coarse[name], delivered)
                 print(f'{"不一致" if problems else "一致"} {delivered.relative_to(REPO)}')
                 failed += problems
             else:
-                stats = convert(coarse[name], FINE_UNIT, work / f'staging-{name}',
-                                publish=True, dest_path=delivered)
-                print(f'已发布 {delivered.relative_to(REPO)}：体素 {stats["source_voxels"]}'
-                      f' → {stats["output_voxels"]}，字节 {stats["source_bytes"]}'
-                      f' → {stats["output_bytes"]}')
+                publish_pair(staging / delivered.name,
+                             staging / (delivered.name + '.meta'), delivered)
+                print(f'已发布 {delivered.relative_to(REPO)}')
         # 子弹不经生成器：fixture 即 0.1 粗源，转换器读取其配对 meta 后细分。
         if check:
             staging = work / 'staged-bullet'
@@ -131,8 +132,14 @@ def run(check: bool) -> int:
             print(f'已发布 {BULLET.relative_to(REPO)}：体素 {stats["source_voxels"]}'
                   f' → {stats["output_voxels"]}，字节 {stats["source_bytes"]}'
                   f' → {stats["output_bytes"]}')
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
+    except Exception:
+        print(f'失败诊断保留于 {work}', file=sys.stderr)
+        raise
+    else:
+        if not failed:
+            shutil.rmtree(work, ignore_errors=True)
+        else:
+            print(f'不一致产物保留于 {work}', file=sys.stderr)
     if failed:
         for problem in failed:
             print(f'校验失败：{problem}', file=sys.stderr)

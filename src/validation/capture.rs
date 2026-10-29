@@ -59,6 +59,25 @@ pub(super) fn capture_wheel_views(app: &mut App, output: &Path) -> Result<(), St
     capture_side(app, &output.join("side.png"))?;
     capture_view(app, &output.join("front.png"), Vec3::new(-9.0, 3.0, 9.0))?;
     capture_view(app, &output.join("rear.png"), Vec3::new(9.0, 3.0, 9.0))?;
+    capture_view(
+        app,
+        &output.join("front-on.png"),
+        Vec3::new(-12.0, 1.0, 0.0),
+    )?;
+    capture_view(app, &output.join("rear-on.png"), Vec3::new(10.0, 1.0, 0.0))?;
+    capture_view(
+        app,
+        &output.join("front-above.png"),
+        Vec3::new(-9.0, 7.0, 9.0),
+    )?;
+    // 尾舱固定近景用于检查资产格凹槽，目标相对共同车体原点，单位为米。
+    let (player, _) = subject_state(app.world_mut())?;
+    capture_at(
+        app,
+        &output.join("grille.png"),
+        player.translation + player.rotation * Vec3::new(2.7, 0.28, 0.0),
+        player.rotation * Vec3::new(1.0, 2.0, 1.5),
+    )?;
     let (player, _) = subject_state(app.world_mut())?;
     let material = app
         .world_mut()

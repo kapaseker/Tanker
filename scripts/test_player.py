@@ -1,8 +1,6 @@
 """锁定玩家三包的米制尺寸、接缝与统一坐标契约。
 
-体素占用统一经 read_reference_models 还原到参考网格（0.1 米/格）：粗资产直接
-取用，细分资产（body/barrel/track，0.02 米/格）按场景树分块平移还原后降采样，断言
-与迁移前逐字一致，证明细分不改变米制契约。
+参考格断言尺寸、占用与装配；资产格独立验证真实凹槽及配色，允许同一参考格内有细节。
 """
 import unittest
 import struct
@@ -15,6 +13,24 @@ BARREL = ASSETS / 'barrels/player/lance/barrel.vox'
 
 
 class PlayerTests(unittest.TestCase):
+    def test_delivered_grille_has_fine_geometry(self):
+        source = sv.parse_vox(BODY.read_bytes(), 'body')
+        body = next(n for n in source.nodes if n.node_dict.get('_name') == 'body')
+        cells = {}
+        for index in source.nodes[body.child].children:
+            node = source.nodes[index]
+            model = source.models[source.nodes[node.child].models[0][0]]
+            origin = tuple(t + (f - s) // 2 for t, f, s in
+                           zip(sv.frame_t(node.frames), (675, 180, 130), model.size))
+            for x, y, z, c in struct.iter_unpack('<BBBB', model.xyzi):
+                if 170 <= x + origin[0] < 235 and 77 <= z + origin[2] < 80:
+                    cells[tuple(a + b for a, b in zip((x, y, z), origin))] = c
+        # 同一个旧参考格中同时存在 0.02 米凹槽与面板，重复槽仍在共同坐标位置。
+        for x in (170, 226):
+            self.assertNotIn((x, 90, 79), cells)
+            self.assertEqual(cells[x, 90, 78], 4)
+            self.assertEqual(cells[x + 2, 90, 79], 2)
+
     def test_independent_wheels_have_centered_sizes_and_rotation_clearance(self):
         track = read_reference_models(TRACK, PLAYER_CANVAS)
         self.assertEqual(len(track), 20, '六个履带相位与十四个独立轮节点')

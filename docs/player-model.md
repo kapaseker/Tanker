@@ -92,3 +92,25 @@ cargo run -- --offscreen-test wheels --output .scratch/offscreen/player-wheels
 `cargo check`通过，Rust测试45项、生成器5项、玩家资源4项及履带资源1项通过。Linux llvmpipe（LLVM 20.1.2）/ Vulkan软件渲染下，scene、drive、combat及wheels全部退出0，已读取关键帧检查：轮间透空、三条辐条可辨、轮子绕自身轴心转动，未见明显穿插；停车稳定后第240～250帧的左右里程变化约0和0.00000024米。没有启动可见窗口；未验证硬件GPU表现。
 
 证据位于 `.scratch/player-wheels/`：`before/`与`wheels-spokes-final/`保存同视点对照及碰撞外包围框，`comparison.png`、`wheels.gif`、`comparison.md`汇总画面，`scene-final/`、`drive-final/`、`combat-final/`保留回归报告。离屏检查同步修正了Bevy 0.20中可重试的`ShaderNotLoaded`/`ShaderImportNotYetAvailable`状态误判；真正的shader处理或模块创建失败仍失败退出。
+
+
+## 细网格作者化（leopard-player/01）
+
+统一入口仍为 `python -X utf8 scripts/publish_player.py [--check]`。Rust 生成器提供
+未迁移部件的 0.1 米基础几何，转换器负责 0.02 米分块；随后 `scripts/player_fine.py`
+按共同资产画布 675×180×130、VOX +X 朝前、+Z 向上作者化尾舱。
+格栅面板范围为半开区间 X[170,235)、Y[50,130)、Z[78,80)，凹槽宽 2 格、
+深 1 格、节距 7 格（0.04/0.02/0.14 米）；沿用现有调色板，不改变整体外包围。
+新增细节应写在这个源中，不修改交付 VOX 后反向作为生成输入。
+
+作者化继承既有场景分块、命名根和共同原点；参考格的尺寸、轮位及炮口不乘五。
+本票只提供作者化示例，车体其余部分、炮管和履带仍源自 Rust 粗源，旧弹丸仍源自
+`scripts/fixtures/bullet.vox`；不是豹 2 最终造型或真实尺度改造。
+
+检查模式在 target 临时目录重建并比对四个配对，不写交付资产；生成和验证成功后才
+逐部件调用配对发布保护。异常或不一致时输出并保留临时路径；不保证四部件集合事务。
+`test_player.py` 分别以参考格检查装配占用、资产格检查凹槽；不能再要求车身每个参考格内同色。
+
+wheels 离屏另输出 `front-on.png`、`rear-on.png`、`front-above.png` 和 `grille.png`，
+用于同视点整车和近景对照，不改变游戏镜头。本机旧、新证据及报告保留于
+`.scratch/leopard-player/evidence/`，长期验证结论见 `docs/testing/player-fine-authoring.md`。

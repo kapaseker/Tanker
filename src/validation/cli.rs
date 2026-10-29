@@ -120,7 +120,17 @@ impl Options {
                 paths.push(self.output.join("concrete.png"));
             }
             if self.scenario == Scenario::Wheels {
-                for name in ["side", "front", "rear", "bounds", "comparison"] {
+                for name in [
+                    "side",
+                    "front",
+                    "rear",
+                    "bounds",
+                    "comparison",
+                    "front-on",
+                    "rear-on",
+                    "front-above",
+                    "grille",
+                ] {
                     paths.push(self.output.join(format!("{name}.png")));
                 }
             }

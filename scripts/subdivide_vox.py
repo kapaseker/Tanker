@@ -591,24 +591,7 @@ def convert(src_path: Path, target_unit: float, staging_dir: Path,
     out_voxels = verify_staged(staged_bytes, source, FACTOR, name)
 
     if publish:
-        # 配对发布：目标 VOX 先原子移入同目录备份（同文件系统），随后依次替换
-        # VOX 与 meta；任一步失败把备份移回，保证资产与配置不成对损坏（方案 §8）。
-        target = dest_path if dest_path is not None else src_path
-        target_meta = target.with_name(target.name + '.meta')
-        backup = target.with_name(target.name + '.subdiv-bak')
-        os.replace(target, backup)
-        try:
-            os.replace(staged_vox, target)
-            os.replace(staged_meta, target_meta)
-        except OSError:
-            os.replace(backup, target)
-            raise
-        # 发布成功后清理备份与空 staging 目录；失败时保留 staging 供取证。
-        os.remove(backup)
-        try:
-            staging_dir.rmdir()
-        except OSError:
-            pass
+        publish_pair(staged_vox, staged_meta, dest_path if dest_path is not None else src_path)
 
     return {
         'source_voxels': source_voxels,
@@ -618,6 +601,28 @@ def convert(src_path: Path, target_unit: float, staging_dir: Path,
         'models': (len(source.models), len(new_models)),
         'published': publish,
     }
+
+
+def publish_pair(staged_vox: Path, staged_meta: Path, target: Path) -> None:
+    """发布已验证的临时配对；失败恢复旧 VOX，保留 staging 供诊断。"""
+    staging_dir = staged_vox.parent
+    # 配对发布：目标 VOX 先原子移入同目录备份（同文件系统），随后依次替换
+    # VOX 与 meta；任一步失败把备份移回，保证资产与配置不成对损坏（方案 §8）。
+    target_meta = target.with_name(target.name + '.meta')
+    backup = target.with_name(target.name + '.subdiv-bak')
+    os.replace(target, backup)
+    try:
+        os.replace(staged_vox, target)
+        os.replace(staged_meta, target_meta)
+    except OSError:
+        os.replace(backup, target)
+        raise
+    # 发布成功后清理备份与空 staging 目录；失败时保留 staging 供取证。
+    os.remove(backup)
+    try:
+        staging_dir.rmdir()
+    except OSError:
+        pass
 
 
 def main(argv: list[str]) -> int:
