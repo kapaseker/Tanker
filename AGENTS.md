@@ -85,6 +85,10 @@
 
 ## Agent skills
 
+### Tank references
+
+新增或修改坦克模型前，先读 [坦克车型目录](docs/tank-catalog.md)，再查对应模型说明、尺寸来源与验收记录。确定或变更现实参考型号、还原范围、资源组合及验收状态时，同步更新目录和对应长期文档；最终设计依据与关键参考图纳入 Git，本地工单继续按下述 tracker 规则维护。设计目标与已实现/已验收状态分别记录。
+
 ### Issue tracker
 
 创建、读取或更新工单与规格时，先读 `docs/agents/issue-tracker.md`。工单位于 `.scratch/<feature>/`，不使用远程 tracker；该目录被 Git 忽略，仅在本机保留，不随仓库共享。
