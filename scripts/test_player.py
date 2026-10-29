@@ -6,7 +6,7 @@ import math
 import unittest
 import struct
 import subdivide_vox as sv
-from test_tracks import read_reference_models, ASSETS, PLAYER_CANVAS
+from test_tracks import read_reference_models, ASSETS, PLAYER_CANVAS, PLAYER_Z0
 
 TRACK = ASSETS / 'tracks/player/cleat/track.vox'
 BODY = ASSETS / 'bodies/player/anvil/body.vox'
@@ -22,15 +22,16 @@ class PlayerTests(unittest.TestCase):
             node = source.nodes[index]
             model = source.models[source.nodes[node.child].models[0][0]]
             origin = tuple(t + (f - s) // 2 for t, f, s in
-                           zip(sv.frame_t(node.frames), (720, 190, 135), model.size))
+                           zip(sv.frame_t(node.frames), (720, 190, 185), model.size))
             for x, y, z, c in struct.iter_unpack('<BBBB', model.xyzi):
-                if 180 <= x + origin[0] < 235 and 77 <= z + origin[2] < 80:
+                # 采样作者格 78/79 的凹槽与面板；加 PLAYER_Z0 折算到资产格。
+                if 180 <= x + origin[0] < 235 and 77 + PLAYER_Z0 <= z + origin[2] < 81 + PLAYER_Z0:
                     cells[tuple(a + b for a, b in zip((x, y, z), origin))] = c
         # 同一个旧参考格中同时存在 0.02 米凹槽与面板，重复槽仍在共同坐标位置。
         for x in (180, 229):
-            self.assertNotIn((x, 90, 79), cells)
-            self.assertEqual(cells[x, 90, 78], 4)
-            self.assertEqual(cells[x + 2, 90, 79], 2)
+            self.assertNotIn((x, 90, 79 + PLAYER_Z0), cells)
+            self.assertEqual(cells[x, 90, 78 + PLAYER_Z0], 4)
+            self.assertEqual(cells[x + 2, 90, 79 + PLAYER_Z0], 2)
 
     def test_independent_wheels_have_centered_sizes_and_rotation_clearance(self):
         track = read_reference_models(TRACK, PLAYER_CANVAS)
@@ -77,27 +78,27 @@ class PlayerTests(unittest.TestCase):
         self.assertEqual(palettes[BODY.name], palettes[TRACK.name])
 
     def test_global_parts_fit_shared_canvas(self):
-        # 车身与炮管共用 135×36×26 参考画布；细分资产还原后仍不得越界。
+        # 车身与炮管共用 144×38×37 参考画布；细分资产还原后仍不得越界。
         for path in (BODY, BARREL):
             models = read_reference_models(path, PLAYER_CANVAS)
             self.assertEqual(list(models), [path.stem], '全局部件包应只有一个命名节点')
             for x, y, z in models[path.stem]:
-                self.assertTrue(0 <= x < 144 and 0 <= y < 38 and 0 <= z < 27,
+                self.assertTrue(0 <= x < 144 and 0 <= y < 38 and 0 <= z < 37,
                                 f'{path.name} 占用 {x},{y},{z} 超出共享画布')
 
     def test_refined_dimensions(self):
         body = read_reference_models(BODY, PLAYER_CANVAS)['body']
-        # 首上斜面不是直立车首；炮塔前楔向炮盾收窄。
-        self.assertIn((108, 15, 11), body)
-        self.assertNotIn((108, 15, 15), body)
-        middle = [y for x, y, z in body if x == 77 and z == 18]
-        nose = [y for x, y, z in body if x == 93 and z == 18]
-        self.assertGreater(max(middle)-min(middle), max(nose)-min(nose))
-        # 分段裙板（工单 04）：最外带存在，下缘高于 0.94 米顶齿（47 资产格）。
+        ground = 5
+        # 前楔：两侧颊甲为主橄榄，中线为近黑炮盾；颊甲顶低于主体屋顶。
+        self.assertEqual(body[(93, 10, 25)], 1)
+        self.assertEqual(body[(93, 18, 25)], 3)
+        self.assertLess(max(z for x, y, z in body if x == 93),
+                        max(z for x, y, z in body if x == 77))
+        # 分段裙板（工单 04）：最外带存在，下缘高于 0.94 米顶齿（72 资产格）。
         self.assertTrue(any(y == 0 for x, y, z in body), '缺少分段裙板最外带')
-        self.assertFalse(any(y <= 1 and z < 10 for x, y, z in body))
-        # 裙板下缘 1.04 米（52 资产格）：外带体素全部不低于参考格 10。
-        self.assertTrue(all(z >= 10 for x, y, z in body if y == 0))
+        self.assertFalse(any(y <= 1 and z < ground + 10 for x, y, z in body))
+        # 裙板下缘 1.04 米（77 资产格）：外带体素全部不低于参考格 15。
+        self.assertTrue(all(z >= ground + 10 for x, y, z in body if y == 0))
 
     def test_three_packages_and_dimensions(self):
         body = read_reference_models(BODY, PLAYER_CANVAS)['body']
@@ -112,10 +113,10 @@ class PlayerTests(unittest.TestCase):
             self.assertFalse(barrel.keys() & cells.keys())
         combined = body | barrel | track['track_l_0'] | track['track_r_0']
         bounds = lambda cells: tuple((min(p[i] for p in cells), max(p[i] for p in cells) + 1) for i in range(3))
-        self.assertEqual(bounds(combined), ((33, 144), (0, 38), (0, 27)))
-        self.assertEqual(bounds(body | track['track_l_0'] | track['track_r_0']), ((33, 111), (0, 38), (0, 27)))
+        self.assertEqual(bounds(combined)[2], (5, 36))
+        self.assertEqual(bounds(body | track['track_l_0'] | track['track_r_0']), ((33, 111), (0, 38), (5, 36)))
         self.assertEqual(bounds(barrel)[0], (95, 144))
-        self.assertTrue(any((94, y, z) in body and (95, y, z) in barrel for y in range(38) for z in range(27)))
+        self.assertTrue(any((94, y, z) in body and (95, y, z) in barrel for y in range(38) for z in range(37)))
 
 
 if __name__ == '__main__':

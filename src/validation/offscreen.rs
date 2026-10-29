@@ -172,6 +172,19 @@ pub(crate) fn run(mut app: App, options: Options) -> Result<(), String> {
             .resource_mut::<NextState<crate::app::state::GameState>>()
             .set(crate::app::state::GameState::InGame);
     }
+    if options.candidate_light {
+        // 最小光照对照：只在本次离屏进程新增一盏无阴影方向光，其余相机、
+        // 环境光、环境贴图与曝光保持不变，也不写入游戏默认光照。
+        let direction = CANDIDATE_LIGHT_DIRECTION.normalize();
+        app.world_mut().spawn((
+            DirectionalLight {
+                illuminance: CANDIDATE_LIGHT_ILLUMINANCE,
+                shadow_maps_enabled: false,
+                ..default()
+            },
+            Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, direction)),
+        ));
+    }
     while app.plugins_state() == PluginsState::Adding {
         bevy::tasks::tick_global_task_pools_on_main_thread();
         std::thread::sleep(Duration::from_millis(1));
@@ -182,6 +195,13 @@ pub(crate) fn run(mut app: App, options: Options) -> Result<(), String> {
         "场景：{:?}\n随机种子：{SEED}\n分辨率：{WIDTH}×{HEIGHT}\n模拟步长：{STEP:?}\n",
         options.scenario
     );
+    if options.candidate_light {
+        // 报告与实际光源共用同一常量，避免两处手写漂移。
+        report.push_str(&format!(
+            "光照实验：仅新增 DirectionalLight {} lux、无阴影、方向 {:?}；其余不变\n",
+            CANDIDATE_LIGHT_ILLUMINANCE, CANDIDATE_LIGHT_DIRECTION
+        ));
+    }
     if let Some(adapter) = app.world().get_resource::<RenderAdapterInfo>() {
         // 0.20 起 RenderAdapterInfo 内部字段私有化，经 Deref<AdapterInfo> 取名称与后端。
         report.push_str(&format!(

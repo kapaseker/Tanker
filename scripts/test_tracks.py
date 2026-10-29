@@ -12,8 +12,11 @@ ASSETS = Path(__file__).resolve().parents[1] / 'assets' / 'tank'
 
 # 各车型共享画布契约（参考格数），与 Rust 侧 CANVAS 一致；必须显式传给解析器，
 # 避免对敌人包误套玩家画布。
-PLAYER_CANVAS = (144, 38, 27)
+PLAYER_CANVAS = (144, 38, 37)
 ENEMY_CANVAS = (114, 34, 26)
+# 画布扩高的高度全部在屋顶以上；几何整体上移画布中心增量 25 资产格，
+# 因此资产格里的地面线是 z=25（运行时用独立轴心还原离地高度）。
+PLAYER_Z0 = 25
 
 
 def read_reference_models(path, canvas, asset_grid=False):
@@ -82,16 +85,16 @@ def read_reference_models(path, canvas, asset_grid=False):
 
 class TrackLoopTests(unittest.TestCase):
     def test_both_chassis_roll_around_the_rim(self):
-        for chassis, top in (('player', 42), ('enemy', 12)):
+        for chassis, top in (('player', PLAYER_Z0 + 42), ('enemy', 12)):
             with self.subTest(chassis=chassis):
                 # VOX +X 是车头：前进时上段向 +X、前端向下、下段向 −X、后端向上。
                 if chassis == 'player':
-                    # 梯形闭环（资产格）：下段 z=0 x169..551、顶段 z=42 x173..546，
+                    # 梯形闭环（资产格）：下段贴 z=25 x169..551、顶段 z=67 x173..546，
                     # 两端斜坡自下向上内收 4 格；周长 840 = 齿距 15 × 56。
-                    rim = ([(x, 42) for x in range(173, 547)]
-                           + [(551 - (z*4)//42, z) for z in range(42, 0, -1)]
-                           + [(x, 0) for x in range(551, 168, -1)]
-                           + [(169 + (z*4)//42, z) for z in range(1, 42)])
+                    rim = ([(x, PLAYER_Z0 + 42) for x in range(173, 547)]
+                           + [(551 - ((z-PLAYER_Z0)*4)//42, z) for z in range(PLAYER_Z0 + 42, PLAYER_Z0, -1)]
+                           + [(x, PLAYER_Z0) for x in range(551, 168, -1)]
+                           + [(169 + ((z-PLAYER_Z0)*4)//42, z) for z in range(PLAYER_Z0 + 1, PLAYER_Z0 + 42)])
                 else:
                     rim = ([(x,12) for x in range(24,90)] + [(89,z) for z in range(11,1,-1)]
                            + [(88,1)] + [(x,0) for x in range(87,25,-1)]
@@ -122,7 +125,7 @@ class TrackLoopTests(unittest.TestCase):
                             self.assertFalse(any((x,face_y,6) in cells for x in (44,57,70)), '敌人轮间必须透空')
                         else:
                             # 闭环内部（含原内侧面板位置）不得有任何填充体素。
-                            self.assertFalse(any((x, y, 6) in cells for x in (255, 320, 390, 460)
+                            self.assertFalse(any((x, y, PLAYER_Z0 + 6) in cells for x in (255, 320, 390, 460)
                                                  for y in (6, 20, 34)), '玩家轮间必须透空')
                         next_positions = {rim[(s+step) % len(rim)] for s, point in enumerate(rim)
                                           if point in outer}

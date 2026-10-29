@@ -20,12 +20,13 @@ const BULLET_SPEED: f32 = crate::tank::visual::PLAYER_BARREL.muzzle_velocity;
 const BULLET_SIZE: f32 = 0.4;
 /// 从出生点累计计算的最大飞行距离，单位：世界单位。
 const BULLET_RANGE: f32 = 2000.0;
-/// 炮口与作者化炮管共用格坐标；子弹中心前移半边长，避免与炮口重叠。
+/// 炮口与作者化炮管共用格坐标；安装轴心随扩高画布单独定义，不能取画布中心。
 const MUZZLE_POSITION: Vec3 = Vec3::new(
-    -(crate::tank::model::player::BARREL_X.1 as f32 - crate::tank::model::player::CANVAS.0 as f32 / 2.0)
+    -(crate::tank::model::player::BARREL_X.1 as f32
+        - crate::tank::model::player::CANVAS_PIVOT.0)
         * crate::tank::model::REFERENCE_VOXEL_SIZE
         - BULLET_SIZE / 2.0,
-    (crate::tank::model::player::BORE_HEIGHT - crate::tank::model::player::CANVAS.2 as f32 / 2.0)
+    (crate::tank::model::player::BORE_HEIGHT - crate::tank::model::player::CANVAS_PIVOT.2)
         * crate::tank::model::REFERENCE_VOXEL_SIZE,
     0.0,
 );
@@ -815,8 +816,9 @@ mod tests {
 
         let (_, tank_minimum, tank_maximum) = scene_bounds(app.world(), tank);
         // 三包组合必须覆盖真实尺寸；底部与两侧由履带补全；炮管超出碰撞框是预期行为。
+        // 车顶天线按 3.02 米照片估算，高于 2.70 米碰撞框，不扩大物理体。
         assert!(
-            (tank_maximum - tank_minimum).abs_diff_eq(Vec3::new(10.98, 2.7, 3.76), 1e-4),
+            (tank_maximum - tank_minimum).abs_diff_eq(Vec3::new(10.98, 3.02, 3.76), 1e-4),
             "车身与炮管组合尺寸：{tank_minimum:?}～{tank_maximum:?}"
         );
         assert!((MUZZLE_POSITION.x + BULLET_SIZE / 2.0 - tank_minimum.x).abs() < 1e-4);

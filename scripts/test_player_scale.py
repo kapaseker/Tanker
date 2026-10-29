@@ -10,7 +10,7 @@ import player_a6
 ROOT = Path(__file__).resolve().parents[1] / 'assets/tank'
 
 
-def bounds(path, name, full=(720, 190, 135), section_x=None):
+def bounds(path, name, full=(720, 190, 185), section_x=None):
     """以实际分块和节点变换还原资产格边界，排除空白画布。"""
     source = sv.parse_vox(path.read_bytes(), str(path))
     node = next(n for n in source.nodes if n.node_dict.get('_name') == name)
@@ -65,16 +65,18 @@ class PlayerScaleTests(unittest.TestCase):
         body = ROOT / 'bodies/player/anvil/body.vox'
         barrel = ROOT / 'barrels/player/lance/barrel.vox'
         track = ROOT / 'tracks/player/cleat/track.vox'
+        # 几何整体上移 25 资产格后，车身实体仍在作者 Z=[22,151)，资产格 Z=[47,176)；
         # 04 交付分段裙板后，body 外沿即冻结的 3.76 米宽边界 Y=[1,189)。
-        self.assertEqual(bounds(body, 'body'), ((169, 1, 22), (552, 189, 135)))
-        self.assertEqual(bounds(barrel, 'barrel'), ((475, 85, 94), (718, 105, 114)))
-        # 屋顶端点排除两个舱盖；管身截面验证炮轴为地面以上 2.08 米。
-        self.assertEqual(bounds(body, 'body', section_x=(350, 355))[1][2], 132)
+        self.assertEqual(bounds(body, 'body'), ((169, 1, 47), (552, 189, 176)))
+        self.assertEqual(bounds(barrel, 'barrel'), ((475, 85, 119), (718, 105, 139)))
+        # 屋顶端点排除车顶附件；管身截面验证炮轴为地面以上 2.08 米。
+        self.assertEqual(bounds(body, 'body', section_x=(400, 405))[1][2], 157)
         self.assertEqual(bounds(barrel, 'barrel', section_x=(650, 655)),
-                         ((650, 90, 99), (655, 100, 109)))
-        # 梯形闭环：下段贴地、顶段 z=42 加凸耳至 47；内侧面板已删除，宽度外沿即履带带体。
-        self.assertEqual(bounds(track, 'track_l_0'), ((169, 1, 0), (552, 35, 47)))
-        self.assertEqual(bounds(track, 'track_r_0'), ((169, 155, 0), (552, 189, 47)))
+                         ((650, 90, 124), (655, 100, 134)))
+        # 梯形闭环：下段贴资产格 25 地面线、顶段 z=67 加凸耳至 72；
+        # 内侧面板已删除，宽度外沿即履带带体。
+        self.assertEqual(bounds(track, 'track_l_0'), ((169, 1, 25), (552, 35, 72)))
+        self.assertEqual(bounds(track, 'track_r_0'), ((169, 155, 25), (552, 189, 72)))
         for path in (body, barrel, track):
             self.assertEqual(sv.read_meta_unit(path.with_suffix('.vox.meta')), 0.02)
 

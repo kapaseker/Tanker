@@ -12,12 +12,15 @@ pub(crate) struct Options {
     pub(super) single_image: bool,
     /// 仅 wheels 接受 --model enemy；默认继续验证玩家。
     pub(super) enemy_wheels: bool,
+    /// 仅 wheels 接受 --lighting candidate；只给离屏实验增加一盏方向光，
+    /// 不写入游戏默认光照。
+    pub(super) candidate_light: bool,
 }
 
 impl Options {
     /// 无参数返回普通游戏；其余参数必须完整匹配已公布的接口。
     pub(crate) fn parse(args: Vec<OsString>) -> Result<Option<Self>, String> {
-        let usage = "用法：--capture <图片.png> 或 --offscreen-test <scene|drive|combat|wheels|index|gallery|detail|hud> --output <目录> [--model enemy]（仅 wheels）";
+        let usage = "用法：--capture <图片.png> 或 --offscreen-test <scene|drive|combat|wheels|index|gallery|detail|hud> --output <目录> [--model enemy] [--lighting candidate]（后两者仅 wheels）";
         if args.is_empty() {
             return Ok(None);
         }
@@ -34,6 +37,7 @@ impl Options {
                 output,
                 single_image: true,
                 enemy_wheels: false,
+                candidate_light: false,
             }
         } else if (args.len() == 4 || args.len() == 6)
             && args[0] == "--offscreen-test"
@@ -50,10 +54,19 @@ impl Options {
                 Some("hud") => Scenario::Hud,
                 _ => return Err(usage.into()),
             };
-            let enemy_wheels = args.len() == 6;
+            let enemy_wheels = args.len() == 6 && args[4] == "--model";
             if enemy_wheels
-                && (scenario != Scenario::Wheels || args[4] != "--model" || args[5] != "enemy")
+                && (scenario != Scenario::Wheels || args[5] != "enemy")
             {
+                return Err(usage.into());
+            }
+            let candidate_light = args.len() == 6 && args[4] == "--lighting";
+            if candidate_light
+                && (scenario != Scenario::Wheels || args[5] != "candidate")
+            {
+                return Err(usage.into());
+            }
+            if args.len() == 6 && !enemy_wheels && !candidate_light {
                 return Err(usage.into());
             }
             Self {
@@ -61,6 +74,7 @@ impl Options {
                 output: PathBuf::from(&args[3]),
                 single_image: false,
                 enemy_wheels,
+                candidate_light,
             }
         } else {
             return Err(usage.into());
@@ -131,6 +145,8 @@ impl Options {
                     "rear-on",
                     "front-above",
                     "grille",
+                    "turret",
+                    "roof",
                 ] {
                     paths.push(self.output.join(format!("{name}.png")));
                 }
@@ -163,6 +179,18 @@ mod tests {
         .unwrap()
         .unwrap();
         assert!(enemy.enemy_wheels);
+        assert!(!enemy.candidate_light);
+        let lighting = parse(&[
+            "--offscreen-test",
+            "wheels",
+            "--output",
+            "out",
+            "--lighting",
+            "candidate",
+        ])
+        .unwrap()
+        .unwrap();
+        assert!(lighting.candidate_light);
         assert!(capture.single_image);
         assert_eq!(capture.scenario, Scenario::Scene);
         for (name, scenario) in [
@@ -209,6 +237,14 @@ mod tests {
                 "unknown",
             ],
             vec!["--capture", "a.png", "extra"],
+            vec![
+                "--offscreen-test",
+                "scene",
+                "--output",
+                "out",
+                "--lighting",
+                "candidate",
+            ],
         ] {
             assert!(parse(&args).is_err(), "{args:?}");
         }
@@ -230,6 +266,7 @@ mod tests {
             output: path.clone(),
             single_image: true,
             enemy_wheels: false,
+            candidate_light: false,
         };
         options.prepare().unwrap();
         write_new(&path, b"existing evidence").unwrap();

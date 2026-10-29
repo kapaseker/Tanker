@@ -93,6 +93,21 @@ pub(super) fn capture_wheel_views(app: &mut App, output: &Path) -> Result<(), St
         player.translation + player.rotation * Vec3::new(2.7, 0.28, 0.0),
         player.rotation * Vec3::new(1.0, 2.0, 1.5),
     )?;
+    // 炮塔前部与车顶附件固定近景：相机随机体朝向变换，便于新旧几何同视点比较。
+    let (player, _) = subject_state(app.world_mut())?;
+    capture_at(
+        app,
+        &output.join("turret.png"),
+        player.translation + player.rotation * Vec3::new(-1.3, 1.15, 0.0),
+        player.rotation * Vec3::new(-4.5, 2.5, 4.5),
+    )?;
+    let (player, _) = subject_state(app.world_mut())?;
+    capture_at(
+        app,
+        &output.join("roof.png"),
+        player.translation + player.rotation * Vec3::new(-0.6, 1.7, 0.0),
+        player.rotation * Vec3::new(-3.0, 2.8, 3.6),
+    )?;
     let (player, _) = subject_state(app.world_mut())?;
     let material = app
         .world_mut()

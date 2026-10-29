@@ -22,8 +22,9 @@ pub(crate) struct TrackSpec {
     size: Vec3,
     /// 各侧独立轮节点，支持不同车型的轮数。
     wheels: [&'static [crate::tank::model::WheelSpec]; 2],
-    /// VOX 画布用于安装轴心，不能用非炮管碰撞尺寸代替。
-    canvas: (u32, u32, u32),
+    /// 场景安装轴心，单位参考格；扩高画布仍用旧轴心保持离地高度，不能用
+    /// 非炮管碰撞尺寸代替。
+    pivot: (f32, f32, f32),
     /// 内腔竖直开区间，单位体素格；完整旋转包络必须在其中。
     clearance: (f32, f32),
     /// 履带驱动的前进速度，单位：米/秒；驾驶系统按此换算水平推力。
@@ -40,7 +41,7 @@ pub(crate) const PLAYER_TRACKS: TrackSpec = TrackSpec {
         &crate::tank::model::player::WHEELS[0],
         &crate::tank::model::player::WHEELS[1],
     ],
-    canvas: crate::tank::model::player::CANVAS,
+    pivot: crate::tank::model::player::CANVAS_PIVOT,
     clearance: crate::tank::model::player::WHEEL_CLEARANCE,
     forward_speed: 16.0,
     reverse_speed: 8.0,
@@ -55,7 +56,7 @@ pub(crate) const ENEMY_TRACKS: TrackSpec = TrackSpec {
         &crate::tank::model::enemy::WHEELS[0],
         &crate::tank::model::enemy::WHEELS[1],
     ],
-    canvas: crate::tank::model::enemy::CANVAS,
+    pivot: crate::tank::model::enemy::CANVAS_PIVOT,
     clearance: crate::tank::model::enemy::WHEEL_CLEARANCE,
     forward_speed: 0.0,
     reverse_speed: 0.0,
@@ -145,7 +146,7 @@ pub(crate) fn spawn_tracks(
                         .spawn((
                             Name::new(wheel.name),
                             WorldAssetRoot(assets.load(format!("{}#{}", spec.path, wheel.name))),
-                            wheel_transform(wheel, spec.canvas, 0.0),
+                            wheel_transform(wheel, spec.pivot, 0.0),
                             Visibility::Inherited,
                         ))
                         .id();
@@ -345,18 +346,18 @@ fn side_speed(linear: Vec3, angular_y: f32, r_side: Vec3, forward: Vec3) -> f32 
     (linear + omega_cross_r).dot(forward)
 }
 
-/// VOX 全局中心映射为游戏（−X、Z、Y）；正转角使接地点抵消 −X 前进速度。
+/// VOX 安装轴心映射为游戏（−X、Z、Y）；正转角使接地点抵消 −X 前进速度。
 fn wheel_transform(
     wheel: &crate::tank::model::WheelSpec,
-    canvas: (u32, u32, u32),
+    pivot: (f32, f32, f32),
     distance: f32,
 ) -> Transform {
     let [x, y, z] = wheel.center;
-    let (sx, sy, sz) = canvas;
+    let (px, py, pz) = pivot;
     Transform::from_xyz(
-        (sx as f32 / 2.0 - x) * crate::tank::model::REFERENCE_VOXEL_SIZE,
-        (z - sz as f32 / 2.0) * crate::tank::model::REFERENCE_VOXEL_SIZE,
-        (y - sy as f32 / 2.0) * crate::tank::model::REFERENCE_VOXEL_SIZE,
+        (px - x) * crate::tank::model::REFERENCE_VOXEL_SIZE,
+        (z - pz) * crate::tank::model::REFERENCE_VOXEL_SIZE,
+        (y - py) * crate::tank::model::REFERENCE_VOXEL_SIZE,
     )
     .with_rotation(Quat::from_rotation_z(
         distance / (wheel.radius * crate::tank::model::REFERENCE_VOXEL_SIZE),
@@ -394,7 +395,7 @@ fn advance_track_phases(
             for (index, &entity) in wheels[side].iter().enumerate() {
                 if let Ok(mut transform) = transforms.get_mut(entity) {
                     transform.rotation =
-                        wheel_transform(&spec.wheels[side][index], spec.canvas, anim.dist[side])
+                        wheel_transform(&spec.wheels[side][index], spec.pivot, anim.dist[side])
                             .rotation;
                 }
             }
@@ -694,7 +695,7 @@ mod tests {
             for (index, &entity) in wheels[side].iter().enumerate() {
                 let spec = &track_spec.wheels[side][index];
                 let transform = app.world().get::<Transform>(entity).unwrap();
-                let expected = wheel_transform(spec, track_spec.canvas, anim.dist[side]);
+                let expected = wheel_transform(spec, track_spec.pivot, anim.dist[side]);
                 assert!(
                     transform
                         .translation
@@ -749,12 +750,33 @@ mod tests {
     #[test]
     fn wheel_roll_direction_matches_ground_contact() {
         let spec = &crate::tank::model::player::WHEELS[0][0];
-        let forward = wheel_transform(spec, PLAYER_TRACKS.canvas, 0.001);
-        let reverse = wheel_transform(spec, PLAYER_TRACKS.canvas, -0.001);
+        let forward = wheel_transform(spec, PLAYER_TRACKS.pivot, 0.001);
+        let reverse = wheel_transform(spec, PLAYER_TRACKS.pivot, -0.001);
         let bottom = Vec3::NEG_Y * spec.radius * crate::tank::model::REFERENCE_VOXEL_SIZE;
         assert!((forward.rotation * bottom).x > 0.0);
         assert!((reverse.rotation * bottom).x < 0.0);
         // 正 Z 角速度叉乘底部 −Y，得到 +X 接触速度。
+    }
+
+    /// 画布扩高只增加顶部空间；轮轴安装高度仍由独立轴心保持，不能随画布中心漂移。
+    #[test]
+    fn expanded_canvas_keeps_wheel_install_height() {
+        let spec = &crate::tank::model::player::WHEELS[0][0];
+        let transform = wheel_transform(spec, PLAYER_TRACKS.pivot, 0.0);
+        // 若误用扩高后画布中心（CANVAS.2/2），轮轴会整体下沉 0.5 米；轴心必须保持 13.5。
+        let canvas_center = (
+            PLAYER_TRACKS.pivot.0,
+            PLAYER_TRACKS.pivot.1,
+            crate::tank::model::player::CANVAS.2 as f32 / 2.0,
+        );
+        let with_canvas_center = wheel_transform(spec, canvas_center, 0.0);
+        assert!((transform.translation.y - with_canvas_center.translation.y - 0.5).abs() < 1e-5);
+        assert_eq!(PLAYER_TRACKS.pivot.2, 13.5);
+        assert_eq!(
+            crate::tank::model::player::CANVAS.2,
+            37,
+            "高度扩展用于车顶附件，与物理碰撞分开"
+        );
     }
 
     /// 每相位移动一格（0.1 米），三相位对应完整 0.3 米齿距；倒车按反向回绕。

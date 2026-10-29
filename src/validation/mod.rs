@@ -24,6 +24,10 @@ const STEP: Duration = Duration::from_nanos(16_666_667);
 /// 约 112 秒（9177 模拟帧 ≈ 96.4s + 截图等待），120 秒预算在并发抖动下反复
 /// 误杀已通过全部断言的运行；保留 60 秒余量用于隔离真实挂起与偶发资源竞争。
 const TIMEOUT: Duration = Duration::from_secs(180);
+/// 候选光照实验（仅 wheels 接受）的固定光源参数；报告与实际光源共用，
+/// 避免两处手写漂移。方向以世界空间向量记录，归一化后作为照射方向。
+const CANDIDATE_LIGHT_ILLUMINANCE: f32 = 3000.0;
+const CANDIDATE_LIGHT_DIRECTION: Vec3 = Vec3::new(0.55, -0.35, -0.76);
 
 /// 最终合成相机的离屏目标；内容纹理与此输出纹理始终分离。
 #[derive(Resource)]
