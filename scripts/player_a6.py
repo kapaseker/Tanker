@@ -30,11 +30,22 @@ WEDGE_JOINT = 438
 # 炮轴与离地高度。运行时用独立轴心 CANVAS_PIVOT（z=13.5 参考格）还原。
 Z0 = (CANVAS[2] - 5 * 27) // 2
 assert Z0 * 2 == CANVAS[2] - 5 * 27 and Z0 % 5 == 0, '新增高度应一半在屋顶以上'
-# 独立轮安装契约：从 Rust 侧 wheel() 调用解析，end 决定局部画布与细节半径。
+# 独立轮安装契约：从 Rust 侧 wheel() 调用解析，end 决定局部画布与细节半径，
+# x 用于区分车尾主动轮（齿圈取代橡胶轮胎）。
 WHEEL_END = {name: end == 'true' for name, end in
              re.findall(r'wheel\("(\w+)", [\d.]+, [\d.]+, (true|false)\)', CONTRACT)}
+WHEEL_X = {name: float(x) for name, x in
+           re.findall(r'wheel\("(\w+)", ([\d.]+), [\d.]+, (?:true|false)\)', CONTRACT)}
+# 主动轮判别线：画布中点参考格，端轮 x 大于它即车尾主动轮。
+SPROCKET_MID_X = literal('CANVAS')[0] / 2
 # 履带闭环顶段高度，单位资产格；0.84 米，恰与负重轮轮顶相接。
 TRACK_TOP = 42
+# 履带板体厚度（资产格）：顶段与斜坡 0.08 米，底段保持单格贴地作为轮胎
+# 名义底面的接触面，避免抬高轮组或穿插地面。
+TRACK_BAND = 4
+# 顶段导向凸耳高度（资产格）：板体之上再凸 0.04 米，顶齿最高 0.96 米，
+# 与分段裙板下缘（1.04 米）保持 0.08 米间隙。
+TRACK_HORN = 2
 # 三条不对称辐条角度（弧度），沿用粗源约定，避免低速转动混淆。
 SPOKE_ANGLES = (0.0, 1.7, 4.0)
 
@@ -68,15 +79,23 @@ def track_rim():
 
 
 def wheel_geometry(name):
-    """作者化独立轮细网格；返回（局部画布, 体素串）。轴心在画布中心（size/2），
-    轮胎深灰（色 3）、轮毂橄榄绿（色 1）、中心盖暗橄榄（色 2）、辐条间透空。
-    保留条件为整格最远角不超旋转包络，保证运行时 AABB 与净空契约一致。"""
+    """作者化独立轮细网格；返回（局部画布, 体素串）。轴心在画布中心（size/2）。
+
+    工单 02 立体轮组：轮胎深灰（色 3）占满轮宽并构成旋转包络外环；辐条盘面
+    内缩 2 格（0.04 米）形成可读的前后深度，辐条间透空直通对侧；中心盖暗橄榄
+    （色 2）反凸 2 格与胎面齐平。车尾主动轮无橡胶：近黑齿圈（色 3）与履带
+    同色呼应，齿间透空读出齿形。保留条件仍为整格最远角不超旋转包络，保证
+    运行时 AABB 与净空契约一致。"""
     end = WHEEL_END[name]
     size = (25, 20, 25) if end else (40, 20, 40)
     # 画布为偶数或奇数时几何中心都在 size/2（资产格连续坐标），保证 AABB 居中。
     center = size[0] / 2.0
     envelope, tire_in, hub, cap = ((13.0, 10.0, 5.0, 2.0) if end
                                    else (20.5, 15.0, 9.0, 3.0))
+    # 立体分层（资产格）：盘面内缩 2 格、中心盖反凸 2 格与胎面齐平。
+    face_lo, face_hi = 2, size[1] - 2
+    cap_lo, cap_hi = 0, size[1] - 4
+    sprocket = end and WHEEL_X[name] > SPROCKET_MID_X
     cells = bytearray(size[0] * size[1] * size[2])
     for x in range(size[0]):
         for z in range(size[2]):
@@ -88,22 +107,28 @@ def wheel_geometry(name):
             dx, dz = x + 0.5 - center, z + 0.5 - center
             r = (dx * dx + dz * dz) ** 0.5
             if r >= tire_in:
-                color = 3  # 轮胎深灰
+                if sprocket:
+                    # 齿圈四齿、齿宽 45° 且齿心对准罗盘方向：包络边缘格恒为齿，
+                    # 网格 AABB 始终覆盖整块局部画布（运行时净空校验依赖）。
+                    if (math.atan2(dz, dx) + math.pi / 8) % (math.pi / 2) >= math.pi / 4:
+                        continue  # 齿间透空
+                lo, hi, color = 0, size[1], 3  # 轮胎/齿圈占满轮宽
             elif r <= cap:
-                color = 2  # 中心盖暗橄榄
+                lo, hi, color = cap_lo, cap_hi, 2  # 中心盖反凸，与胎面齐平
             elif r <= hub:
-                color = 1  # 轮毂橄榄绿
+                lo, hi, color = face_lo, face_hi, 1  # 轮毂盘面内缩
             else:
-                color = 0
+                lo, hi, color = face_lo, face_hi, 0
                 for angle in SPOKE_ANGLES:
                     along = dx * math.cos(angle) + dz * math.sin(angle)
                     across = -dx * math.sin(angle) + dz * math.cos(angle)
                     if along > 0.0 and abs(across) < 1.6:
-                        color = 1  # 辐条橄榄绿，其余透空
+                        color = 1  # 辐条与盘面同层，其余透空
                         break
-            if color:
-                for y in range(size[1]):
-                    cells[(x * size[1] + y) * size[2] + z] = color
+                if not color:
+                    continue
+            for y in range(lo, hi):
+                cells[(x * size[1] + y) * size[2] + z] = color
     return size, cells
 
 
@@ -151,7 +176,7 @@ def geometry(name):
             box(cells, (x, min(x + 2, 235)), (53, 127), (78, 79), 4)
             box(cells, (x, min(x + 2, 235)), (53, 127), (79, 80), 0)
         # 挡泥板横梁（1.60 米）与分段裙板：裙板自横梁外沿下垂到 1.04 米，
-        # 每侧 6 段、段隙 5 格；下缘高于顶齿凸耳 47 格与轮组包络顶 41.5 格。
+        # 每侧 6 段、段隙 5 格；下缘高于顶齿凸耳 48 格与轮组包络顶 41.5 格。
         for y in ((6, 36), (154, 184)):
             beam = (35, 40) if y[0] == 6 else (150, 155)
             box(cells, HULL, beam, (80, 85), 3)
@@ -232,14 +257,25 @@ def geometry(name):
         phase = int(phase)
         y, outer = ((5, 35), (1, 5)) if side == 'l' else ((155, 185), (185, 189))
         # 梯形闭环 840 格 = 齿距 15 × 56；每相位推进 5 格，仍为 0.1 米。
-        # 内侧面板已删除，实现轮间透空；顶齿凸耳位于 0.84 米带上方 4 格。
+        # 工单 02 立体履带：带体自贴地单格加厚为 0.08 米板体（底段保持单格，
+        # 作为轮胎名义底面的接触面），板体统一深灰；浅灰只保留在凸出结构——
+        # 外齿块（与板体同厚、外凸 4 格）与顶段导向凸耳，运动齿图案由凸出
+        # 结构携带。斜坡同列相邻格的加厚区间会互相重叠，先并集去重再逐格
+        # 写入，保证 verify_package 的零重叠回读通过。
+        band, panel, horn = {}, {}, {}
         for i, (x, z) in enumerate(track_rim()):
-            tooth = (i - phase*5) % 15 < 5
-            box(cells, (x, x+1), y, (z, z+1), 5 if tooth else 4)
-            if tooth:
-                box(cells, (x, x+1), outer, (z, z+1), 5)
+            thick = 1 if z == 0 else TRACK_BAND
+            for k in range(thick):
+                band[(x, z + k)] = 4
+            if (i - phase * 5) % 15 < 5:
+                for k in range(thick):
+                    panel[(x, z + k)] = 5
                 if z == TRACK_TOP:
-                    box(cells, (x, x+1), y, (TRACK_TOP+1, TRACK_TOP+5), 5)
+                    for k in range(TRACK_HORN):
+                        horn[(x, TRACK_TOP + TRACK_BAND + k)] = 5
+        for layer, span in ((band, y), (panel, outer), (horn, y)):
+            for (x, z), color in layer.items():
+                box(cells, (x, x + 1), span, (z, z + 1), color)
     return cells
 
 

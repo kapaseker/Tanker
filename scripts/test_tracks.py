@@ -113,7 +113,13 @@ class TrackLoopTests(unittest.TestCase):
                         self.assertFalse(cells.keys() & body.keys())
                         outer = {(x, z) for x, y, z in cells if y == outer_y}
                         step, pitch, width = (5, 15, 5) if chassis == 'player' else (1, 3, 1)
-                        expected = {point for s, point in enumerate(rim) if (s-phase*step) % pitch < width}
+                        # 工单 02：玩家板体加厚——底段贴地单格，其余每格向上加厚
+                        # 4 资产格（0.08 米），外齿块随之同厚；敌人包保持单格。
+                        thick = ((lambda z: 1 if z == PLAYER_Z0 else 4)
+                                 if chassis == 'player' else (lambda z: 1))
+                        expected = {(x, z + k) for s, (x, z) in enumerate(rim)
+                                    if (s-phase*step) % pitch < width
+                                    for k in range(thick(z))}
                         self.assertEqual(outer, expected, f'{chassis} 侧 {side} 相位 {phase} 必须沿轮廓滚动')
                         # 两种底盘内侧连接结构不随履带相位平移或变色。
                         wheels = {(x, z): c for (x, y, z), c in cells.items()
@@ -127,10 +133,14 @@ class TrackLoopTests(unittest.TestCase):
                             # 闭环内部（含原内侧面板位置）不得有任何填充体素。
                             self.assertFalse(any((x, y, PLAYER_Z0 + 6) in cells for x in (255, 320, 390, 460)
                                                  for y in (6, 20, 34)), '玩家轮间必须透空')
-                        next_positions = {rim[(s+step) % len(rim)] for s, point in enumerate(rim)
-                                          if point in outer}
+                        # 下一相位齿位 = 当前齿位沿轮廓推进 step 格（按序号运算，
+                        # 不能用 y=外沿集合判断：斜坡同列加厚体会与相邻轮廓格重合）。
+                        next_teeth = {rim[(s+step) % len(rim)] for s in range(len(rim))
+                                      if (s-phase*step) % pitch < width}
                         next_cells = phases[(phase+1) % 3]
-                        self.assertEqual(next_positions, {(x, z) for x, y, z in next_cells if y == outer_y})
+                        self.assertEqual({(x, z + k) for x, z in next_teeth
+                                          for k in range(thick(z))},
+                                         {(x, z) for x, y, z in next_cells if y == outer_y})
 
 
 if __name__ == '__main__':

@@ -73,10 +73,26 @@ class PlayerScaleTests(unittest.TestCase):
         self.assertEqual(bounds(body, 'body', section_x=(400, 405))[1][2], 157)
         self.assertEqual(bounds(barrel, 'barrel', section_x=(650, 655)),
                          ((650, 90, 124), (655, 100, 134)))
-        # 梯形闭环：下段贴资产格 25 地面线、顶段 z=67 加凸耳至 72；
+        # 梯形闭环：下段贴资产格 25 地面线、顶段板体 67..71、凸耳至 73；
         # 内侧面板已删除，宽度外沿即履带带体。
-        self.assertEqual(bounds(track, 'track_l_0'), ((169, 1, 25), (552, 35, 72)))
-        self.assertEqual(bounds(track, 'track_r_0'), ((169, 155, 25), (552, 189, 72)))
+        self.assertEqual(bounds(track, 'track_l_0'), ((169, 1, 25), (552, 35, 73)))
+        self.assertEqual(bounds(track, 'track_r_0'), ((169, 155, 25), (552, 189, 73)))
+        # 工单 02 立体履带：顶段板体 4 格厚（0.08 米），凸耳只出现在齿位并
+        # 再凸 2 格；底段保持单格贴地。外齿块只在齿位、占 y=[1,5)。
+        from test_tracks import read_reference_models
+        fine = read_reference_models(track, (144, 38, 37), asset_grid=True)['track_l_0']
+        # x=300 顶段非齿位：板体 67..70、无凸耳；x=308 齿位（rim 序号 135）：
+        # 板体加深灰、凸耳 71..72 浅灰。
+        self.assertEqual({z for z in range(60, 80) if (300, 10, z) in fine}, {67, 68, 69, 70})
+        self.assertEqual({fine[(300, 10, z)] for z in (67, 68, 69, 70)}, {4})
+        self.assertEqual({z for z in range(60, 80) if (308, 10, z) in fine},
+                         {67, 68, 69, 70, 71, 72})
+        self.assertEqual({fine[(308, 10, z)] for z in (67, 68, 69, 70)}, {4})
+        self.assertEqual({fine[(308, 10, z)] for z in (71, 72)}, {5})
+        # 底段单格贴地，其上透空；外齿块深度 4 格（左带外沿 y=1..4）且只占齿位。
+        self.assertEqual({z for z in range(20, 40) if (300, 10, z) in fine}, {25})
+        self.assertEqual({y for y in range(0, 5) if (308, y, 67) in fine}, {1, 2, 3, 4})
+        self.assertEqual({y for y in range(0, 5) if (300, y, 67) in fine}, set())
         for path in (body, barrel, track):
             self.assertEqual(sv.read_meta_unit(path.with_suffix('.vox.meta')), 0.02)
 

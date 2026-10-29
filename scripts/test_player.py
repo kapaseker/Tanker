@@ -45,6 +45,7 @@ class PlayerTests(unittest.TestCase):
             for index in range(9):
                 cells = fine[f'wheel_{side}_{index}']
                 end = index >= 7
+                sprocket = index == 8  # 车尾主动轮：近黑齿圈取代橡胶轮胎
                 size, envelope = (25, 13.0) if end else (40, 20.5)
                 tire_in, hub = (10.0, 5.0) if end else (15.0, 9.0)
                 self.assertEqual((min(y for x, y, z in cells), max(y for x, y, z in cells)), (0, 19))
@@ -56,12 +57,33 @@ class PlayerTests(unittest.TestCase):
                     for a in (x, x + 1):
                         for b in (z, z + 1):
                             self.assertLessEqual((a - size / 2) ** 2 + (b - size / 2) ** 2, envelope ** 2)
-                # 三条不对称辐条须在轮毂与轮胎之间可见（半径取带中线）。
+                # 三条不对称辐条须在盘面层可见（半径取带中线；工单 02 后盘面
+                # 内缩 2 格，辐条随之离开胎面平面）。
                 for angle in (0.0, 1.7, 4.0):
                     r = (tire_in + hub) / 2.0
                     x = round(size / 2 - 0.5 + r * math.cos(angle))
                     z = round(size / 2 - 0.5 + r * math.sin(angle))
-                    self.assertEqual(cells.get((x, 0, z)), 1, f'角度 {angle} 的辐条不可见')
+                    self.assertEqual(cells.get((x, 2, z)), 1, f'角度 {angle} 的辐条不可见')
+                # 立体分层：胎面占满轮宽；盘面内缩 2 格（0.04 米），辐条间透空
+                # 直通对侧；中心盖反凸 2 格与胎面齐平，盖后透空。
+                mid = size // 2
+                tire_x = mid + (17 if not end else 11)
+                self.assertEqual(cells.get((tire_x, 0, mid)), 3, '胎面应占满轮宽')
+                self.assertEqual(cells.get((tire_x, 19, mid)), 3, '胎面应占满轮宽')
+                disc_x = mid + (6 if not end else 4)
+                self.assertIsNone(cells.get((disc_x, 0, mid)), '盘面必须内缩而非与胎面齐平')
+                self.assertEqual(cells.get((disc_x, 2, mid)), 1)
+                self.assertEqual(cells.get((disc_x, 17, mid)), 1)
+                self.assertIsNone(cells.get((disc_x, 18, mid)), '盘背面同样内缩')
+                self.assertEqual(cells.get((mid, 0, mid)), 2, '中心盖应反凸与胎面齐平')
+                self.assertIsNone(cells.get((mid, 17, mid)), '中心盖背后必须透空')
+                if sprocket:
+                    self.assertEqual(cells.get((size - 1, 0, mid)), 3, '主动轮齿圈占满轮宽')
+                    self.assertIsNone(cells.get((mid + 8, 0, mid + 8)), '齿间必须透空')
+                else:
+                    # 辐条间隙透空：取两根辐条夹角中点附近的格（避开辐条条带）。
+                    gap = (mid + 8, 2, mid + 9) if not end else (mid + 5, 2, mid + 5)
+                    self.assertIsNone(cells.get(gap), '辐条之间必须透空')
 
     def test_shared_canvas_and_palette(self):
         palettes = {}
@@ -94,7 +116,7 @@ class PlayerTests(unittest.TestCase):
         self.assertEqual(body[(93, 18, 25)], 3)
         self.assertLess(max(z for x, y, z in body if x == 93),
                         max(z for x, y, z in body if x == 77))
-        # 分段裙板（工单 04）：最外带存在，下缘高于 0.94 米顶齿（72 资产格）。
+        # 分段裙板（工单 04）：最外带存在，下缘高于 0.96 米顶齿（73 资产格）。
         self.assertTrue(any(y == 0 for x, y, z in body), '缺少分段裙板最外带')
         self.assertFalse(any(y <= 1 and z < ground + 10 for x, y, z in body))
         # 裙板下缘 1.04 米（77 资产格）：外带体素全部不低于参考格 15。
