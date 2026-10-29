@@ -6,10 +6,12 @@
 
 | 游戏内车型 | 现实参考 | 资源组合 | 状态 | 详细依据 |
 |---|---|---|---|---|
-| 当前玩家坦克 | Leopard 2A6（豹 2A6），L55 长炮管 | body: anvil；barrel: lance；track: cleat；弹丸随 lance | 已交付并完成整体验收（01–06）；平台边界和造型简化见验收记录 | [玩家模型](player-model.md#车型参考与还原范围)、[尺寸与来源](leopard-a6-dimensions.md)、[整体验收](testing/player-a6-final-acceptance.md) |
+| 当前玩家坦克 | Leopard 2A6（豹 2A6），L55 长炮管 | body: anvil；barrel: lance；track: cleat；弹丸随 lance | 旧 01–06 技术验证已有记录；用户对实际外观不认可，进入美术返工，尚未通过最终美术验收 | [玩家模型](player-model.md#车型参考与还原范围)、[尺寸与来源](leopard-a6-dimensions.md)、[技术验收及外观复核](testing/player-a6-final-acceptance.md) |
 | 当前敌方坦克 | 原创现代坦克，未指定现实车型 | body: carapace；barrel: spit；track: crawl | 已有实现；按自身模型契约维护 | [敌方模型](enemy-model.md) |
 
 状态核对日期：2026-10-29。进行中的工作区改动不能直接作为已验收依据。
+
+当前返工的[计划](../.scratch/leopard-player-rework/plan.md)、[规格](../.scratch/leopard-player-rework/spec.md)及[工单索引](../.scratch/leopard-player-rework/issues/README.md)按用户明确要求纳入 Git，作为本地 tracker 默认仅本机保存规则的本次例外。
 
 ## 新增车型与维护方式
 
