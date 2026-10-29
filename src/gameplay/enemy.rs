@@ -247,12 +247,10 @@ mod tests {
         assert!(app.world().get::<Transform>(player).unwrap().translation.x < stopped.x - 5.0);
     }
 
-    /// 敌人与玩家同高；真实圆角碰撞体在不同偏航下仍遵守非炮管边界。
+    /// 敌方保持既有尺寸；真实圆角碰撞体在不同偏航下仍遵守本车型边界。
     #[test]
-    fn enemy_collision_matches_player_height_and_rotated_contract() {
+    fn enemy_collision_preserves_own_size_and_rotated_contract() {
         use avian3d::prelude::Collider;
-        assert_eq!(ENEMY_SIZE.y, driving::TANK_SIZE.y);
-        assert_eq!(crate::tank::model::enemy::CANVAS.2, crate::tank::model::player::CANVAS.2);
         assert!(ENEMY_SIZE.abs_diff_eq(Vec3::new(6.6, 2.6, 3.4), 1e-5));
         let mut world = World::new();
         let entity = world.spawn(enemy_body()).id();

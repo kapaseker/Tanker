@@ -7,19 +7,19 @@ pub const CANVAS: (u32, u32, u32) = (114, 34, 26);
 pub const HULL_X: (i32, i32) = (24, 90);
 /// 炮塔正面至炮口，半开区间；整车视觉长度90格。
 pub const BARREL_X: (i32, i32) = (76, 114);
-/// 炮管轴线离地高度，与玩家一致。
+/// 敌方炮管轴线离地高度；独立于玩家车型。
 pub const BORE_HEIGHT: f32 = 20.0;
-/// 非炮管几何边界；高度须与玩家模型契约一致，由测试核对。
+/// 敌方非炮管几何边界；由本车型画布定义，不随玩家改造变化。
 pub const COLLISION_MIN: [i32; 3] = [HULL_X.0, 0, 0];
 /// 宽度与高度来自共同画布，炮管不扩大碰撞框。
 pub const COLLISION_MAX: [i32; 3] = [HULL_X.1, CANVAS.1 as i32, CANVAS.2 as i32];
 
 /// 非炮管碰撞尺寸（长、高、宽），单位：米。长度与宽度由本车型碰撞边界推导，
-/// 高度复用玩家底盘的权威值；运行时驾驶刚体、履带规格与敌人生成共同读取，
+/// 高度同样来自敌方边界；运行时驾驶刚体、履带规格与敌人生成共同读取，
 /// 避免在业务模块复制常量。
 pub const COLLISION_SIZE: [f32; 3] = [
     (COLLISION_MAX[0] - COLLISION_MIN[0]) as f32 * super::REFERENCE_VOXEL_SIZE,
-    (super::player::COLLISION_MAX[2] - super::player::COLLISION_MIN[2]) as f32 * super::REFERENCE_VOXEL_SIZE,
+    (COLLISION_MAX[2] - COLLISION_MIN[2]) as f32 * super::REFERENCE_VOXEL_SIZE,
     (COLLISION_MAX[1] - COLLISION_MIN[1]) as f32 * super::REFERENCE_VOXEL_SIZE,
 ];
 
