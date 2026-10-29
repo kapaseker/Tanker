@@ -735,7 +735,9 @@ mod tests {
         let mut terrain_chunks = app
             .world_mut()
             .query_filtered::<Entity, With<crate::terrain::TerrainChunk>>();
-        let deadline = Instant::now() + Duration::from_secs(20);
+        // 60 秒：工单 04 后 body/barrel 体素增多，本机单独运行该测试就绪等待
+        // 已约 17 秒，20 秒预算在并行测试竞争下会误杀；与离屏看门狗 180 秒同源。
+        let deadline = Instant::now() + Duration::from_secs(60);
         loop {
             app.update();
             let world = app.world();

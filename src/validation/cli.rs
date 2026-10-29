@@ -88,7 +88,8 @@ impl Options {
     pub(crate) fn watchdog(&self) -> mpsc::Sender<()> {
         let report = (!self.single_image).then(|| self.output.join("report.txt"));
         spawn_watchdog(TIMEOUT, move || {
-            let message = "离屏验证超过 120 秒，强制结束；结果：失败";
+            let message =
+                format!("离屏验证超过 {} 秒，强制结束；结果：失败", TIMEOUT.as_secs());
             eprintln!("{message}");
             if let Some(path) = report {
                 let _ = write_new(&path, message.as_bytes());

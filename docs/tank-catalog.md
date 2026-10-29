@@ -6,7 +6,7 @@
 
 | 游戏内车型 | 现实参考 | 资源组合 | 状态 | 详细依据 |
 |---|---|---|---|---|
-| 当前玩家坦克 | Leopard 2A6（豹 2A6），L55 长炮管 | body: anvil；barrel: lance；track: cleat；弹丸随 lance | 部分完成：真实尺度基础整车已交付；七负重轮改造进行中，完整细节、真实比例弹丸及最终验收尚未完成 | [玩家模型](player-model.md#车型参考与还原范围)、[尺寸与来源](leopard-a6-dimensions.md)、[基础整车验收](testing/player-a6-assembly.md) |
+| 当前玩家坦克 | Leopard 2A6（豹 2A6），L55 长炮管 | body: anvil；barrel: lance；track: cleat；弹丸随 lance | 部分完成：真实尺度基础整车（02）、七负重轮与完整履带（03）、装甲与附件细节（04）已交付；真实比例弹丸及最终整体验收尚未完成 | [玩家模型](player-model.md#车型参考与还原范围)、[尺寸与来源](leopard-a6-dimensions.md)、[基础整车验收](testing/player-a6-assembly.md) |
 | 当前敌方坦克 | 原创现代坦克，未指定现实车型 | body: carapace；barrel: spit；track: crawl | 已有实现；按自身模型契约维护 | [敌方模型](enemy-model.md) |
 
 状态核对日期：2026-10-29。进行中的工作区改动不能直接作为已验收依据。

@@ -20,7 +20,10 @@ const HEIGHT: u32 = 720;
 /// 精确的同一 Duration 同时用于可变步长时钟与固定物理时钟。
 const STEP: Duration = Duration::from_nanos(16_666_667);
 /// 使用墙钟限制加载、GPU 等待与模拟总耗时，防止无人值守进程残留。
-const TIMEOUT: Duration = Duration::from_secs(120);
+/// 180 秒：detail 预设（9 目录项 × 进入/返回共 23 次转场）在独占运行时需要
+/// 约 112 秒（9177 模拟帧 ≈ 96.4s + 截图等待），120 秒预算在并发抖动下反复
+/// 误杀已通过全部断言的运行；保留 60 秒余量用于隔离真实挂起与偶发资源竞争。
+const TIMEOUT: Duration = Duration::from_secs(180);
 
 /// 最终合成相机的离屏目标；内容纹理与此输出纹理始终分离。
 #[derive(Resource)]

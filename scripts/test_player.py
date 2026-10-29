@@ -93,8 +93,11 @@ class PlayerTests(unittest.TestCase):
         middle = [y for x, y, z in body if x == 77 and z == 18]
         nose = [y for x, y, z in body if x == 93 and z == 18]
         self.assertGreater(max(middle)-min(middle), max(nose)-min(nose))
-        # 临时裙板始终高于 0.94 米顶齿，轮间透空。
-        self.assertFalse(any(y == 1 and z < 16 for x, y, z in body))
+        # 分段裙板（工单 04）：最外带存在，下缘高于 0.94 米顶齿（47 资产格）。
+        self.assertTrue(any(y == 0 for x, y, z in body), '缺少分段裙板最外带')
+        self.assertFalse(any(y <= 1 and z < 10 for x, y, z in body))
+        # 裙板下缘 1.04 米（52 资产格）：外带体素全部不低于参考格 10。
+        self.assertTrue(all(z >= 10 for x, y, z in body if y == 0))
 
     def test_three_packages_and_dimensions(self):
         body = read_reference_models(BODY, PLAYER_CANVAS)['body']

@@ -53,7 +53,8 @@ class PlayerScaleTests(unittest.TestCase):
         body = ROOT / 'bodies/player/anvil/body.vox'
         barrel = ROOT / 'barrels/player/lance/barrel.vox'
         track = ROOT / 'tracks/player/cleat/track.vox'
-        self.assertEqual(bounds(body, 'body'), ((169, 6, 22), (552, 184, 135)))
+        # 04 交付分段裙板后，body 外沿即冻结的 3.76 米宽边界 Y=[1,189)。
+        self.assertEqual(bounds(body, 'body'), ((169, 1, 22), (552, 189, 135)))
         self.assertEqual(bounds(barrel, 'barrel'), ((475, 85, 94), (718, 105, 114)))
         # 屋顶端点排除两个舱盖；管身截面验证炮轴为地面以上 2.08 米。
         self.assertEqual(bounds(body, 'body', section_x=(350, 355))[1][2], 132)
