@@ -289,8 +289,8 @@ pub(super) fn finish_gallery_transition(
     let mut saved = [false; 3];
     // 预览本身允许 30 秒加载并报告错误；固定帧数在快显卡上可能更早耗尽，
     // 因此按墙钟等待其完成，整个离屏运行仍受 180 秒看门狗约束。
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(40);
-    while std::time::Instant::now() < deadline {
+    let started = std::time::Instant::now();
+    let finished = wait_for_transition(Duration::from_secs(40), || started.elapsed(), || {
         update(app, STEP, None)?;
         let fade = app.world().resource::<Fade>();
         let (phase, alpha) = (fade.phase, fade.alpha);
@@ -332,12 +332,74 @@ pub(super) fn finish_gallery_transition(
                 cycle != 1 || saved.iter().all(|s| *s),
                 "缺少画廊过渡关键阶段",
             )?;
-            return Ok(());
+            return Ok(true);
         }
+        Ok(false)
+    })?;
+    if finished {
+        return Ok(());
     }
     let cpu_ready = crate::app::transition::content_ready(app.world_mut());
     Err(format!(
         "画廊过渡未完成：CPU_ready={cpu_ready}；{}",
         crate::app::transition::diagnostics(app.world_mut())
     ))
+}
+
+/// 在墙钟预算内轮询实际转场；就绪返回 true，超时返回 false，步骤错误原样返回。
+fn wait_for_transition(
+    timeout: Duration,
+    mut elapsed: impl FnMut() -> Duration,
+    mut step: impl FnMut() -> Result<bool, String>,
+) -> Result<bool, String> {
+    while elapsed() < timeout {
+        if step()? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+
+    /// 等待按墙钟而非更新次数结束，资源晚于第 2000 帧就绪也应成功。
+    #[test]
+    fn transition_can_finish_after_two_thousand_updates() {
+        for millis_per_update in [1, 10] {
+            let updates = Cell::new(0u32);
+            let done = wait_for_transition(
+                Duration::from_secs(40),
+                || Duration::from_millis(u64::from(updates.get()) * millis_per_update),
+                || {
+                    updates.set(updates.get() + 1);
+                    Ok(updates.get() == 2_501)
+                },
+            );
+            assert_eq!(done, Ok(true));
+            assert_eq!(updates.get(), 2_501);
+        }
+    }
+
+    /// 资源一直未就绪时必须超时，更新或资源错误不得被当成成功。
+    #[test]
+    fn transition_timeout_and_errors_are_not_success() {
+        let updates = Cell::new(0u32);
+        let timed_out = wait_for_transition(
+            Duration::from_secs(40),
+            || Duration::from_secs(u64::from(updates.get())),
+            || {
+                updates.set(updates.get() + 1);
+                Ok(false)
+            },
+        );
+        assert_eq!(timed_out, Ok(false));
+        assert_eq!(updates.get(), 40);
+        let failed = wait_for_transition(Duration::from_secs(40), || Duration::ZERO, || {
+            Err("资源加载失败".into())
+        });
+        assert_eq!(failed, Err("资源加载失败".into()));
+    }
 }
