@@ -298,8 +298,11 @@ pub(crate) fn prepare_previews(world: &mut World) {
                 .get::<track::TracksValidated>(preview.content)
                 .is_some();
         }
-        if previews.started.elapsed().as_secs() > 30 {
-            error.get_or_insert("模型加载超过30秒".into());
+        // 预览从零重载全部大体素资产（含返回画廊后的重建），慢机或高负载下
+        // 可超过 30 秒（工单 03/04 记录）；与详情过渡等待一致放宽到 40 秒墙钟，
+        // 断言本身不变，离屏运行仍受 180 秒总看门狗约束。
+        if previews.started.elapsed().as_secs() > 40 {
+            error.get_or_insert("模型加载超过40秒".into());
         }
         if let Some(error) = error {
             error!("模型预览加载失败：{}：{error}", preview.entry.path);
