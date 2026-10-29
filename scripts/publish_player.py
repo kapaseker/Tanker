@@ -1,12 +1,12 @@
 """玩家资产统一发布入口：python -X utf8 scripts/publish_player.py [--check]。
 
-流程：rustc 编译 scripts/generate_player.rs（缺失或源更新时重编）→ 生成粗
+流程：rustc 编译 scripts/generate_player.rs（缺失或源更新时重编）→ 生成命名画布与轮粗源
 body/barrel/track 到临时目录 → 按交付 meta 复制字段并强制 0.1 单位生成粗样
-meta → 三包细分到 0.02 → player_fine.py 作者化尾舱 → 验证后配对发布到 assets。
+meta → 三包细分到 0.02 → player_a6.py 直接作者化主体 → 验证后配对发布到 assets。
 子弹无生成器：直接以 scripts/fixtures/bullet.vox（0.1 粗源逐字节快照）为
 转换源，细分后原子发布到 lance 目录。
 
-- 默认模式：真实发布；每个部件转换与逐格验证通过后分别替换，失败保留该部件原资产。
+- 默认模式：真实发布；每个部件转换、作者化和回读验证通过后分别替换，失败保留该部件原资产。
 - --check：全流程只到临时目录，把管线产物与交付资产逐字节比对（body/barrel/track
   细分对与子弹细分对），不一致退出码非零；绝不写 assets/。这是"重新生成不会
   把粗资产覆盖到 0.02 配置下"的可回归证明。
@@ -23,7 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from subdivide_vox import ConvertError, convert, rewrite_meta_unit, publish_pair
-from player_fine import author_body
+from player_a6 import author_package
 
 REPO = Path(__file__).resolve().parents[1]
 BODY = REPO / 'assets/tank/bodies/player/anvil/body.vox'
@@ -109,8 +109,7 @@ def run(check: bool) -> int:
             write_coarse_meta(coarse[name], gen_root)
             staging = work / f'staged-{name}'
             convert(coarse[name], FINE_UNIT, staging, publish=False)
-            if name == 'body':
-                author_body(staging / delivered.name)
+            author_package(staging / delivered.name)
             if check:
                 problems = compare_pair(staging, coarse[name], delivered)
                 print(f'{"不一致" if problems else "一致"} {delivered.relative_to(REPO)}')

@@ -419,7 +419,7 @@ mod tests {
     use super::*;
     use crate::gameplay::player::Tank;
 
-    /// 测试所用默认底盘半宽，单位：米；玩家为 3.6 米宽，敌人为 3.4 米宽。
+    /// 测试所用默认底盘半宽，单位：米；玩家碰撞宽 3.8 米，敌人为 3.4 米宽。
     const HALF_TRACK_WIDTH: f32 = TANK_SIZE.z / 2.0;
     use bevy::{
         camera::visibility::{VisibilityClass, VisibilityPlugin},

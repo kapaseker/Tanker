@@ -482,7 +482,14 @@ pub(crate) fn validate(world: &World) -> Result<String, String> {
             return Err(format!("履带可见相位/轮组异常：{visible_phases}/{wheels}"));
         }
         if preview.entry.category == 3 {
-            let expected = if preview.entry.enemy { 9.0 } else { 10.5 };
+            let expected = if preview.entry.enemy {
+                9.0
+            } else {
+                // 资产格车尾换回参考格，与炮口契约比较；不以碰撞长度代替视觉全长。
+                (crate::tank::model::player::BARREL_X.1
+                    - crate::tank::model::player::VISUAL_HULL_X.0 as f32 / 5.0)
+                    * crate::tank::model::REFERENCE_VOXEL_SIZE
+            };
             if (size.x - expected).abs() > 0.01 {
                 return Err(format!("整车视觉长度异常：{}", size.x));
             }

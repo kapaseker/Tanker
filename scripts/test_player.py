@@ -21,12 +21,12 @@ class PlayerTests(unittest.TestCase):
             node = source.nodes[index]
             model = source.models[source.nodes[node.child].models[0][0]]
             origin = tuple(t + (f - s) // 2 for t, f, s in
-                           zip(sv.frame_t(node.frames), (675, 180, 130), model.size))
+                           zip(sv.frame_t(node.frames), (720, 190, 135), model.size))
             for x, y, z, c in struct.iter_unpack('<BBBB', model.xyzi):
-                if 170 <= x + origin[0] < 235 and 77 <= z + origin[2] < 80:
+                if 180 <= x + origin[0] < 235 and 77 <= z + origin[2] < 80:
                     cells[tuple(a + b for a, b in zip((x, y, z), origin))] = c
         # 同一个旧参考格中同时存在 0.02 米凹槽与面板，重复槽仍在共同坐标位置。
-        for x in (170, 226):
+        for x in (180, 229):
             self.assertNotIn((x, 90, 79), cells)
             self.assertEqual(cells[x, 90, 78], 4)
             self.assertEqual(cells[x + 2, 90, 79], 2)
@@ -74,27 +74,19 @@ class PlayerTests(unittest.TestCase):
             models = read_reference_models(path, PLAYER_CANVAS)
             self.assertEqual(list(models), [path.stem], '全局部件包应只有一个命名节点')
             for x, y, z in models[path.stem]:
-                self.assertTrue(0 <= x < 135 and 0 <= y < 36 and 0 <= z < 26,
+                self.assertTrue(0 <= x < 144 and 0 <= y < 38 and 0 <= z < 27,
                                 f'{path.name} 占用 {x},{y},{z} 超出共享画布')
 
     def test_refined_dimensions(self):
         body = read_reference_models(BODY, PLAYER_CANVAS)['body']
-        barrel = read_reference_models(BARREL, PLAYER_CANVAS)['barrel']
-        # 三个炮塔层面的最大宽度分别为 2.6、2.4、2.0 米。
-        for z, expected in [(18, 26), (21, 24), (24, 20)]:
-            ys = [y for (x, y, h) in body if h == z and 49 <= x < 90]
-            self.assertEqual(max(ys) - min(ys) + 1, expected)
-        for x, expected in [(100, 2), (113, 4), (92, 4), (133, 2)]:
-            section = [(y, z) for (a, y, z) in barrel if a == x]
-            self.assertEqual(max(y for y, z in section) - min(y for y, z in section) + 1, expected)
-            self.assertEqual(max(z for y, z in section) - min(z for y, z in section) + 1, expected)
-        self.assertFalse(any(z >= 16 and x < 49 for x, y, z in body))
-        # 裙板面板之间必须露出实际空隙；支撑梁只放在内沿。
-        for x in [42, 52, 62, 72, 82, 92]:
-            self.assertNotIn((x, 1, 15), body)
-        # 七块裙板仍有分缝，抬高后的底部为 1.4 米。
-        self.assertTrue(any(y == 1 and z == 14 for x, y, z in body))
-        self.assertFalse(any(y == 1 and z < 14 for x, y, z in body))
+        # 首上斜面不是直立车首；炮塔前楔向炮盾收窄。
+        self.assertIn((108, 15, 11), body)
+        self.assertNotIn((108, 15, 15), body)
+        middle = [y for x, y, z in body if x == 77 and z == 18]
+        nose = [y for x, y, z in body if x == 93 and z == 18]
+        self.assertGreater(max(middle)-min(middle), max(nose)-min(nose))
+        # 临时裙板始终高于 1.46 米顶齿，轮间透空。
+        self.assertFalse(any(y == 1 and z < 16 for x, y, z in body))
 
     def test_three_packages_and_dimensions(self):
         body = read_reference_models(BODY, PLAYER_CANVAS)['body']
@@ -109,10 +101,10 @@ class PlayerTests(unittest.TestCase):
             self.assertFalse(barrel.keys() & cells.keys())
         combined = body | barrel | track['track_l_0'] | track['track_r_0']
         bounds = lambda cells: tuple((min(p[i] for p in cells), max(p[i] for p in cells) + 1) for i in range(3))
-        self.assertEqual(bounds(combined), ((30, 135), (0, 36), (0, 26)))
-        self.assertEqual(bounds(body | track['track_l_0'] | track['track_r_0']), ((30, 105), (0, 36), (0, 26)))
-        self.assertEqual(bounds(barrel)[0], (90, 135))
-        self.assertTrue(any((89, y, z) in body and (90, y, z) in barrel for y in range(36) for z in range(26)))
+        self.assertEqual(bounds(combined), ((33, 144), (0, 38), (0, 27)))
+        self.assertEqual(bounds(body | track['track_l_0'] | track['track_r_0']), ((33, 111), (0, 38), (0, 27)))
+        self.assertEqual(bounds(barrel)[0], (95, 144))
+        self.assertTrue(any((94, y, z) in body and (95, y, z) in barrel for y in range(38) for z in range(27)))
 
 
 if __name__ == '__main__':

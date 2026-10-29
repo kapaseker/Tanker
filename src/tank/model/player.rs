@@ -2,39 +2,46 @@
 
 use super::WheelSpec;
 
-/// 每包共用的对称画布；车体中心在 X=67.5，车尾空白保证加载后零偏移对齐。
-pub const CANVAS: (u32, u32, u32) = (135, 36, 26);
-/// 底盘后缘（包含）与前缘（不包含），不包含炮管。
-pub const HULL_X: (i32, i32) = (30, 105);
-/// 炮塔正面与炮口端面；二者之间为独立炮管，长度 45 格。
-pub const BARREL_X: (i32, i32) = (90, 135);
-/// 炮管轴线距地高度：20 格；宽度轴线在画布正中。
-pub const BORE_HEIGHT: f32 = 20.0;
-
-/// 非炮管几何的 VOX 边界（最小点包含、最大点不包含），由生成器测试核对。
+/// 三包共同参考画布；body 根 X=72，碰撞中心与画布中心重合。
+pub const CANVAS: (u32, u32, u32) = (144, 38, 27);
+/// 主要几何向外量化后的纵向碰撞边界；视觉边界另见 VISUAL_HULL_X。
+pub const HULL_X: (i32, i32) = (33, 111);
+/// 炮盾前面至炮口端面，单位参考格；允许 0.02 米的五分之一参考格。
+pub const BARREL_X: (f32, f32) = (95.0, 143.6);
+/// 炮管轴线距地高度，单位参考格；外观比例估算，非实车测绘。
+pub const BORE_HEIGHT: f32 = 20.8;
+/// 视觉车体后缘和前缘，单位 0.02 米资产格，半开区间。
+pub const VISUAL_HULL_X: (i32, i32) = (169, 552);
+/// 含前楔的炮塔纵向边界，单位资产格，不含独立炮管。
+#[allow(dead_code)] // Python 作者源消费。
+pub const TURRET_X: (i32, i32) = (245, 475);
+/// 炮塔主体屋顶高度，单位资产格，排除舱盖等附件。
+#[allow(dead_code)] // Python 作者源消费。
+pub const TURRET_TOP: i32 = 132;
+/// 主要车体、炮塔及履带的简化碰撞下界，单位参考格。
 pub const COLLISION_MIN: [i32; 3] = [HULL_X.0, 0, 0];
-/// 碰撞框上界；区别于含大量空白和炮管的统一画布尺寸。
-pub const COLLISION_MAX: [i32; 3] = [HULL_X.1, 36, 26];
+/// 主要几何向外取 0.1 米后的碰撞上界；不以附件最高点扩高。
+pub const COLLISION_MAX: [i32; 3] = [HULL_X.1, 38, 27];
 
 /// 左右各五个负重轮和两个端轮；生成器和运行时共享节点名及安装位置。
 pub const WHEELS: [[WheelSpec; 7]; 2] = [
     [
-        wheel("wheel_l_0", 43.5, 4.0, false),
-        wheel("wheel_l_1", 55.5, 4.0, false),
-        wheel("wheel_l_2", 67.5, 4.0, false),
-        wheel("wheel_l_3", 79.5, 4.0, false),
-        wheel("wheel_l_4", 91.5, 4.0, false),
-        wheel("wheel_l_5", 34.0, 4.0, true),
-        wheel("wheel_l_6", 101.0, 4.0, true),
+        wheel("wheel_l_0", 45.0, 4.5, false),
+        wheel("wheel_l_1", 58.5, 4.5, false),
+        wheel("wheel_l_2", 72.0, 4.5, false),
+        wheel("wheel_l_3", 85.5, 4.5, false),
+        wheel("wheel_l_4", 99.0, 4.5, false),
+        wheel("wheel_l_5", 37.0, 4.5, true),
+        wheel("wheel_l_6", 107.0, 4.5, true),
     ],
     [
-        wheel("wheel_r_0", 43.5, 32.0, false),
-        wheel("wheel_r_1", 55.5, 32.0, false),
-        wheel("wheel_r_2", 67.5, 32.0, false),
-        wheel("wheel_r_3", 79.5, 32.0, false),
-        wheel("wheel_r_4", 91.5, 32.0, false),
-        wheel("wheel_r_5", 34.0, 32.0, true),
-        wheel("wheel_r_6", 101.0, 32.0, true),
+        wheel("wheel_r_0", 45.0, 33.5, false),
+        wheel("wheel_r_1", 58.5, 33.5, false),
+        wheel("wheel_r_2", 72.0, 33.5, false),
+        wheel("wheel_r_3", 85.5, 33.5, false),
+        wheel("wheel_r_4", 99.0, 33.5, false),
+        wheel("wheel_r_5", 37.0, 33.5, true),
+        wheel("wheel_r_6", 107.0, 33.5, true),
     ],
 ];
 

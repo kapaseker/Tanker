@@ -1,6 +1,6 @@
-//! 直接生成现代主战坦克的车身、炮管与六相位履带，纯标准库、确定性输出。
+//! 提供玩家作者化包的命名画布、材质与独立轮粗源；细网格主体见 player_a6.py。
 //! 日常发布请走统一入口：python -X utf8 scripts/publish_player.py
-//! （生成粗源 → 转换器细分 body/barrel → 验证后发布）；直接运行本生成器仅在
+//! （生成命名画布/轮粗源 → 细分 → 直接作者化主体 → 验证后发布）；直接运行本生成器仅在
 //! 交付 meta 仍是参考网格 0.1 时允许，细分迁移后会被拒绝，防止粗几何写回细配置。
 //! rustc --edition 2024 -O scripts/generate_player.rs -o target/generate_player.exe
 //! 车体与履带共享画布；局部轮模型以轴心居中，运行时按共享契约安装。
@@ -10,13 +10,10 @@ use std::{collections::BTreeMap, env, fs, path::PathBuf};
 #[allow(dead_code)]
 #[path = "../src/tank/model/mod.rs"]
 mod model;
-use model::player::{BARREL_X, BORE_HEIGHT, CANVAS as SIZE, HULL_X};
+use model::player::CANVAS as SIZE;
 
-/// 三相位每次推进一格，闭环周长必须被齿距整除。
-const PITCH: i32 = 3;
 /// 固定调色板索引：履带深灰和轮组浅灰。
 const C_DARK: u8 = 4;
-const C_LIGHT: u8 = 5;
 /// 独立浅色辐条，保留原履带灰色不变。
 const C_SPOKE: u8 = 6;
 /// 有序体素集合：后写的装甲细节覆盖底色，不输出重复体素。
@@ -29,37 +26,6 @@ struct Voxel {
     y: i32,
     z: i32,
     c: u8,
-}
-
-/// 沿车头 +X 闭环，削去底部两个角，周长 168 格。
-fn track_loop() -> Vec<(i32, i32)> {
-    (30..105)
-        .map(|x| (x, 11))
-        .chain((1..11).rev().map(|z| (104, z)))
-        .chain((31..104).rev().map(|x| (x, 0)))
-        .chain((1..11).map(|z| (30, z)))
-        .collect()
-}
-
-/// 填充半开区间盒体；bevel 削去平面四角，保持体素装甲的棱角感。
-fn box_cells(
-    cells: &mut Cells,
-    x: (i32, i32),
-    y: (i32, i32),
-    z: (i32, i32),
-    color: u8,
-    bevel: i32,
-) {
-    for a in x.0..x.1 {
-        for b in y.0..y.1 {
-            if (a - x.0).min(x.1 - 1 - a) + (b - y.0).min(y.1 - 1 - b) < bevel {
-                continue;
-            }
-            for c in z.0..z.1 {
-                cells.insert((a, b, c), color);
-            }
-        }
-    }
 }
 
 /// 转换有序体素，所有坐标必须落在统一画布内。
@@ -80,111 +46,17 @@ fn voxels(cells: Cells) -> Vec<Voxel> {
         .collect()
 }
 
-/// 生成车身和炮塔；裙板高于履带顶齿，外侧保留负重轮视窗。
-fn body() -> Vec<Voxel> {
-    let mut cells = Cells::new();
-    box_cells(&mut cells, HULL_X, (7, 29), (4, 11), 1, 3);
-    // 首上逐层后收，形成朝向 +X 的倾斜装甲。
-    for z in 11..16 {
-        box_cells(
-            &mut cells,
-            (31, 105 - (z - 10) * 2),
-            (6, 30),
-            (z, z + 1),
-            if z == 15 { 2 } else { 1 },
-            3,
-        );
-    }
-    // 车尾最后四格向后下降两格，裙板用内侧窄梁连接。
-    cells.retain(|&(x, _, z), _| x >= 34 || z < 14 + (x - 30) / 2);
-    for y in [(1, 7), (29, 35)] {
-        let beam = if y.0 == 1 { (6, 7) } else { (29, 30) };
-        box_cells(&mut cells, (30, 105), beam, (14, 15), 3, 0);
-        for x in (33..94).step_by(10) {
-            box_cells(&mut cells, (x, x + 9), y, (14, 16), 3, 1);
-            box_cells(&mut cells, (x, x + 9), y, (15, 16), 2, 1);
-        }
-        box_cells(&mut cells, (30, 33), y, (14, 15), 3, 1);
-        box_cells(&mut cells, (102, 105), y, (14, 15), 3, 1);
-    }
-    // 尾舱 13 格、中部 15 格、前楔 13 格；高度和前壁接缝保持不变。
-    for (z0, z1, half, color) in [(16, 20, 13, 3), (20, 23, 12, 1), (23, 25, 10, 2)] {
-        box_cells(
-            &mut cells,
-            (49, 62),
-            (18 - half, 18 + half),
-            (z0, z1.min(24)),
-            color,
-            2,
-        );
-        box_cells(
-            &mut cells,
-            (62, 77),
-            (18 - half, 18 + half),
-            (z0, z1),
-            color,
-            0,
-        );
-        for x in 77..90 {
-            // 两侧逐格收向炮盾；中层从 24 格收至 12 格宽。
-            let width = half - (half - 6) * (x - 77) / 12;
-            box_cells(
-                &mut cells,
-                (x, x + 1),
-                (18 - width, 18 + width),
-                (z0, z1),
-                color,
-                0,
-            );
-        }
-    }
-    box_cells(&mut cells, (61, 70), (11, 19), (25, 26), 3, 2);
-    box_cells(&mut cells, (75, 82), (19, 25), (25, 26), 3, 2);
-    // 炮盾属于车身，前面紧贴炮管根部，轴线在地面以上 2 米。
-    box_cells(&mut cells, (86, 90), (14, 22), (17, 23), 3, 1);
-    for x in (34..48).step_by(3) {
-        box_cells(&mut cells, (x, x + 1), (10, 26), (15, 16), C_DARK, 0);
-    }
-    voxels(cells)
+/// 车身和炮管只提供调色板、命名根与共同画布，几何由 player_a6.py 直接作者化。
+fn authoring_canvas() -> Vec<Voxel> {
+    vec![Voxel { x: 0, y: 0, z: 0, c: 1 }]
 }
 
-/// 炮管外径主体两格；根部加粗、中央抽烟器和暗色炮口表达火炮结构。
-fn barrel() -> Vec<Voxel> {
-    let mut cells = Cells::new();
-    let h = BORE_HEIGHT as i32;
-    box_cells(&mut cells, BARREL_X, (17, 19), (h - 1, h + 1), 2, 0);
-    box_cells(&mut cells, (90, 96), (16, 20), (h - 2, h + 2), 3, 1);
-    box_cells(&mut cells, (110, 116), (16, 20), (h - 2, h + 2), 1, 1);
-    box_cells(&mut cells, (133, 135), (17, 19), (h - 1, h + 1), 3, 0);
-    box_cells(&mut cells, (134, 135), (17, 19), (h - 1, h + 1), C_DARK, 0);
-    voxels(cells)
-}
-
-/// 履带只保留闭环；内侧连接条位于轮宽之外，不填实轮间空隙。
+/// 六个履带命名画布加独立轮；闭环在细网格作者源中生成，不再依赖粗几何。
 fn tracks() -> Vec<(String, Vec<Voxel>)> {
-    let rim = track_loop();
     let mut models = Vec::new();
-    for (side, y0, y1, outer, inner) in [("l", 1, 7, 0, 6), ("r", 29, 35, 35, 29)] {
-        for phase in 0..PITCH {
-            let mut cells = Cells::new();
-            box_cells(&mut cells, (31, 104), (inner, inner + 1), (5, 7), C_DARK, 0);
-            for (i, &(x, z)) in rim.iter().enumerate() {
-                let tooth = (i as i32 - phase).rem_euclid(PITCH) == 0;
-                for y in y0..y1 {
-                    // 上沿内侧一格让开车体斜装甲，外侧闭环保持完整。
-                    if z == 11 && y == inner {
-                        continue;
-                    }
-                    cells.insert((x, y, z), if tooth { C_LIGHT } else { C_DARK });
-                    if tooth && z == 11 {
-                        cells.insert((x, y, 12), C_LIGHT);
-                    }
-                }
-                if tooth {
-                    cells.insert((x, outer, z), C_LIGHT);
-                }
-            }
-            models.push((format!("track_{side}_{phase}"), voxels(cells)));
+    for side in ["l", "r"] {
+        for phase in 0..3 {
+            models.push((format!("track_{side}_{phase}"), authoring_canvas()));
         }
     }
     for spec in model::player::WHEELS.iter().flatten() {
@@ -304,18 +176,18 @@ fn refuse_if_migrated(path: &std::path::Path) {
     }
 }
 
-/// 输出三个默认资源包，可传工程根目录；不读取旧模型或敌人资源。
+/// 输出三个临时作者化包，可传工程根目录；不读取旧模型或敌人资源。
 /// 细分迁移后 body/barrel 会被配对 meta 守卫拒绝，改走 publish_player.py。
 fn main() {
     let root = PathBuf::from(env::args().nth(1).unwrap_or_else(|| ".".into()));
     for (path, models) in [
         (
             "assets/tank/bodies/player/anvil/body.vox",
-            vec![("body".into(), body())],
+            vec![("body".into(), authoring_canvas())],
         ),
         (
             "assets/tank/barrels/player/lance/barrel.vox",
-            vec![("barrel".into(), barrel())],
+            vec![("barrel".into(), authoring_canvas())],
         ),
         ("assets/tank/tracks/player/cleat/track.vox", tracks()),
     ] {
@@ -430,34 +302,6 @@ fn push_dict(out: &mut Vec<u8>, entries: &[(&str, &str)]) {
 mod tests {
     use super::*;
 
-    /// 按全部履带相位与车身的真实格边界核对碰撞尺寸和零中心偏移。
-    #[test]
-    fn non_barrel_bounds_match_centered_collision_contract() {
-        let mut geometry = body();
-        for (_, model) in tracks().into_iter().take(6) {
-            geometry.extend(model);
-        }
-        let mut low = [i32::MAX; 3];
-        let mut high = [i32::MIN; 3];
-        for v in geometry {
-            for (axis, value) in [v.x, v.y, v.z].into_iter().enumerate() {
-                low[axis] = low[axis].min(value);
-                high[axis] = high[axis].max(value + 1);
-            }
-        }
-        assert_eq!(low, model::player::COLLISION_MIN);
-        assert_eq!(high, model::player::COLLISION_MAX);
-        assert_eq!(
-            [low[0] + high[0], low[1] + high[1], low[2] + high[2]],
-            [SIZE.0 as i32, SIZE.1 as i32, SIZE.2 as i32],
-            "碰撞中心必须与三包加载中心重合"
-        );
-        assert!(
-            barrel().iter().any(|v| v.x >= high[0]),
-            "炮管超出框但不参与边界并集"
-        );
-    }
-
     /// 轮子独立画布不能直接并入全局边界；按安装轴心核对整个旋转包络。
     #[test]
     fn wheel_envelopes_fit_collision_and_track_clearance() {
@@ -473,21 +317,6 @@ mod tests {
             }
             assert!(spec.center[2] - spec.envelope > 1.0);
             assert!(spec.center[2] + spec.envelope < 11.0);
-        }
-        assert_eq!(track_loop().len(), 168);
-    }
-
-    /// 闭环没有重复角点或断裂，周长是齿距整数倍，保证末相位回到首相位不跳齿。
-    #[test]
-    fn tread_loop_closes_without_duplicate_points_or_phase_seam() {
-        let rim = track_loop();
-        let points: std::collections::BTreeSet<_> = rim.iter().copied().collect();
-        assert_eq!(points.len(), rim.len());
-        assert_eq!(rim.len() as i32 % PITCH, 0);
-        for i in 0..rim.len() {
-            let (x, z) = rim[i];
-            let (next_x, next_z) = rim[(i + 1) % rim.len()];
-            assert_eq!((next_x - x).abs().max((next_z - z).abs()), 1);
         }
     }
 

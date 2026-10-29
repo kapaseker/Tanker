@@ -12,11 +12,11 @@ ASSETS = Path(__file__).resolve().parents[1] / 'assets' / 'tank'
 
 # 各车型共享画布契约（参考格数），与 Rust 侧 CANVAS 一致；必须显式传给解析器，
 # 避免对敌人包误套玩家画布。
-PLAYER_CANVAS = (135, 36, 26)
+PLAYER_CANVAS = (144, 38, 27)
 ENEMY_CANVAS = (114, 34, 26)
 
 
-def read_reference_models(path, canvas):
+def read_reference_models(path, canvas, asset_grid=False):
     """解析交付 .vox，按命名节点还原 {名称: {(参考格 x,y,z): 颜色}}。
 
     粗资产（0.1 米/格）模型坐标即参考格，直接取用；细分资产（0.02 米/格）
@@ -69,11 +69,11 @@ def read_reference_models(path, canvas):
                     g = (x + origin[0] + t_named[0],
                          y + origin[1] + t_named[1],
                          z + origin[2] + t_named[2])
-                    ref = tuple(v // factor for v in g)
-                    if not all(0 <= r < s for r, s in zip(ref, canvas)):
+                    ref = g if asset_grid else tuple(v // factor for v in g)
+                    if not all(0 <= r < s for r, s in zip(ref, full if asset_grid else canvas)):
                         raise AssertionError(f'{path.name}: {name} 还原格 {ref} 超出画布 {canvas}')
                     # 参考格只验证尺寸/占用；细网格颜色和凹槽由资产格测试验证。
-                    if path != ASSETS / 'bodies/player/anvil/body.vox' and cells.get(ref, c) != c:
+                    if 'enemy' in path.parts and cells.get(ref, c) != c:
                         raise AssertionError(f'{path.name}: {name} 分块降采样在 {ref} 颜色冲突')
                     cells.setdefault(ref, c)
         out[name] = cells
@@ -82,7 +82,7 @@ def read_reference_models(path, canvas):
 
 class TrackLoopTests(unittest.TestCase):
     def test_both_chassis_roll_around_the_rim(self):
-        for chassis, end, top, bevel in (('player', 74, 11, True), ('enemy', 65, 12, True)):
+        for chassis, end, top, bevel in (('player', 382, 68, False), ('enemy', 65, 12, True)):
             with self.subTest(chassis=chassis):
                 # VOX +X 是车头：前进时上段向 +X、前端向下、下段向 −X、后端向上。
                 rim = ([(x, top) for x in range(end+1)]
@@ -90,7 +90,7 @@ class TrackLoopTests(unittest.TestCase):
                        + [(x, 0) for x in range(end-int(bevel), int(bevel)-1, -1)]
                        + [(0, z) for z in range(1, top)])
                 if chassis == 'player':
-                    rim = [(x+30, z) for x,z in rim]
+                    rim = [(x+169, z) for x,z in rim]
                 else:
                     rim = ([(x,12) for x in range(24,90)] + [(89,z) for z in range(11,1,-1)]
                            + [(88,1)] + [(x,0) for x in range(87,25,-1)]
@@ -98,17 +98,18 @@ class TrackLoopTests(unittest.TestCase):
                 self.assertEqual(len(rim), len(set(rim)))
                 self.assertEqual(len(rim) % 3, 0, '闭环接缝的齿距也必须连续')
                 canvas = PLAYER_CANVAS if chassis == 'player' else ENEMY_CANVAS
-                track = read_reference_models(ASSETS / 'tracks' / chassis / ('cleat' if chassis == 'player' else 'crawl') / 'track.vox', canvas)
+                track = read_reference_models(ASSETS / 'tracks' / chassis / ('cleat' if chassis == 'player' else 'crawl') / 'track.vox', canvas, asset_grid=chassis == 'player')
                 self.assertEqual(len(track), 20 if chassis == 'player' else 18)
-                body = read_reference_models(ASSETS / 'bodies' / chassis / ('anvil' if chassis == 'player' else 'carapace') / 'body.vox', canvas)['body']
-                sides = ((0,0,1),(1,35,34)) if chassis == 'player' else ((0,0,1),(1,33,32))
+                body = read_reference_models(ASSETS / 'bodies' / chassis / ('anvil' if chassis == 'player' else 'carapace') / 'body.vox', canvas, asset_grid=chassis == 'player')['body']
+                sides = ((0,1,5),(1,188,184)) if chassis == 'player' else ((0,0,1),(1,33,32))
                 for side, outer_y, face_y in sides:
                     phases = [track[f'track_{"lr"[side]}_{phase}'] for phase in range(3)]
                     stationary = None
                     for phase, cells in enumerate(phases):
                         self.assertFalse(cells.keys() & body.keys())
                         outer = {(x, z) for x, y, z in cells if y == outer_y}
-                        expected = {point for s, point in enumerate(rim) if (s-phase) % 3 == 0}
+                        step, pitch, width = (5, 15, 5) if chassis == 'player' else (1, 3, 1)
+                        expected = {point for s, point in enumerate(rim) if (s-phase*step) % pitch < width}
                         self.assertEqual(outer, expected, f'{chassis} 侧 {side} 相位 {phase} 必须沿轮廓滚动')
                         # 两种底盘内侧连接结构不随履带相位平移或变色。
                         wheels = {(x, z): c for (x, y, z), c in cells.items()
@@ -119,8 +120,8 @@ class TrackLoopTests(unittest.TestCase):
                         if chassis == 'enemy':
                             self.assertFalse(any((x,face_y,6) in cells for x in (44,57,70)), '敌人轮间必须透空')
                         else:
-                            self.assertFalse(any((x, face_y, 6) in cells for x in (50, 62, 74, 86)), '玩家轮间必须透空')
-                        next_positions = {rim[(s+1) % len(rim)] for s, point in enumerate(rim)
+                            self.assertFalse(any((x, face_y, 6) in cells for x in (255, 320, 390, 460)), '玩家轮间必须透空')
+                        next_positions = {rim[(s+step) % len(rim)] for s, point in enumerate(rim)
                                           if point in outer}
                         next_cells = phases[(phase+1) % 3]
                         self.assertEqual(next_positions, {(x, z) for x, y, z in next_cells if y == outer_y})

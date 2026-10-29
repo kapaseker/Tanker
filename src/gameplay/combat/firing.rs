@@ -401,7 +401,8 @@ mod tests {
                 .with_rotation(Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)),
         );
         let (position, direction) = muzzle_pose(&tank);
-        assert!(position.abs_diff_eq(Vec3::new(3.0, 2.7, 7.95), 1e-5));
+        // 新炮口局部中心 (-7.36, 0.73, 0)，偏航 90° 后前向映射到世界 +Z。
+        assert!(position.abs_diff_eq(Vec3::new(3.0, 2.73, 8.36), 1e-5));
         assert!(direction.abs_diff_eq(Vec3::Z, 1e-5));
     }
 
@@ -813,7 +814,7 @@ mod tests {
         let (_, tank_minimum, tank_maximum) = scene_bounds(app.world(), tank);
         // 三包组合必须覆盖真实尺寸；底部与两侧由履带补全；炮管超出碰撞框是预期行为。
         assert!(
-            (tank_maximum - tank_minimum).abs_diff_eq(Vec3::new(10.5, 2.6, 3.6), 1e-4),
+            (tank_maximum - tank_minimum).abs_diff_eq(Vec3::new(10.98, 2.7, 3.76), 1e-4),
             "车身与炮管组合尺寸：{tank_minimum:?}～{tank_maximum:?}"
         );
         assert!((MUZZLE_POSITION.x + BULLET_SIZE / 2.0 - tank_minimum.x).abs() < 1e-4);
