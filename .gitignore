@@ -23,10 +23,8 @@
 Thumbs.db
 
 # ===== 工程约定 =====
-# 本地临时内容默认忽略，仅跟踪指定计划。
+# 本地临时内容与工单默认忽略。
 /.scratch/*
-!/.scratch/vox-model-refinement/
-/.scratch/vox-model-refinement/evidence/
 
 # ===== 游戏运行时产物 =====
 # Bevy 导出的缓存/临时资源目录（assets/ 源资产正常纳入版本控制）

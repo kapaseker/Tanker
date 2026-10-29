@@ -71,5 +71,5 @@ cargo run -- --offscreen-test wheels --output .scratch/offscreen/enemy-wheels --
 - NVIDIA RTX 4060 / Vulkan：drive、combat退出0且报告通过；`wheels --model enemy`退出非0，仅帧30/60的直行里程断言失败，原因沿用既有的`ENEMY_TRACKS`速度0占位（敌人本身不移动），失败行与`legacy-wheels-enemy-01`基线完全一致；转向、停车及轮组其余断言通过。
 - 逐图比对`legacy-wheels-enemy-01`的帧0/75/90/120/250及side/front/rear/bounds/comparison共10张图：帧0/75/90/250与side完全一致，其余差异像素为18/379/306/338/236（总像素921600）、最大通道差29且无>32的像素，属细分后的光栅取样差异，轮廓、轮位与同场比例不变。已读取侧视图、转向帧与combat第120帧，确认无裂缝、端轮未错位、靶车清理无残留。
 - 击毁清理由`real_vox_assets_fire_and_clean_up_scene_instances`断言：20个场景根实例随根实体销毁全部注销，并逐个确认分块子实体不存在。
-- 证据（忽略目录，不提交）：`.scratch/vox-model-refinement/evidence/07-{drive-d86752,combat-92c312,enemy-wheels-a}/`。
+- 验收汇总见 [VOX 模型细分验收报告](testing/vox-model-refinement.md)；原始截图与日志已清理。
 - 未启动可见窗口；未验证其它显卡/驱动及窗口输入行为。
