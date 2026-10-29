@@ -8,7 +8,7 @@ use bevy::{
     prelude::*,
     render::{
         RenderApp, RenderPlugin,
-        mesh::RenderMesh,
+        mesh::{PrimitiveTopology, RenderMesh, RenderMeshBufferInfo},
         pipelined_rendering::PipelinedRenderingPlugin,
         render_asset::RenderAssets,
         render_resource::{CachedPipelineState, PipelineCache, PollType, TextureFormat},
@@ -155,6 +155,10 @@ pub(crate) fn run(mut app: App, options: Options) -> Result<(), String> {
         .init_resource::<Evidence>()
         .init_resource::<CaptureResult>()
         .init_resource::<MenuMouse>()
+        .insert_resource(Perf {
+            start: Some(std::time::Instant::now()),
+            ..default()
+        })
         .add_systems(PreUpdate, (setup_target, inject_input.after(InputSystems)))
         .add_systems(Last, collect_evidence);
     if !matches!(
@@ -186,6 +190,24 @@ pub(crate) fn run(mut app: App, options: Options) -> Result<(), String> {
         ));
     }
     let result = run_scenario(&mut app, &options, &mut report);
+    let perf = app.world().resource::<Perf>();
+    if let Some(ready) = perf.ready_secs {
+        report.push_str(&format!("性能：启动到渲染就绪墙钟 {:.3}s\n", ready));
+    }
+    if perf.mesh_instances > 0 {
+        report.push_str(&format!(
+            "性能：就绪网格实例 {}，唯一网格 {}，三角形 {}\n",
+            perf.mesh_instances, perf.unique_meshes, perf.triangles
+        ));
+    }
+    if perf.sim_updates > 0 {
+        report.push_str(&format!(
+            "性能：模拟更新 {} 次，累计墙钟 {:.3}s（平均 {:.2}ms/帧；含同步渲染、物理与每帧 1ms 让出，不含截图等待）\n",
+            perf.sim_updates,
+            perf.sim_wall_secs,
+            perf.sim_wall_secs * 1000.0 / f64::from(perf.sim_updates)
+        ));
+    }
     report.push_str(&match &result {
         Ok(()) => "结果：通过\n".into(),
         Err(error) => format!("结果：失败\n原因：{error}\n"),
@@ -196,12 +218,36 @@ pub(crate) fn run(mut app: App, options: Options) -> Result<(), String> {
     result
 }
 
+/// 离屏性能证据：启动到渲染就绪的墙钟、就绪时网格统计、模拟步累计墙钟。
+/// 只写入 report.txt 供验收对比，不参与任何断言。
+#[derive(Resource, Default)]
+struct Perf {
+    /// run() 入口时刻，用于计算加载墙钟。
+    start: Option<std::time::Instant>,
+    /// 首次 wait_render 稳定所需的墙钟秒数。
+    ready_secs: Option<f64>,
+    /// 模拟步（duration==STEP）的更新次数与累计墙钟秒数；
+    /// 含 GPU 同步渲染、物理与每帧 1ms 让出，不含截图等待与断言。
+    sim_updates: u32,
+    sim_wall_secs: f64,
+    /// 场景就绪时的网格统计：Mesh3d 实例数、唯一网格数、三角形总数。
+    mesh_instances: usize,
+    unique_meshes: usize,
+    triangles: u64,
+}
+
 /// 每次更新都检查资源失败、退出请求和管线错误；等待时也让出 CPU 并轮询读回。
 pub(super) fn update(app: &mut App, duration: Duration, frame: Option<u32>) -> Result<(), String> {
     app.world_mut()
         .insert_resource(TimeUpdateStrategy::ManualDuration(duration));
     app.world_mut().resource_mut::<InputFrame>().1 = frame;
+    let tick = std::time::Instant::now();
     app.update();
+    if duration == STEP {
+        let mut perf = app.world_mut().resource_mut::<Perf>();
+        perf.sim_updates += 1;
+        perf.sim_wall_secs += tick.elapsed().as_secs_f64();
+    }
     ensure(
         app.world_mut()
             .query::<&Window>()
@@ -315,7 +361,51 @@ pub(super) fn wait_render(app: &mut App, require_scene: bool) -> Result<(), Stri
             stable = 0;
         }
     }
+    record_perf(app, require_scene);
     Ok(())
+}
+
+/// 首次就绪时记录加载墙钟；游戏场景额外统计网格实例、唯一网格与三角形总数。
+/// 纯证据采集，任何失败都不影响场景流程。
+fn record_perf(app: &mut App, require_scene: bool) {
+    // 先整体取出 Perf，避免后续 app.sub_app(RenderApp) 与主 world 可变借用冲突；函数末尾写回。
+    let mut perf = std::mem::take(&mut *app.world_mut().resource_mut::<Perf>());
+    if perf.ready_secs.is_none() {
+        if let Some(start) = perf.start {
+            perf.ready_secs = Some(start.elapsed().as_secs_f64());
+        }
+    }
+    if require_scene && perf.mesh_instances == 0 {
+        // 交付资产 retain_mesh_data=false，就绪后 CPU 端 Mesh 已被 extract 释放；
+        // 三角形数改从渲染世界的 RenderMesh 缓冲信息读取。
+        let world = app.world_mut();
+        let ids: Vec<_> = world
+            .query::<&Mesh3d>()
+            .iter(world)
+            .map(|mesh| mesh.0.id())
+            .collect();
+        perf.mesh_instances = ids.len();
+        let render = app.sub_app(RenderApp).world();
+        let gpu_meshes = render.resource::<RenderAssets<RenderMesh>>();
+        let mut unique = std::collections::HashSet::new();
+        for id in ids {
+            if unique.insert(id) {
+                if let Some(mesh) = gpu_meshes.get(id) {
+                    perf.triangles += match (mesh.primitive_topology(), &mesh.buffer_info) {
+                        (PrimitiveTopology::TriangleList, RenderMeshBufferInfo::Indexed { count, .. }) => {
+                            (count / 3) as u64
+                        }
+                        (PrimitiveTopology::TriangleList, RenderMeshBufferInfo::NonIndexed) => {
+                            (mesh.vertex_count / 3) as u64
+                        }
+                        _ => 0,
+                    };
+                }
+            }
+        }
+        perf.unique_meshes = unique.len();
+    }
+    *app.world_mut().resource_mut::<Perf>() = perf;
 }
 
 /// 发送端随运行结束而释放即取消计时；测试可使用短时限验证同一调度逻辑。
