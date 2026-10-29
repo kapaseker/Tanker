@@ -25,6 +25,14 @@ Thumbs.db
 # ===== 工程约定 =====
 # 本地临时内容与工单默认忽略。
 /.scratch/*
+# 豹 2 外观返工文档按用户要求共享；其余临时内容继续忽略。
+!/.scratch/leopard-player-rework/
+/.scratch/leopard-player-rework/*
+!/.scratch/leopard-player-rework/plan.md
+!/.scratch/leopard-player-rework/spec.md
+!/.scratch/leopard-player-rework/issues/
+/.scratch/leopard-player-rework/issues/*
+!/.scratch/leopard-player-rework/issues/*.md
 
 # ===== 游戏运行时产物 =====
 # Bevy 导出的缓存/临时资源目录（assets/ 源资产正常纳入版本控制）
