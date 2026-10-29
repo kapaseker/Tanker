@@ -16,8 +16,7 @@ use bevy::{
 pub(crate) const FIRE_INTERVAL: f32 = 60.0 / crate::tank::visual::PLAYER_BARREL.rate_of_fire;
 /// 子弹的匀速飞行速度即炮口初速，单位：米/秒；来自 lance 装备定义。
 const BULLET_SPEED: f32 = crate::tank::visual::PLAYER_BARREL.muzzle_velocity;
-/// 弹体视觉资产为 60×20×20 格（0.02 米/格）；扫掠碰撞固定为 0.4 米立方体，
-/// 不随资产网格密度变化，单位：米。
+/// 扫掠碰撞固定为 0.4 米立方体，与视觉尺寸无关，单位：米。
 const BULLET_SIZE: f32 = 0.4;
 /// 从出生点累计计算的最大飞行距离，单位：世界单位。
 const BULLET_RANGE: f32 = 2000.0;
@@ -943,19 +942,16 @@ mod tests {
                 .instance_is_ready(instance)
         );
         let (_, bullet_minimum, bullet_maximum) = scene_bounds(app.world(), bullet);
-        // 视觉包围盒为 60×20×20 格的细长弹体（长轴沿世界 X，0.02 米/格，
-        // 合计 1.2×0.4×0.4 米）；
-        // 0.4³ 只是扫掠碰撞立方体，不代表视觉尺寸。体素网格带 ~6e-6 缝合
-        // epsilon，容差取 1e-4。
+        // 视觉尺寸与 0.4 米扫掠碰撞盒分开；模型前移使尾端贴合炮口。
         assert!(
-            (bullet_maximum - bullet_minimum).abs_diff_eq(Vec3::new(1.2, 0.4, 0.4), 1e-4),
+            (bullet_maximum - bullet_minimum).abs_diff_eq(Vec3::new(0.72, 0.1, 0.1), 1e-4),
             "子弹视觉包围盒实际为 {:?}，中心 {:?}",
             bullet_maximum - bullet_minimum,
             (bullet_minimum + bullet_maximum) / 2.0,
         );
         let bullet_center = (bullet_minimum + bullet_maximum) / 2.0;
         assert!(bullet_center.abs_diff_eq(
-            app.world().get::<Transform>(bullet).unwrap().translation,
+            app.world().get::<Transform>(bullet).unwrap().translation + Vec3::NEG_X * 0.16,
             1e-5,
         ));
         // 保留场景直接子实体的编号，用于确认销毁根节点时一并清理层级。
@@ -966,7 +962,7 @@ mod tests {
             .iter()
             .collect();
         // 弹体网格只在子弹自身层级内查找：车体细分后分块网格的 AABB 可能
-        // 恰好等于 1.2×0.4×0.4 米的弹体半尺寸，全局按半尺寸匹配会有歧义。
+        // 与弹体尺寸相近，全局按半尺寸匹配会有歧义。
         let mut bullet_material = None;
         let mut pending = vec![bullet];
         while let Some(entity) = pending.pop() {
@@ -982,7 +978,7 @@ mod tests {
                 .get(&mesh.0)
                 .is_some_and(|loaded| {
                     loaded.get_aabb().is_some_and(|aabb| {
-                        aabb.half_extents.abs_diff_eq(Vec3::new(0.6, 0.2, 0.2).into(), 1e-5)
+                        aabb.half_extents.abs_diff_eq(Vec3::new(0.36, 0.05, 0.05).into(), 1e-5)
                     })
                 })
             {
@@ -994,7 +990,7 @@ mod tests {
             .resource::<Assets<StandardMaterial>>()
             .get(
                 &bullet_material
-                    .expect("子弹层级内应加载 60×20×20 格（1.2×0.4×0.4 米）的弹体网格"),
+                    .expect("子弹层级内应加载 36×5×5 格（0.72×0.1×0.1 米）的弹体网格"),
             )
             .unwrap();
         assert!(material.perceptual_roughness >= 0.8);

@@ -9,6 +9,7 @@ import sys
 import unittest
 import hashlib
 import tempfile
+from unittest.mock import patch
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -30,6 +31,27 @@ class PublishCheckTests(unittest.TestCase):
         self.assertIn('一致', proc.stdout)
         self.assertEqual(before, {p: (hashlib.sha256(p.read_bytes()).digest(), p.stat().st_mtime_ns)
                                   for p in paths}, '检查模式不得写入交付 VOX 或 meta')
+
+    def test_bullet_rejects_invalid_meta_and_displaced_scene(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            delivered = root / 'bullet.vox'
+            delivered.write_bytes(b'original')
+            meta = delivered.with_suffix('.vox.meta')
+            meta.write_text('voxel_size: invalid', encoding='utf-8')
+            with patch.object(pp, 'BULLET', delivered):
+                with self.assertRaises(pp.PublishError):
+                    pp.author_bullet(root / 'invalid')
+                meta.write_text('voxel_size: 0.02', encoding='utf-8')
+                write = pp.write_vox
+                def displaced(models, nodes, raw, path):
+                    nodes[2].frames = [{'_t': '9 0 0', '_r': '4'}]
+                    write(models, nodes, raw, path)
+                with patch.object(pp, 'write_vox', side_effect=displaced):
+                    with self.assertRaises(pp.PublishError):
+                        pp.author_bullet(root / 'displaced')
+            self.assertEqual(delivered.read_bytes(), b'original')
+            self.assertEqual(meta.read_text(encoding='utf-8'), 'voxel_size: 0.02')
 
     def test_compare_reports_geometry_and_meta_drift(self):
         with tempfile.TemporaryDirectory() as directory:

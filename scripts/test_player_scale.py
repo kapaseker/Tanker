@@ -29,6 +29,18 @@ def bounds(path, name, full=(720, 190, 135), section_x=None):
 
 
 class PlayerScaleTests(unittest.TestCase):
+    def test_projectile_is_slender_with_fins(self):
+        path = ROOT / 'barrels/player/lance/bullet.vox'
+        source = sv.parse_vox(path.read_bytes(), str(path))
+        model = source.models[0]
+        self.assertEqual(model.size, (36, 5, 5))
+        voxels = {(x, y, z) for x, y, z, _ in struct.iter_unpack('<BBBB', model.xyzi)}
+        self.assertTrue(all((x, 2, 2) in voxels for x in range(36)))
+        self.assertEqual(sum(x == 35 for x, y, z in voxels), 1)
+        self.assertEqual(sum(x == 25 for x, y, z in voxels), 4)
+        self.assertGreater(sum(x < 6 and (y != 2 or z != 2) for x, y, z in voxels), 0)
+        self.assertEqual(sv.read_meta_unit(path.with_suffix('.vox.meta')), 0.02)
+
     def test_authoring_rejects_displaced_staging_chunk(self):
         delivered = ROOT / 'bodies/player/anvil/body.vox'
         before = delivered.read_bytes(), delivered.stat().st_mtime_ns

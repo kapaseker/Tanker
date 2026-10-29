@@ -64,7 +64,7 @@ cargo test
 统一入口不读取交付资产作为造型输入。Rust 生成器提供命名画布、材质及独立轮粗源，
 转换器细分轮子并处理 meta；`scripts/player_a6.py` 直接在 0.02 米格上生成车体、炮管和
 六相位履带，复用已有分块规划和场景类型。车体/炮管不再依赖旧粗几何，尾舱仍有真实细格凹槽。
-子弹继续以 `scripts/fixtures/bullet.vox` 为粗源。直接运行 Rust 生成器仅得到临时作者化输入，
+子弹由发布脚本直接以细网格作者化，不再使用旧粗弹丸快照。直接运行 Rust 生成器仅得到临时作者化输入，
 不是完整交付模型；已配置细网格 meta 的交付位置仍被直写守卫拒绝。
 
 每个部件在临时目录完整生成、回读验证后才调用既有 VOX/meta 配对发布；整套四部件不保证事务。
@@ -73,6 +73,14 @@ cargo test
 验证 840 格梯形闭环三相位；真实加载测试验证装配、炮口、预览取景和实例清理。
 最终运行 scene、drive、combat、wheels、gallery、detail 离屏并读取关键帧。
 本票证据和限制见 [真实尺寸基础整车验收](testing/player-a6-assembly.md)。
+
+## 尾翼弹丸（工单 05）
+
+飞行体参考 DM53/DM63 系列的细长脱壳外观；[Rheinmetall 系统资料](https://www.rheinmetall.com/Rheinmetall%20Group/brochure-download/Weapon-Ammmunition/B195e0423-Rheinmetall-120mm-system-house.pdf)确认 DM63A1 兼容 L55，但未给出飞行体几何尺寸。[公开报道](https://militarnyi.com/en/news/ukrainian-leopard-tanks-received-modern-dm53-armor-piercing-rounds/)称 DM53A1 穿杆长约 0.685 米、直径约 0.026 米，不能把它视作完整飞行体实测。按报道的穿杆长度加约 0.035 米尾端估算全长约 0.72 米，尾翼包络按杆径约四倍估算为 0.10 米；该比例是低精度造型假设。杆径约 0.026 米，为表达单格尖端，量化为 0.04 米（误差 0.014 米）。三者分别量化为 36、5、2 格；尾翼尺寸和全长是造型估算，并非厂家数据。单格尖端无法表达亚格锥面。通用 APFSDS 的脱壳及尾翼外形参考 [示意图](https://commons.wikimedia.org/wiki/File:APFSDS_Diagram.png)，该图并非 DM53/DM63 实物或尺寸依据。
+
+弹丸直接生成并回读为 0.02 米资产；没有弹壳或弹托。视觉中心相对既有扫掠中心向前 0.16 米，使 0.72 米弹体尾端与炮口端面相接。扫掠盒、弹速、射速、射程及伤害保持原值。配对发布和 `--check` 沿用统一入口，旧粗快照不再参与弹丸生成。
+
+2026-10-29 在 NVIDIA GeForce RTX 4060 / Vulkan 的 combat 离屏中验证生成、飞行、命中、爆炸及清理，读取出生近景和正常镜头首发帧；近景可见尾翼和收窄尖端，正常镜头下弹丸几乎不可辨。射程及场景实例清理由逻辑和真实资源测试覆盖。没有进行可见窗口测试；尺寸为公开资料与造型估算，不是工程测量。
 
 ## 装甲与附件细节验收（工单 04，2026-10-29）
 

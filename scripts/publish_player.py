@@ -3,12 +3,11 @@
 流程：rustc 编译 scripts/generate_player.rs（缺失或源更新时重编）→ 生成命名画布与轮粗源
 body/barrel/track 到临时目录 → 按交付 meta 复制字段并强制 0.1 单位生成粗样
 meta → 三包细分到 0.02 → player_a6.py 直接作者化主体 → 验证后配对发布到 assets。
-子弹无生成器：直接以 scripts/fixtures/bullet.vox（0.1 粗源逐字节快照）为
-转换源，细分后原子发布到 lance 目录。
+子弹直接以 0.02 米格作者化，回读后配对发布到 lance 目录。
 
 - 默认模式：真实发布；每个部件转换、作者化和回读验证通过后分别替换，失败保留该部件原资产。
 - --check：全流程只到临时目录，把管线产物与交付资产逐字节比对（body/barrel/track
-  细分对与子弹细分对），不一致退出码非零；绝不写 assets/。这是"重新生成不会
+  作者化对与子弹对），不一致退出码非零；绝不写 assets/。这是"重新生成不会
   把粗资产覆盖到 0.02 配置下"的可回归证明。
 - 工作目录放在 target/ 下：Windows 的 os.replace 要求源与目标同卷。
 """
@@ -22,7 +21,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from subdivide_vox import ConvertError, convert, rewrite_meta_unit, publish_pair
+from subdivide_vox import ConvertError, convert, rewrite_meta_unit, publish_pair, Model, Node, write_vox, parse_vox, read_meta_unit, VOXEL_SIZE_RE
 from player_a6 import author_package
 
 REPO = Path(__file__).resolve().parents[1]
@@ -30,9 +29,6 @@ BODY = REPO / 'assets/tank/bodies/player/anvil/body.vox'
 BARREL = REPO / 'assets/tank/barrels/player/lance/barrel.vox'
 TRACK = REPO / 'assets/tank/tracks/player/cleat/track.vox'
 BULLET = REPO / 'assets/tank/barrels/player/lance/bullet.vox'
-# 子弹的确定性粗源：迁移前的 0.1 米/格原始文件快照（含配对 meta），
-# 避免交付资产细分后无法重建；不从已细分成品再次细分。
-BULLET_FIXTURE = REPO / 'scripts/fixtures/bullet.vox'
 GENERATOR_RS = REPO / 'scripts/generate_player.rs'
 # 生成器经 #[path] 内嵌 model 模块，其下 player.rs/enemy.rs 契约更新同样需要重编；
 # 监视整个 src/tank/model 目录，避免陈旧 exe 通过 --check 并发布旧几何。
@@ -42,7 +38,7 @@ GENERATOR_EXE = REPO / 'target' / ('generate_player.exe' if sys.platform == 'win
 COARSE_UNIT = 0.1
 # 细分目标单位（米/格）。
 FINE_UNIT = 0.02
-# 玩家三包由生成器产出粗样后细分；子弹单独走 fixture 粗源。
+# 玩家三包由生成器产出粗样后细分，子弹直接作者化。
 SUBDIVIDED = {'body': BODY, 'barrel': BARREL, 'track': TRACK}
 
 
@@ -97,6 +93,51 @@ def compare_pair(staging: Path, vox: Path, delivered: Path) -> list[str]:
     return problems
 
 
+def author_bullet(staging: Path) -> None:
+    """以 0.02 米格直接作者化飞行体；画布 +X 为尖端方向。"""
+    staging.mkdir()
+    voxels = set()
+    for x in range(36):
+        voxels.add((x, 2, 2, 1))
+        # 0.04 米杆在前 0.06 米收窄到单格，形成可辨的体素尖端。
+        if x < 33:
+            for y, z in ((2, 3), (3, 2), (3, 3)):
+                voxels.add((x, y, z, 1))
+        if x < 6:
+            for radius in range(1, 3 if x < 3 else 2):
+                for y, z in ((2-radius, 2), (2+radius, 2), (2, 2-radius), (2, 2+radius)):
+                    voxels.add((x, y, z, 1))
+    data = bytes(c for voxel in sorted(voxels) for c in voxel)
+    root, group, named, shape = [Node(kind, i, attrs) for i, (kind, attrs) in enumerate(
+        [('trn', {}), ('grp', {}), ('trn', {'_name': 'bullet'}), ('shp', {})])]
+    root.child, root.layer = 1, -1
+    group.children = [2]
+    named.child, named.layer = 3, -1
+    # 相对扫掠中心前移 0.16 米，尾端恰在炮口端面。
+    named.frames = [{'_t': '8 0 0', '_r': '4'}]
+    shape.models = [(0, {})]
+    palette = bytes((32, 35, 33, 255)) + bytes((0, 0, 0, 255)) * 255
+    path = staging / BULLET.name
+    write_vox([Model((36, 5, 5), data)],
+              [root, group, named, shape], [('RGBA', palette)], path)
+    check = parse_vox(path.read_bytes(), str(path))
+    if (len(check.models) != 1 or check.models[0].size != (36, 5, 5)
+            or check.models[0].xyzi != data or check.raw_chunks != [('RGBA', palette)]
+            or len(check.nodes) != 4 or [n.kind for n in check.nodes] != ['trn', 'grp', 'trn', 'shp']
+            or check.nodes[0].child != 1 or check.nodes[0].frames
+            or check.nodes[1].children != [2] or check.nodes[2].node_dict != {'_name': 'bullet'}
+            or check.nodes[2].child != 3 or check.nodes[2].frames != [{'_t': '8 0 0', '_r': '4'}]
+            or check.nodes[3].models != [(0, {})]):
+        raise PublishError('弹丸回读不一致')
+    meta = BULLET.with_name(BULLET.name + '.meta').read_text(encoding='utf-8')
+    if len(VOXEL_SIZE_RE.findall(meta)) != 1 or read_meta_unit(BULLET.with_name(BULLET.name + '.meta')) != FINE_UNIT:
+        raise PublishError('弹丸元数据单位无效')
+    meta_path = staging / (BULLET.name + '.meta')
+    meta_path.write_text(rewrite_meta_unit(meta, FINE_UNIT), encoding='utf-8')
+    if read_meta_unit(meta_path) != FINE_UNIT:
+        raise PublishError('弹丸元数据回读不一致')
+
+
 def run(check: bool) -> int:
     """执行完整管线；check 模式逐字节比对并返回 0/1，发布模式原子替换。"""
     # 工作目录在 target/ 下：与 assets 同卷，os.replace 才能原子移动。
@@ -118,19 +159,15 @@ def run(check: bool) -> int:
                 publish_pair(staging / delivered.name,
                              staging / (delivered.name + '.meta'), delivered)
                 print(f'已发布 {delivered.relative_to(REPO)}')
-        # 子弹不经生成器：fixture 即 0.1 粗源，转换器读取其配对 meta 后细分。
+        staging = work / 'staged-bullet'
+        author_bullet(staging)
         if check:
-            staging = work / 'staged-bullet'
-            convert(BULLET_FIXTURE, FINE_UNIT, staging, publish=False)
-            problems = compare_pair(staging, BULLET_FIXTURE, BULLET)
+            problems = compare_pair(staging, BULLET, BULLET)
             print(f'{"不一致" if problems else "一致"} {BULLET.relative_to(REPO)}')
             failed += problems
         else:
-            stats = convert(BULLET_FIXTURE, FINE_UNIT, work / 'staging-bullet',
-                            publish=True, dest_path=BULLET)
-            print(f'已发布 {BULLET.relative_to(REPO)}：体素 {stats["source_voxels"]}'
-                  f' → {stats["output_voxels"]}，字节 {stats["source_bytes"]}'
-                  f' → {stats["output_bytes"]}')
+            publish_pair(staging / BULLET.name, staging / (BULLET.name + '.meta'), BULLET)
+            print(f'已发布 {BULLET.relative_to(REPO)}')
     except Exception:
         print(f'失败诊断保留于 {work}', file=sys.stderr)
         raise

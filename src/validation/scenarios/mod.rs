@@ -11,7 +11,10 @@ mod wheels;
 
 use super::*;
 use super::{
-    capture::{PixelCheck, capture, capture_checked, capture_concrete, capture_side, capture_wheel_views},
+    capture::{
+        PixelCheck, capture, capture_bullet, capture_checked, capture_concrete, capture_side,
+        capture_wheel_views,
+    },
     offscreen::{update, wait_render},
 };
 use avian3d::prelude::{LinearVelocity, Position, Rotation};
@@ -45,7 +48,7 @@ impl Scenario {
             Self::Scene => &[0],
             // 先直行 1 秒，再持续前进左转；路径不会触及 25 米外的混凝土墩。
             Self::Drive => &[0, 60, 180],
-            Self::Combat => &[0, 6, 24, 48, 60, 120],
+            Self::Combat => &[0, 1, 6, 24, 48, 60, 120],
             // 开火 1 秒后看装填中段；330 帧（5.5 秒）超过 5 秒冷却，看满格常驻。
             Self::Hud => &[0, 60, 330],
             Self::Wheels => &[
@@ -173,6 +176,10 @@ pub(super) fn run_scenario(
         }
         if options.scenario == Scenario::Combat {
             combat::check(app, frame, report, &mut failures)?;
+            if frame == 1 {
+                capture_bullet(app, &options.output.join("bullet-close.png"))?;
+                report.push_str("弹丸出生近景：bullet-close.png\n");
+            }
         }
         if options.scenario == Scenario::Hud {
             hud::check(app, frame, report, &mut failures)?;

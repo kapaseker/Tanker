@@ -44,6 +44,21 @@ fn capture_at(app: &mut App, path: &Path, target: Vec3, offset: Vec3) -> Result<
     result
 }
 
+/// 在首发出生帧对准真实弹丸，截图等待不推进弹道。
+pub(super) fn capture_bullet(app: &mut App, path: &Path) -> Result<(), String> {
+    let world = app.world_mut();
+    let transform = *world
+        .query_filtered::<&Transform, With<crate::gameplay::combat::firing::Bullet>>()
+        .single(world)
+        .map_err(|e| e.to_string())?;
+    capture_at(
+        app,
+        path,
+        transform.translation + transform.rotation * Vec3::NEG_X * 0.16,
+        transform.rotation * Vec3::new(0.5, 0.5, 1.5),
+    )
+}
+
 /// 混凝土墩前侧近景，能同时看到长边、斜面和贴地关系。
 pub(super) fn capture_concrete(app: &mut App, path: &Path) -> Result<(), String> {
     capture_at(app, path, crate::gameplay::obstacle::POSITION, Vec3::new(7.0, 3.0, 6.0))
