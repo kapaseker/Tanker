@@ -14,6 +14,40 @@ BARREL = ASSETS / 'barrels/player/lance/barrel.vox'
 
 
 class PlayerTests(unittest.TestCase):
+    def test_hull_side_panel_seams_have_real_depth(self):
+        body = read_reference_models(BODY, PLAYER_CANVAS, asset_grid=True)['body']
+        for x in (240, 310, 380):
+            for y in (40, 149):
+                self.assertIsNone(body.get((x, y, 60 + PLAYER_Z0)))
+                self.assertIsNotNone(body.get((x - 1, y, 60 + PLAYER_Z0)))
+
+    def test_roof_machine_gun_has_a_separate_magazine(self):
+        body = read_reference_models(BODY, PLAYER_CANVAS, asset_grid=True)['body']
+        # 弹箱侧向突出且与机匣连接，不是贴在顶面的单一色块。
+        self.assertEqual(body.get((325, 135, 141 + PLAYER_Z0)), 2)
+        self.assertEqual(body.get((325, 131, 141 + PLAYER_Z0)), 3)
+
+    def test_barrel_extractor_has_a_stepped_transition(self):
+        barrel = read_reference_models(BARREL, PLAYER_CANVAS, asset_grid=True)['barrel']
+        # 抽烟器前后有实体过渡箍，炮管轴线和端面保持原契约。
+        for x in (573, 606):
+            self.assertEqual(barrel.get((x, 87, 104 + PLAYER_Z0)), 2)
+        self.assertIsNone(barrel.get((570, 87, 104 + PLAYER_Z0)))
+
+    def test_skirt_segments_have_recessed_joint_and_raised_hinge(self):
+        body = read_reference_models(BODY, PLAYER_CANVAS, asset_grid=True)['body']
+        # 分段间隙保持透空，连接件在甲板侧边凸出，而非仅以颜色画线。
+        self.assertIsNone(body.get((231, 2, 65 + PLAYER_Z0)))
+        self.assertEqual(body.get((230, 1, 81 + PLAYER_Z0)), 2)
+
+    def test_headlights_have_recessed_lenses_and_projecting_guards(self):
+        body = read_reference_models(BODY, PLAYER_CANVAS, asset_grid=True)['body']
+        for y in (63, 127):
+            # 防护框向前伸出灯面，灯面可见且不只是车首表面上的色点。
+            self.assertEqual(body.get((526, y - 5, 64 + PLAYER_Z0)), 3)
+            self.assertEqual(body.get((524, y, 63 + PLAYER_Z0)), 5)
+            self.assertIsNone(body.get((526, y, 63 + PLAYER_Z0)))
+
     def test_delivered_grille_has_fine_geometry(self):
         source = sv.parse_vox(BODY.read_bytes(), 'body')
         body = next(n for n in source.nodes if n.node_dict.get('_name') == 'body')
@@ -25,13 +59,17 @@ class PlayerTests(unittest.TestCase):
                            zip(sv.frame_t(node.frames), (720, 190, 185), model.size))
             for x, y, z, c in struct.iter_unpack('<BBBB', model.xyzi):
                 # 采样作者格 78/79 的凹槽与面板；加 PLAYER_Z0 折算到资产格。
-                if 180 <= x + origin[0] < 235 and 77 + PLAYER_Z0 <= z + origin[2] < 81 + PLAYER_Z0:
+                if 180 <= x + origin[0] < 235 and 77 + PLAYER_Z0 <= z + origin[2] < 82 + PLAYER_Z0:
                     cells[tuple(a + b for a, b in zip((x, y, z), origin))] = c
         # 同一个旧参考格中同时存在 0.02 米凹槽与面板，重复槽仍在共同坐标位置。
         for x in (180, 229):
             self.assertNotIn((x, 90, 79 + PLAYER_Z0), cells)
             self.assertEqual(cells[x, 90, 78 + PLAYER_Z0], 4)
             self.assertEqual(cells[x + 2, 90, 79 + PLAYER_Z0], 2)
+        # 格栅必须露出甲板，不能被上方的发动机面板整块遮住。
+        for x in (180, 182):
+            for z in (80, 81):
+                self.assertIsNone(cells.get((x, 90, z + PLAYER_Z0)))
 
     def test_independent_wheels_have_centered_sizes_and_rotation_clearance(self):
         track = read_reference_models(TRACK, PLAYER_CANVAS)

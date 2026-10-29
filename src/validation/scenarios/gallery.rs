@@ -287,7 +287,10 @@ pub(super) fn finish_gallery_transition(
 ) -> Result<(), String> {
     use crate::app::transition::{Fade, Phase};
     let mut saved = [false; 3];
-    for _ in 0..2000 {
+    // 预览本身允许 30 秒加载并报告错误；固定帧数在快显卡上可能更早耗尽，
+    // 因此按墙钟等待其完成，整个离屏运行仍受 180 秒看门狗约束。
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(40);
+    while std::time::Instant::now() < deadline {
         update(app, STEP, None)?;
         let fade = app.world().resource::<Fade>();
         let (phase, alpha) = (fade.phase, fade.alpha);
@@ -332,5 +335,9 @@ pub(super) fn finish_gallery_transition(
             return Ok(());
         }
     }
-    Err("画廊过渡未完成".into())
+    let cpu_ready = crate::app::transition::content_ready(app.world_mut());
+    Err(format!(
+        "画廊过渡未完成：CPU_ready={cpu_ready}；{}",
+        crate::app::transition::diagnostics(app.world_mut())
+    ))
 }
