@@ -163,7 +163,7 @@ pub(crate) fn run(mut app: App, options: Options) -> Result<(), String> {
         .add_systems(Last, collect_evidence);
     if !matches!(
         options.scenario,
-        Scenario::Index | Scenario::Gallery | Scenario::Detail
+        Scenario::Index | Scenario::Gallery | Scenario::Detail | Scenario::Pastoral
     ) {
         // 旧场景在首个 StateTransition 前直接请求 InGame 跳过菜单：
         // 启动期 StateTransition 应用 InGame 并运行 OnEnter(session::setup)，

@@ -18,7 +18,7 @@ pub(crate) mod index {
     /// 标题栏页面标题（design.md：首页常驻 88px 标题栏，显示“主菜单”）。
     pub(crate) const TITLE: &str = "主菜单";
     /// 与菜单交互顺序一致的操作标签。
-    pub(crate) const ACTIONS: [&str; 2] = ["开始游戏", "模型画廊"];
+    pub(crate) const ACTIONS: [&str; 3] = ["开始游戏", "模型画廊", "测试场景"];
     /// 方向键提示后的动作说明。
     pub(crate) const HINT_SELECT: &str = "选择 ·";
     /// 回车键提示后的动作说明。
@@ -40,4 +40,9 @@ pub(crate) mod detail {
     /// 履带规格：前进与倒车速度。
     pub(crate) const FORWARD_SPEED: &str = "前进速度";
     pub(crate) const REVERSE_SPEED: &str = "倒车速度";
+}
+
+/// 田园预览的操作提示。
+pub(crate) mod pastoral {
+    pub(crate) const HELP: &str = "测试场景  ·  右键转向  /  WASD 移动  /  QE 升降  /  Shift 加速  /  Esc 返回";
 }

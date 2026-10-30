@@ -13,6 +13,10 @@ pub(crate) enum GameState {
     Index,
     /// Start Game 确认后：黑幕淡出，淡至全黑时生成场景并切 InGame。
     ToGame,
+    /// 首页全屏淡出后进入田园视觉样板。
+    ToTestScene,
+    /// 无坦克的独立田园预览。
+    TestScene,
     /// 首页渐出后进入模型画廊。
     ToGallery,
     /// 真实模型的只读展示页。

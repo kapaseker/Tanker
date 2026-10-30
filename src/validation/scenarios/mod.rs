@@ -1,5 +1,6 @@
 //! 场景帧表、输入脚本与公共预热/计帧流程；各场景保留原有断言。
 
+mod pastoral;
 mod combat;
 mod detail;
 mod drive;
@@ -27,6 +28,8 @@ use scene::{subject_state, validate_scene};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Scenario {
     Scene,
+    /// 田园视觉样板、自由相机与首页往返。
+    Pastoral,
     Drive,
     Combat,
     /// 所选车型轮组的侧面动画与三视点对照。
@@ -55,13 +58,14 @@ impl Scenario {
                 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 75, 90, 105, 120, 130, 240, 250,
             ],
             // 菜单关键帧按真实阶段动态计帧，固定列表只声明基准图。
-            Self::Index | Self::Gallery | Self::Detail => &[0],
+            Self::Index | Self::Gallery | Self::Detail | Self::Pastoral => &[0],
         }
     }
 
     /// 按固定模拟帧注入按键，经过游戏现有输入系统，而非直接调用业务逻辑。
     pub(super) fn keys(self, frame: u32) -> &'static [KeyCode] {
         match (self, frame) {
+            (Self::Pastoral, 20..=80) => &[KeyCode::KeyW],
             (Self::Drive, 1..=60) => &[KeyCode::ArrowUp],
             (Self::Drive, 61..=180) => &[KeyCode::ArrowUp, KeyCode::ArrowLeft],
             (Self::Combat, 1) => &[KeyCode::Space],
@@ -70,11 +74,11 @@ impl Scenario {
             (Self::Wheels, 31..=60) => &[KeyCode::ArrowDown],
             (Self::Wheels, 61..=90) => &[KeyCode::ArrowLeft],
             (Self::Wheels, 91..=120) => &[KeyCode::ArrowRight],
-            (Self::Index | Self::Gallery | Self::Detail, 1) => &[KeyCode::ArrowDown],
-            (Self::Index | Self::Gallery | Self::Detail, 3) => &[KeyCode::Enter],
-            (Self::Index | Self::Gallery | Self::Detail, 5) => &[KeyCode::Escape],
-            (Self::Index | Self::Gallery | Self::Detail, 7) => &[KeyCode::Tab],
-            (Self::Index | Self::Gallery | Self::Detail, 8) => &[KeyCode::Tab, KeyCode::ShiftLeft],
+            (Self::Index | Self::Gallery | Self::Detail | Self::Pastoral, 1) => &[KeyCode::ArrowDown],
+            (Self::Index | Self::Gallery | Self::Detail | Self::Pastoral, 3) => &[KeyCode::Enter],
+            (Self::Index | Self::Gallery | Self::Detail | Self::Pastoral, 5) => &[KeyCode::Escape],
+            (Self::Index | Self::Gallery | Self::Detail | Self::Pastoral, 7) => &[KeyCode::Tab],
+            (Self::Index | Self::Gallery | Self::Detail | Self::Pastoral, 8) => &[KeyCode::Tab, KeyCode::ShiftLeft],
             // 首页退出确认弹框：← 在两按钮间切换选中。
             (Self::Index, 15) => &[KeyCode::ArrowLeft],
             (Self::Gallery | Self::Detail, 11) => &[KeyCode::End],
@@ -95,6 +99,9 @@ pub(super) fn run_scenario(
     options: &Options,
     report: &mut String,
 ) -> Result<(), String> {
+    if options.scenario == Scenario::Pastoral {
+        return pastoral::run(app, options, report);
+    }
     if options.scenario == Scenario::Detail {
         return detail::run_detail_scenario(app, options, report);
     }

@@ -123,12 +123,12 @@ pub(crate) struct MenuInput {
     /// 按下与松开必须落在同一项，拖出按钮不会意外开始游戏。
     pressed: Option<usize>,
     keyboard_focus: bool,
-    animation: [HoverAnimation; 2],
+    animation: [HoverAnimation; labels::ACTIONS.len()],
 }
 
 /// 独立页面返回首页时才恢复入口焦点，首次启动仍无选中项。
 #[derive(Resource, Default)]
-pub(crate) struct ReturnFocus(pub bool);
+pub(crate) struct ReturnFocus(pub Option<usize>);
 
 /// 三种 CSS duration 独立计时，反向时从当前进度继续。
 #[derive(Clone, Copy, Default)]
@@ -207,7 +207,7 @@ impl Layout {
         let menu_y_offset = title_size * dims::TITLE_LINE_HEIGHT + dims::MENU_MARGIN;
         let hero_height = menu_y_offset
             + dimens::BORDER_WIDTH
-            + row_height * 2.0
+            + row_height * labels::ACTIONS.len() as f32
             + dims::HINT_GAP
             + dims::HINT_HEIGHT;
         let content_height = (size.y - dims::TITLE_BAR - dims::BOTTOM - dims::PADDING_TOP
@@ -233,7 +233,7 @@ impl Layout {
         }
     }
     fn hit(&self, point: Vec2) -> Option<usize> {
-        (0..2).find(|&i| {
+        (0..labels::ACTIONS.len()).find(|&i| {
             Rect::from_corners(
                 Vec2::new(
                     self.hero.x,
@@ -324,6 +324,7 @@ impl Plugin for IndexPlugin {
             .add_systems(OnEnter(GameState::Index), spawn_index)
             .add_systems(OnEnter(GameState::InGame), despawn_index)
             .add_systems(OnEnter(GameState::Gallery), despawn_index)
+            .add_systems(OnEnter(GameState::TestScene), despawn_index)
             .add_systems(
                 Update,
                 // 输入先于视觉；menu_input 必须在标题栏 interaction 之后：弹框打开
@@ -336,7 +337,7 @@ impl Plugin for IndexPlugin {
                     .run_if(|state: Res<State<GameState>>| {
                         matches!(
                             state.get(),
-                            GameState::Index | GameState::ToGame | GameState::ToGallery
+                            GameState::Index | GameState::ToGame | GameState::ToGallery | GameState::ToTestScene
                         )
                     }),
             );
@@ -354,10 +355,9 @@ fn spawn_index(
     mut return_focus: ResMut<ReturnFocus>,
 ) {
     *input = MenuInput::default();
-    if return_focus.0 {
-        input.focus = Some(1);
+    if let Some(index) = return_focus.0.take() {
+        input.focus = Some(index);
         input.keyboard_focus = true;
-        return_focus.0 = false;
     }
     let camera = commands
         .spawn((
@@ -416,7 +416,7 @@ fn spawn_index(
                     ..default()
                 },
             ));
-            for i in 0..2 {
+            for i in 0..labels::ACTIONS.len() {
                 root.spawn((
                     MenuItem { order: i },
                     Part::Row(i),
@@ -765,11 +765,11 @@ fn menu_input(
     };
     if step != 0 {
         // 原生链接从无焦点状态按 Shift+Tab 时进入最后一项；↑首次仍进入第一项。
-        let initial = usize::from(keys.just_pressed(KeyCode::Tab) && step < 0);
+        let initial = if keys.just_pressed(KeyCode::Tab) && step < 0 { labels::ACTIONS.len() - 1 } else { 0 };
         input.focus = Some(
             input
                 .focus
-                .map_or(initial, |i| (i as i32 + step).rem_euclid(2) as usize),
+                .map_or(initial, |i| (i as i32 + step).rem_euclid(labels::ACTIONS.len() as i32) as usize),
         );
         input.keyboard_focus = true;
         // 首页的 Tab 语义是菜单导航；清掉标题栏 interaction 同帧记下的电源框焦点，避免双高亮。
@@ -799,6 +799,9 @@ fn menu_input(
     }
     if confirmed == Some(1) && fade.begin(GameState::Gallery, true) {
         next.set(GameState::ToGallery);
+    }
+    if confirmed == Some(2) && fade.begin(GameState::TestScene, false) {
+        next.set(GameState::ToTestScene);
     }
 }
 
@@ -835,7 +838,7 @@ fn update_visual(
     };
     *layout = Layout::new(size);
     let l = *layout;
-    for i in 0..2 {
+    for i in 0..labels::ACTIONS.len() {
         let active = input.hover == Some(i) || (input.keyboard_focus && input.focus == Some(i));
         input.animation[i].tick(active, time.delta_secs());
     }
@@ -950,7 +953,7 @@ fn update_visual(
             Part::Hint => {
                 node.left = px(l.hero.x);
                 node.top =
-                    px(l.menu_y + dimens::BORDER_WIDTH + l.row_height * 2.0 + dims::HINT_GAP);
+                    px(l.menu_y + dimens::BORDER_WIDTH + l.row_height * labels::ACTIONS.len() as f32 + dims::HINT_GAP);
             }
             Part::DialogOverlay => {
                 rect = Some((0.0, 0.0, l.viewport.x, l.viewport.y));
@@ -1112,7 +1115,14 @@ mod tests {
             .map(|d| d.selection)
     }
 
-    /// Esc 打开弹框且初始选中确认；弹框已存在时重复打开是空操作。
+    /// 第三项与前两项使用同一布局命中路径。
+    #[test]
+    fn third_menu_item_is_hittable() {
+        let l = Layout::new(Vec2::new(1280.0, 720.0));
+        assert_eq!(l.hit(Vec2::new(l.hero.x + 10.0, l.menu_y + l.row_height * 2.0 + 10.0)), Some(2));
+    }
+
+    /// Esc 打开弹框且初始选中确认；重复打开是空操作。
     #[test]
     fn exit_dialog_opens_on_escape_with_confirm_selected() {
         let mut world = dialog_world();
@@ -1341,7 +1351,7 @@ mod tests {
         );
         world.insert_resource(Fade::default());
         press(&mut world, KeyCode::Tab);
-        assert_eq!(world.resource::<MenuInput>().focus, Some(0));
+        assert_eq!(world.resource::<MenuInput>().focus, Some(2));
         press(&mut world, KeyCode::Enter);
         assert_eq!(
             world.resource::<Fade>().phase,

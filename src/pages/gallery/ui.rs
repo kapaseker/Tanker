@@ -311,7 +311,7 @@ pub(super) fn input(
     }
     if back || (title.focus && keys.just_pressed(KeyCode::Enter)) {
         if fade.begin(GameState::Index, true) {
-            return_focus.0 = true;
+            return_focus.0 = Some(1);
             next.set(GameState::GalleryToIndex);
         }
         return;
@@ -652,7 +652,7 @@ mod tests {
             ENTRIES.len() - 1
         );
         assert_eq!(app.world().resource::<Fade>().target, GameState::Detail);
-        assert!(!app.world().resource::<crate::pages::index::ReturnFocus>().0);
+        assert!(app.world().resource::<crate::pages::index::ReturnFocus>().0.is_none());
     }
 
     /// 卡片拖出后即使移回也取消；配对点击才进入详情并保存恢复状态。
@@ -744,11 +744,11 @@ mod tests {
         key(&mut app, KeyCode::End);
         assert_eq!(app.world().resource::<View>().scroll, 0.0);
         key(&mut app, KeyCode::Escape);
-        assert!(!app.world().resource::<crate::pages::index::ReturnFocus>().0);
+        assert!(app.world().resource::<crate::pages::index::ReturnFocus>().0.is_none());
         app.world_mut().insert_resource(Fade::default());
         key(&mut app, KeyCode::Tab);
         key(&mut app, KeyCode::Enter);
-        assert!(app.world().resource::<crate::pages::index::ReturnFocus>().0);
+        assert_eq!(app.world().resource::<crate::pages::index::ReturnFocus>().0, Some(1));
         assert_eq!(
             app.world().resource::<Fade>().phase,
             crate::app::transition::Phase::Out
@@ -790,6 +790,6 @@ mod tests {
         app.update();
         // 页面输入先于控件，返回消息下一帧消费。
         app.update();
-        assert!(app.world().resource::<crate::pages::index::ReturnFocus>().0);
+        assert_eq!(app.world().resource::<crate::pages::index::ReturnFocus>().0, Some(1));
     }
 }

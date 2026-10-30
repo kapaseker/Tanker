@@ -4,3 +4,5 @@ pub(crate) mod index;
 
 pub(crate) mod detail;
 pub(crate) mod model_preview;
+
+pub(crate) mod pastoral;

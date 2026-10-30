@@ -12,9 +12,9 @@ use bevy_vox_scene::VoxScenePlugin;
 use crate::{gameplay, pages, tank, terrain, ui, validation};
 use state::GameState;
 
-/// 全局灯光的亮度（cd/m²）。场景不使用 `DirectionalLight`，全部光照由全局环境光
+/// 全局灯光的亮度（cd/m²）。现有对局不使用 `DirectionalLight`，全部光照由全局环境光
 /// 与相机上的 `EnvironmentMapLight` 环境贴图提供，因此这里给得比默认值（80）高。
-/// 观感不合适时只需调这一个数。
+/// 田园测试场景在自身相机上覆盖环境光，不受此亮度影响。
 const GLOBAL_AMBIENT_BRIGHTNESS: f32 = 5000.0;
 
 /// 普通游戏与离屏验证共用场景、资源及业务插件，仅切换运行和输出方式。
@@ -60,7 +60,7 @@ pub(super) fn run(options: Option<validation::Options>) -> Result<(), String> {
         pages::gallery::GalleryPlugin,
     ))
     // 元组插件数已到上限，HUD 单独注册；其系统按状态门控，与注册顺序无关。
-    .add_plugins(gameplay::hud::HudPlugin)
+    .add_plugins((gameplay::hud::HudPlugin, pages::pastoral::PastoralPlugin))
     // 必须在 TransitionPlugin 之后：chrome 相机需要已插入的 SceneTarget。
     .add_plugins((pages::detail::DetailPlugin, chrome::ChromePlugin))
     .insert_resource(GlobalAmbientLight {

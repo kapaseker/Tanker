@@ -226,7 +226,7 @@ fn resize_target(
             Without<crate::pages::gallery::GalleryCamera>,
             Without<crate::pages::detail::DetailCamera>,
             Without<crate::app::chrome::ChromeCamera>,
-            With<crate::gameplay::camera::FollowCamera>,
+            Or<(With<crate::gameplay::camera::FollowCamera>, With<crate::pages::pastoral::PreviewCamera>)>,
         ),
     >,
 ) {
@@ -282,7 +282,7 @@ fn return_to_index(
     mut next: ResMut<NextState<GameState>>,
     mut fade: ResMut<Fade>,
 ) {
-    if *state.get() == GameState::InGame
+    if matches!(state.get(), GameState::InGame | GameState::TestScene)
         && keys.just_pressed(KeyCode::Escape)
         && fade.begin(GameState::Index, false)
     {
@@ -321,6 +321,7 @@ pub(crate) fn content_ready(world: &mut World) -> bool {
     }
     match world.resource::<State<GameState>>().get() {
         GameState::Index => crate::pages::index::assets_ready(world),
+        GameState::TestScene => crate::pages::pastoral::content_ready(world),
         GameState::Gallery | GameState::Detail => crate::pages::model_preview::assets_ready(world),
         _ => crate::gameplay::session::content_ready(world),
     }

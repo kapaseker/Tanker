@@ -46,7 +46,7 @@ struct AppliedVariant(Option<Variant>);
 /// chrome 是否可见：对局与局内 Esc 淡出期间不叠标题栏（ToGame 淡出走整体黑场，
 /// chrome 仍在纹理内、被合成材质整体压黑，与旧行为一致）。
 fn menu_visible(state: GameState) -> bool {
-    !matches!(state, GameState::InGame | GameState::ToIndex)
+    !matches!(state, GameState::InGame | GameState::TestScene | GameState::ToIndex)
 }
 
 /// 安装常驻 chrome：Startup 生成一次，Update 驱动遮罩与变体同步。
