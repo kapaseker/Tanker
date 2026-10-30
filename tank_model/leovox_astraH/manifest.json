@@ -1,0 +1,598 @@
+{
+  "voxel_size_m": 0.02,
+  "axis": "+X front, +Y left, +Z up; origin rear center at ground",
+  "dimensions_m": {
+    "hull_length": 7.66,
+    "overall_length": 10.98,
+    "width": 3.76,
+    "deck_height": 1.6,
+    "turret_roof": 2.64,
+    "hatch_body_top": 2.7,
+    "gun_axis": 2.08,
+    "antenna_top": 4.32
+  },
+  "parts": [
+    {
+      "name": "hull",
+      "voxels": 3198592,
+      "bounds_cells": [
+        [
+          0,
+          -94,
+          22
+        ],
+        [
+          383,
+          94,
+          87
+        ]
+      ],
+      "tiles": 2
+    },
+    {
+      "name": "right_roadwheel_1",
+      "voxels": 23022,
+      "bounds_cells": [
+        [
+          38,
+          -87,
+          1
+        ],
+        [
+          78,
+          -67,
+          41
+        ]
+      ],
+      "tiles": 1
+    },
+    {
+      "name": "right_roadwheel_2",
+      "voxels": 23022,
+      "bounds_cells": [
+        [
+          83,
+          -87,
+          1
+        ],
+        [
+          123,
+          -67,
+          41
+        ]
+      ],
+      "tiles": 1
+    },
+    {
+      "name": "right_roadwheel_3",
+      "voxels": 23022,
+      "bounds_cells": [
+        [
+          127,
+          -87,
+          1
+        ],
+        [
+          167,
+          -67,
+          41
+        ]
+      ],
+      "tiles": 1
+    },
+    {
+      "name": "right_roadwheel_4",
+      "voxels": 23022,
+      "bounds_cells": [
+        [
+          172,
+          -87,
+          1
+        ],
+        [
+          212,
+          -67,
+          41
+        ]
+      ],
+      "tiles": 1
+    },
+    {
+      "name": "right_roadwheel_5",
+      "voxels": 23022,
+      "bounds_cells": [
+        [
+          216,
+          -87,
+          1
+        ],
+        [
+          256,
+          -67,
+          41
+        ]
+      ],
+      "tiles": 1
+    },
+    {
+      "name": "right_roadwheel_6",
+      "voxels": 23022,
+      "bounds_cells": [
+        [
+          261,
+          -87,
+          1
+        ],
+        [
+          301,
+          -67,
+          41
+        ]
+      ],
+      "tiles": 1
+    },
+    {
+      "name": "right_roadwheel_7",
+      "voxels": 23022,
+      "bounds_cells": [
+        [
+          305,
+          -87,
+          1
+        ],
+        [
+          345,
+          -67,
+          41
+        ]
+      ],
+      "tiles": 1
+    },
+    {
+      "name": "right_sprocket",
+      "voxels": 9572,
+      "bounds_cells": [
+        [
+          4,
+          -87,
+          7
+        ],
+        [
+          32,
+          -67,
+          35
+        ]
+      ],
+      "tiles": 1
+    },
+    {
+      "name": "right_idler",
+      "voxels": 9452,
+      "bounds_cells": [
+        [
+          353,
+          -87,
+          9
+        ],
+        [
+          377,
+          -67,
+          33
+        ]
+      ],
+      "tiles": 1
+    },
+    {
+      "name": "right_suspension",
+      "voxels": 6935,
+      "bounds_cells": [
+        [
+          44,
+          -84,
+          19
+        ],
+        [
+          344,
+          -62,
+          47
+        ]
+      ],
+      "tiles": 2
+    },
+    {
+      "name": "right_track",
+      "voxels": 44862,
+      "bounds_cells": [
+        [
+          0,
+          -94,
+          0
+        ],
+        [
+          383,
+          -64,
+          47
+        ]
+      ],
+      "tiles": 2
+    },
+    {
+      "name": "left_roadwheel_1",
+      "voxels": 23022,
+      "bounds_cells": [
+        [
+          38,
+          67,
+          1
+        ],
+        [
+          78,
+          87,
+          41
+        ]
+      ],
+      "tiles": 1
+    },
+    {
+      "name": "left_roadwheel_2",
+      "voxels": 23022,
+      "bounds_cells": [
+        [
+          83,
+          67,
+          1
+        ],
+        [
+          123,
+          87,
+          41
+        ]
+      ],
+      "tiles": 1
+    },
+    {
+      "name": "left_roadwheel_3",
+      "voxels": 23022,
+      "bounds_cells": [
+        [
+          127,
+          67,
+          1
+        ],
+        [
+          167,
+          87,
+          41
+        ]
+      ],
+      "tiles": 1
+    },
+    {
+      "name": "left_roadwheel_4",
+      "voxels": 23022,
+      "bounds_cells": [
+        [
+          172,
+          67,
+          1
+        ],
+        [
+          212,
+          87,
+          41
+        ]
+      ],
+      "tiles": 1
+    },
+    {
+      "name": "left_roadwheel_5",
+      "voxels": 23022,
+      "bounds_cells": [
+        [
+          216,
+          67,
+          1
+        ],
+        [
+          256,
+          87,
+          41
+        ]
+      ],
+      "tiles": 1
+    },
+    {
+      "name": "left_roadwheel_6",
+      "voxels": 23022,
+      "bounds_cells": [
+        [
+          261,
+          67,
+          1
+        ],
+        [
+          301,
+          87,
+          41
+        ]
+      ],
+      "tiles": 1
+    },
+    {
+      "name": "left_roadwheel_7",
+      "voxels": 23022,
+      "bounds_cells": [
+        [
+          305,
+          67,
+          1
+        ],
+        [
+          345,
+          87,
+          41
+        ]
+      ],
+      "tiles": 1
+    },
+    {
+      "name": "left_sprocket",
+      "voxels": 9572,
+      "bounds_cells": [
+        [
+          4,
+          67,
+          7
+        ],
+        [
+          32,
+          87,
+          35
+        ]
+      ],
+      "tiles": 1
+    },
+    {
+      "name": "left_idler",
+      "voxels": 9452,
+      "bounds_cells": [
+        [
+          353,
+          67,
+          9
+        ],
+        [
+          377,
+          87,
+          33
+        ]
+      ],
+      "tiles": 1
+    },
+    {
+      "name": "left_suspension",
+      "voxels": 6935,
+      "bounds_cells": [
+        [
+          44,
+          62,
+          19
+        ],
+        [
+          344,
+          84,
+          47
+        ]
+      ],
+      "tiles": 2
+    },
+    {
+      "name": "left_track",
+      "voxels": 44862,
+      "bounds_cells": [
+        [
+          0,
+          64,
+          0
+        ],
+        [
+          383,
+          94,
+          47
+        ]
+      ],
+      "tiles": 2
+    },
+    {
+      "name": "engine_deck",
+      "voxels": 66036,
+      "bounds_cells": [
+        [
+          0,
+          -91,
+          28
+        ],
+        [
+          197,
+          91,
+          87
+        ]
+      ],
+      "tiles": 1
+    },
+    {
+      "name": "turret",
+      "voxels": 1389971,
+      "bounds_cells": [
+        [
+          76,
+          -75,
+          80
+        ],
+        [
+          306,
+          75,
+          133
+        ]
+      ],
+      "tiles": 2
+    },
+    {
+      "name": "L55_gun",
+      "voxels": 41464,
+      "bounds_cells": [
+        [
+          278,
+          -12,
+          92
+        ],
+        [
+          549,
+          12,
+          116
+        ]
+      ],
+      "tiles": 2
+    },
+    {
+      "name": "commander_hatch",
+      "voxels": 4420,
+      "bounds_cells": [
+        [
+          136,
+          -51,
+          131
+        ],
+        [
+          180,
+          -13,
+          139
+        ]
+      ],
+      "tiles": 1
+    },
+    {
+      "name": "loader_hatch",
+      "voxels": 4608,
+      "bounds_cells": [
+        [
+          136,
+          13,
+          131
+        ],
+        [
+          180,
+          51,
+          139
+        ]
+      ],
+      "tiles": 1
+    },
+    {
+      "name": "sights",
+      "voxels": 8484,
+      "bounds_cells": [
+        [
+          174,
+          -44,
+          129
+        ],
+        [
+          257,
+          42,
+          151
+        ]
+      ],
+      "tiles": 2
+    },
+    {
+      "name": "loader_machine_gun",
+      "voxels": 1232,
+      "bounds_cells": [
+        [
+          158,
+          27,
+          135
+        ],
+        [
+          200,
+          39,
+          152
+        ]
+      ],
+      "tiles": 1
+    },
+    {
+      "name": "antennas",
+      "voxels": 2268,
+      "bounds_cells": [
+        [
+          99,
+          -63,
+          131
+        ],
+        [
+          111,
+          63,
+          216
+        ]
+      ],
+      "tiles": 1
+    },
+    {
+      "name": "right_smoke_launchers",
+      "voxels": 11623,
+      "bounds_cells": [
+        [
+          101,
+          -85,
+          98
+        ],
+        [
+          150,
+          -70,
+          125
+        ]
+      ],
+      "tiles": 1
+    },
+    {
+      "name": "left_smoke_launchers",
+      "voxels": 11623,
+      "bounds_cells": [
+        [
+          101,
+          70,
+          98
+        ],
+        [
+          150,
+          85,
+          125
+        ]
+      ],
+      "tiles": 1
+    },
+    {
+      "name": "roof_hardware",
+      "voxels": 1120,
+      "bounds_cells": [
+        [
+          107,
+          -58,
+          132
+        ],
+        [
+          217,
+          57,
+          136
+        ]
+      ],
+      "tiles": 1
+    }
+  ],
+  "models": 42,
+  "voxel_count": 5205391,
+  "sha256": "ca650fd35a2368bdef76dd671fa329ea35c43b323aacb7911e719525f304a7ed",
+  "bytes": 20833640
+}

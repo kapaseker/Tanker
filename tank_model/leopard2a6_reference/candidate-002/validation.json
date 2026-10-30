@@ -1,0 +1,42 @@
+{
+  "file": "leopard2a6.vox",
+  "vox_version": 150,
+  "voxels": 4902946,
+  "bounds_inclusive_xyz": [
+    [
+      -190,
+      -94,
+      0
+    ],
+    [
+      358,
+      93,
+      181
+    ]
+  ],
+  "dimensions_xyz": [
+    549,
+    188,
+    182
+  ],
+  "models": 12,
+  "scene_nodes": 40,
+  "groups": [
+    "Hull_and_skirts",
+    "Track_left",
+    "Track_right",
+    "Turret",
+    "Main_gun",
+    "Roof_equipment",
+    "Antennas"
+  ],
+  "palette_colors_used": 125,
+  "validation": "PASS: chunk bounds, unique cells, palette, scene references, full voxel round trip",
+  "axes": "+X forward, +Y left, +Z up; origin at hull center / ground",
+  "meters_per_voxel": 0.02,
+  "dimensions_meters": [
+    10.98,
+    3.7600000000000002,
+    3.64
+  ]
+}

@@ -1,0 +1,17 @@
+GPU: NVIDIA GeForce RTX 4060 / Vulkan
+VOX: leopard_2a6.vox
+网格数: 42
+实际尺寸 XYZ (m): Vec3(10.98, 4.32, 3.76)
+边界: Vec3(-10.98, 0.0, -1.88) / Vec3(2.3841858e-7, 4.32, 1.88)
+截图已保存: 01-front-right.png
+截图已保存: 02-rear.png
+截图已保存: 03-front.png
+截图已保存: 04-top.png
+截图已保存: 05-front-left.png
+截图已保存: 06-rear-left.png
+截图已保存: 07-rear-right.png
+截图已保存: 08-right-side.png
+截图已保存: 09-engine-detail.png
+截图已保存: 10-turret-detail.png
+结果: 通过
+墙钟: 3.12s

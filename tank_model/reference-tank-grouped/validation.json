@@ -1,0 +1,36 @@
+{
+  "file": "reference_tank.vox",
+  "vox_version": 150,
+  "voxels": 11404587,
+  "bounds_inclusive_xyz": [
+    [
+      -219,
+      -119,
+      0
+    ],
+    [
+      420,
+      119,
+      297
+    ]
+  ],
+  "dimensions_xyz": [
+    640,
+    239,
+    298
+  ],
+  "models": 11,
+  "scene_nodes": 36,
+  "groups": [
+    "Hull_and_skirts",
+    "Track_left",
+    "Track_right",
+    "Turret",
+    "Main_gun",
+    "Roof_equipment"
+  ],
+  "palette_colors_used": 131,
+  "validation": "PASS: chunk bounds, unique cells, palette, scene references, full voxel round trip",
+  "axes": "+X forward, +Y left, +Z up; origin at hull center / ground",
+  "suggested_meters_per_voxel": 0.018
+}

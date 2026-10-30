@@ -1,0 +1,14 @@
+Leopard 2A6 solH / 0.01 m VOX / Bevy 0.20 / 无窗口摄影棚
+GPU/后端：NVIDIA GeForce RTX 4060 (Vulkan)
+就绪耗时：7.88s
+实际 VOX 网格：45 块；世界尺寸：Vec3(10.969999, 4.38, 3.7599998) m；最低点：0.0000 m
+已保存：01-front-right.png
+已保存：02-rear.png
+已保存：03-front.png
+已保存：04-top.png
+已保存：05-front-left.png
+已保存：06-rear-left.png
+已保存：07-rear-right.png
+已保存：08-roof-detail.png
+已保存：09-right-side.png
+结果：通过

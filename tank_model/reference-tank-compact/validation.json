@@ -1,0 +1,12 @@
+{
+  "reference_tank.vox": {
+    "voxels": 3833434,
+    "models": 2,
+    "bytes": 15335266
+  },
+  "reference_tank_single.vox": {
+    "voxels": 505291,
+    "models": 1,
+    "bytes": 2022260
+  }
+}
