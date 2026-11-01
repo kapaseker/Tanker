@@ -8,7 +8,7 @@
 
 | 游戏内车型 | 现实参考 | 资源组合 | 状态 | 详细依据 |
 |---|---|---|---|---|
-| 当前玩家坦克 | Leopard 2A6（豹 2A6），L55 长炮管 | astraH 整车；运动分组不承担换装身份；复用原视觉弹丸 | 2026-11-01 用户确认采用 astraH 并保留外观；运动接入技术状态见验收记录，动态美术待用户确认 | [玩家模型](player-model.md)、[原始整车](../tank_model/leovox_astraH/README.md)、[接入验收](testing/astra-player-integration.md) |
+| 当前玩家坦克 | Leopard 2A6（豹 2A6），L55 长炮管 | astraH 整车；运动分组不承担换装身份；复用原视觉弹丸 | 2026-11-01 用户确认采用 astraH 并保留外观；运动接入技术验收通过（完整自动回归与六项 Radeon/Vulkan 离屏），动态美术待用户确认 | [玩家模型](player-model.md)、[原始整车](../tank_model/leovox_astraH/README.md)、[接入验收](testing/astra-player-integration.md) |
 | 当前敌方坦克 | 原创现代坦克，未指定现实车型 | body: carapace；barrel: spit；track: crawl | 已有实现；按自身模型契约维护 | [敌方模型](enemy-model.md) |
 
 状态核对日期：2026-11-01。进行中的工作区改动不能直接作为已验收依据。

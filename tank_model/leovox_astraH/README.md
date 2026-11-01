@@ -95,3 +95,7 @@ cargo run --manifest-path leovox_astraH/Cargo.toml -- leovox_astraH/renders-new
 ![动力舱实际近景](renders/09-engine-detail.png)
 
 模型、说明和独立预览配置均保存在本文件夹；工程根配置与文档没有本次建模追加内容。未进行多车性能、Linux、其他 GPU 或动画集成验证。完整实心体素数据约 20.8 MB，若后续大规模实例化，需另行测量加载与渲染开销。
+
+## 游戏接入（2026-11-01）
+
+本目录原始交付保持不变。玩家采用本模型外观，游戏用活动结构由根目录 `python3 scripts/prepare_astra.py` 从实际 VOX 转换，`--check` 只读核对重生成一致性。默认姿态体素位置与颜色保留；炮塔、炮管和左右履带/轮组按运动关系装配。当前契约见[玩家模型](../../docs/player-model.md)，硬件离屏证据与限制见[接入验收](../../docs/testing/astra-player-integration.md)。原独立预览与本次游戏接入的技术、美术状态分别记录。
