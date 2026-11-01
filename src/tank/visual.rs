@@ -13,9 +13,9 @@ pub(crate) struct BarrelSpec {
     pub(crate) rate_of_fire: f32,
 }
 
-/// 玩家默认炮管装备：lance，性能按豹 2 同级口径取 1200 米/秒初速、12 发/分钟射速。
+/// astraH 整车炮管；沿用已有 1200 米/秒初速、12 发/分钟射速和弹丸资产。
 pub(crate) const PLAYER_BARREL: BarrelSpec = BarrelSpec {
-    path: "tank/barrels/player/lance/barrel.vox",
+    path: crate::tank::model::astra::BARREL_PATH,
     bullet: "tank/barrels/player/lance/bullet.vox",
     muzzle_velocity: 1200.0,
     rate_of_fire: 12.0,
@@ -27,8 +27,8 @@ pub(crate) const ENEMY_BARREL: BarrelSpec = BarrelSpec {
     muzzle_velocity: 0.0,
     rate_of_fire: 0.0,
 };
-/// lance 的伴随子弹，只在模型预览中作组合示意展示。
-pub(crate) const LANCE_BULLET: &str = PLAYER_BARREL.bullet;
+/// 玩家炮管的伴随子弹，只在模型预览中作组合示意展示。
+pub(crate) const PLAYER_BULLET: &str = PLAYER_BARREL.bullet;
 
 /// 只挂载视觉资产，不附加武器、物理或驾驶行为。
 pub(crate) fn mount_barrel(

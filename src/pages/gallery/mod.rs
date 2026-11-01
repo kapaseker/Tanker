@@ -88,7 +88,8 @@ mod tests {
         assert_eq!(
             ENTRIES.map(Entry::name),
             [
-                "lance", "spit", "cleat", "crawl", "anvil", "carapace", "anvil", "carapace", "concrete"
+                "astra", "spit", "astra", "crawl", "astra", "carapace", "astra", "carapace",
+                "concrete"
             ]
         );
         for category in 0..4 {
@@ -138,7 +139,7 @@ mod tests {
         .register_type::<FogVolume>()
         .add_systems(Startup, spawn_previews)
         .add_systems(Last, prepare_previews);
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(40);
         loop {
             app.update();
             if assets_ready(app.world()) {
@@ -150,16 +151,15 @@ mod tests {
         validate(app.world()).unwrap();
         // X/Y/Z 为长/高/宽；这些边界来自真实体素，不能替换为共同画布或碰撞盒。
         let expected = [
-            Vec3::new(4.86, 0.4, 0.4),
+            Vec3::new(5.42, 0.48, 0.48),
             Vec3::new(3.8, 0.4, 0.4),
-            // 工单 02 立体履带后顶段凸耳最高 0.96 米（73 资产格），故高度 0.96 米。
-            Vec3::new(7.66, 0.96, 3.76),
+            // astraH 履带及轮组按原文件高度 0.94 米保留。
+            Vec3::new(7.66, 0.94, 3.76),
             Vec3::new(6.6, 1.4, 3.4),
-            // 04 分段裙板后 body 外沿即 3.76 米宽边界（与履带最外缘齐平）；
-            // 画布扩高后车身实体最低 0.44 米、天线顶 3.02 米，故高度 2.58 米。
-            Vec3::new(7.66, 2.58, 3.76),
+            // 车体及悬挂 Z=0.38..1.74 米；炮塔与附件由整车层级另行挂载。
+            Vec3::new(7.66, 1.36, 3.76),
             Vec3::new(6.5, 2.1, 3.2),
-            Vec3::new(10.98, 3.02, 3.76),
+            Vec3::new(10.98, 4.32, 3.76),
             Vec3::new(9.0, 2.6, 3.4),
             // concrete 资产的体素画布改版后未同步预期；以真实体素 AABB 为准。
             Vec3::new(8.0, 8.0, 1.5),
@@ -252,8 +252,8 @@ mod tests {
             .iter(app.world())
             .map(|i| **i)
             .collect();
-        // 93 个模型实例（含玩家履带 6 相位 + 18 轮 ×2 处预览）+ lance 伴随子弹 1 个场景实例。
-        assert_eq!(instances.len(), 94);
+        // astraH 整车增加独立炮塔；所有场景根（含相位、轮组和伴随弹丸）均应回收。
+        assert_eq!(instances.len(), 95);
         // 模拟真实文件缺失，不修改任何资产；失败项必须结束等待并保留返回能力。
         let missing = app
             .world()

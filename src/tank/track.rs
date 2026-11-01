@@ -18,6 +18,8 @@ const TRACK_PHASES: i64 = 3;
 pub(crate) struct TrackSpec {
     /// 相对 assets/ 的履带包路径，包内必须包含左右各三个相位节点。
     path: &'static str,
+    /// 单次相位推进的履带距离，单位米；不同车型按自身板距取值。
+    phase_step: f32,
     /// 整车 X 长、Y 高、Z 宽，单位：米；动画差速及几何校验共用。
     size: Vec3,
     /// 各侧独立轮节点，支持不同车型的轮数。
@@ -33,16 +35,17 @@ pub(crate) struct TrackSpec {
     pub(crate) reverse_speed: f32,
 }
 
-/// 玩家默认底盘适配的 cleat 履带，速度按用户指定：前进 16 米/秒、倒车 8 米/秒。
+/// astraH 整车履带，沿用前进 16 米/秒、倒车 8 米/秒。
 pub(crate) const PLAYER_TRACKS: TrackSpec = TrackSpec {
-    path: "tank/tracks/player/cleat/track.vox",
+    path: crate::tank::model::astra::TRACK_PATH,
+    phase_step: crate::tank::model::astra::TRACK_PHASE_STEP,
     size: TANK_SIZE,
     wheels: [
-        &crate::tank::model::player::WHEELS[0],
-        &crate::tank::model::player::WHEELS[1],
+        &crate::tank::model::astra::WHEELS[0],
+        &crate::tank::model::astra::WHEELS[1],
     ],
-    pivot: crate::tank::model::player::CANVAS_PIVOT,
-    clearance: crate::tank::model::player::WHEEL_CLEARANCE,
+    pivot: crate::tank::model::astra::CANVAS_PIVOT,
+    clearance: crate::tank::model::astra::WHEEL_CLEARANCE,
     forward_speed: 16.0,
     reverse_speed: 8.0,
 };
@@ -51,6 +54,7 @@ pub(crate) const PLAYER_TRACKS: TrackSpec = TrackSpec {
 /// 敌人当前零输入不驾驶，速度为未设定占位值，接入敌方 AI 前需赋真实数值。
 pub(crate) const ENEMY_TRACKS: TrackSpec = TrackSpec {
     path: "tank/tracks/enemy/crawl/track.vox",
+    phase_step: TRACK_PHASE_STEP,
     size: Vec3::from_array(crate::tank::model::enemy::COLLISION_SIZE),
     wheels: [
         &crate::tank::model::enemy::WHEELS[0],
@@ -335,8 +339,8 @@ fn validate_tracks(
 }
 
 /// 由带符号里程计算当前相位；负里程（倒转）向相位减小方向回绕。
-fn phase_for_dist(dist: f32) -> usize {
-    ((dist / TRACK_PHASE_STEP).floor() as i64).rem_euclid(TRACK_PHASES) as usize
+fn phase_for_dist(dist: f32, step: f32) -> usize {
+    ((dist / step).floor() as i64).rem_euclid(TRACK_PHASES) as usize
 }
 
 /// 单侧履带接触点的线速度沿车头方向的分量，单位：米/秒。
@@ -399,7 +403,7 @@ fn advance_track_phases(
                             .rotation;
                 }
             }
-            let phase = phase_for_dist(anim.dist[side]);
+            let phase = phase_for_dist(anim.dist[side], spec.phase_step);
             // 相位变化时才写组件：显示新相位、隐藏其余
             if phase != anim.phase[side] {
                 for (p, &entity) in anim.variants[side].iter().enumerate() {
@@ -749,7 +753,7 @@ mod tests {
     /// 前进时接地点沿 +X 抵消车身速度；倒车和两侧反向里程必须反转。
     #[test]
     fn wheel_roll_direction_matches_ground_contact() {
-        let spec = &crate::tank::model::player::WHEELS[0][0];
+        let spec = &crate::tank::model::astra::WHEELS[0][0];
         let forward = wheel_transform(spec, PLAYER_TRACKS.pivot, 0.001);
         let reverse = wheel_transform(spec, PLAYER_TRACKS.pivot, -0.001);
         let bottom = Vec3::NEG_Y * spec.radius * crate::tank::model::REFERENCE_VOXEL_SIZE;
@@ -762,16 +766,16 @@ mod tests {
     #[test]
     fn expanded_canvas_keeps_wheel_install_height() {
         let spec = &crate::tank::model::player::WHEELS[0][0];
-        let transform = wheel_transform(spec, PLAYER_TRACKS.pivot, 0.0);
+        let transform = wheel_transform(spec, crate::tank::model::player::CANVAS_PIVOT, 0.0);
         // 若误用扩高后画布中心（CANVAS.2/2），轮轴会整体下沉 0.5 米；轴心必须保持 13.5。
         let canvas_center = (
-            PLAYER_TRACKS.pivot.0,
-            PLAYER_TRACKS.pivot.1,
+            crate::tank::model::player::CANVAS_PIVOT.0,
+            crate::tank::model::player::CANVAS_PIVOT.1,
             crate::tank::model::player::CANVAS.2 as f32 / 2.0,
         );
         let with_canvas_center = wheel_transform(spec, canvas_center, 0.0);
         assert!((transform.translation.y - with_canvas_center.translation.y - 0.5).abs() < 1e-5);
-        assert_eq!(PLAYER_TRACKS.pivot.2, 13.5);
+        assert_eq!(crate::tank::model::player::CANVAS_PIVOT.2, 13.5);
         assert_eq!(
             crate::tank::model::player::CANVAS.2,
             37,
@@ -782,16 +786,16 @@ mod tests {
     /// 每相位移动一格（0.1 米），三相位对应完整 0.3 米齿距；倒车按反向回绕。
     #[test]
     fn phase_advances_reverses_and_wraps() {
-        assert_eq!(phase_for_dist(0.0), 0);
-        assert_eq!(phase_for_dist(0.09), 0);
-        assert_eq!(phase_for_dist(0.11), 1);
-        assert_eq!(phase_for_dist(0.21), 2);
-        assert_eq!(phase_for_dist(0.31), 0);
+        assert_eq!(phase_for_dist(0.0, TRACK_PHASE_STEP), 0);
+        assert_eq!(phase_for_dist(0.09, TRACK_PHASE_STEP), 0);
+        assert_eq!(phase_for_dist(0.11, TRACK_PHASE_STEP), 1);
+        assert_eq!(phase_for_dist(0.21, TRACK_PHASE_STEP), 2);
+        assert_eq!(phase_for_dist(0.31, TRACK_PHASE_STEP), 0);
         // 倒转 0.05m：相位从 0 回绕到 2
-        assert_eq!(phase_for_dist(-0.05), 2);
+        assert_eq!(phase_for_dist(-0.05, TRACK_PHASE_STEP), 2);
         // 倒转越过整齿距后相位继续回退
-        assert_eq!(phase_for_dist(-0.11), 1);
-        assert_eq!(phase_for_dist(-0.21), 0);
+        assert_eq!(phase_for_dist(-0.11, TRACK_PHASE_STEP), 1);
+        assert_eq!(phase_for_dist(-0.21, TRACK_PHASE_STEP), 0);
     }
 
     /// 直行时两侧履带速度相等；左转（ω>0）时两侧一正一负（原地转向反向滚动）。

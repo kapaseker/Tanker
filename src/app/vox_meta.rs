@@ -124,12 +124,12 @@ mod tests {
         validate(Path::new("assets")).expect("受管理 VOX 的单位配置应全部合法");
     }
 
-    /// 配置清单：九份受管理资产逐一列名，单位按迁移进度核对——
+    /// 配置清单：历史资源与当前整车资源逐一列名，单位按迁移进度核对——
     /// 七个坦克文件（双方 body/barrel/track 与玩家子弹）均为 0.02 米/格，
     /// 爆炸与混凝土墩仍为 0.1。后续工单迁移更多文件时同步更新期望值。
     #[test]
     fn manifest_lists_expected_units_per_asset() {
-        const MANAGED: [(&str, f32); 9] = [
+        const MANAGED: [(&str, f32); 13] = [
             ("effects/explosion.vox", 0.1),
             ("obstacles/concrete/obstacle.vox", 0.1),
             ("tank/barrels/enemy/spit/barrel.vox", 0.02),
@@ -137,6 +137,10 @@ mod tests {
             ("tank/barrels/player/lance/bullet.vox", 0.02),
             ("tank/bodies/enemy/carapace/body.vox", 0.02),
             ("tank/bodies/player/anvil/body.vox", 0.02),
+            ("tank/player/astra/body.vox", 0.02),
+            ("tank/player/astra/turret.vox", 0.02),
+            ("tank/player/astra/barrel.vox", 0.02),
+            ("tank/player/astra/track.vox", 0.02),
             ("tank/tracks/enemy/crawl/track.vox", 0.02),
             ("tank/tracks/player/cleat/track.vox", 0.02),
         ];

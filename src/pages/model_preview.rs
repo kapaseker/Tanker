@@ -39,7 +39,7 @@ pub(crate) const ENTRIES: [Entry; 9] = [
     },
     Entry {
         category: 1,
-        path: "tank/tracks/player/cleat/track.vox",
+        path: crate::tank::model::astra::TRACK_PATH,
         enemy: false,
     },
     Entry {
@@ -49,7 +49,7 @@ pub(crate) const ENTRIES: [Entry; 9] = [
     },
     Entry {
         category: 2,
-        path: "tank/bodies/player/anvil/body.vox",
+        path: crate::tank::model::astra::BODY_PATH,
         enemy: false,
     },
     Entry {
@@ -59,7 +59,7 @@ pub(crate) const ENTRIES: [Entry; 9] = [
     },
     Entry {
         category: 3,
-        path: "tank/bodies/player/anvil/body.vox",
+        path: crate::tank::model::astra::BODY_PATH,
         enemy: false,
     },
     Entry {
@@ -78,7 +78,7 @@ pub(crate) const ENTRIES: [Entry; 9] = [
 #[derive(Component)]
 pub(crate) struct PreviewEntity;
 
-/// 伴随子弹子树标记（仅 lance 配置）：只作"子弹与炮管组合"示意，
+/// 伴随子弹子树标记（仅玩家炮管）：只作"子弹与炮管组合"示意，
 /// 不参与包围盒测量、自转中心与详情尺寸轴（测量时按本标记整树排除）。
 #[derive(Component)]
 pub(crate) struct BulletCompanion;
@@ -158,18 +158,13 @@ pub(crate) fn spawn(
             });
         }
         if entry.category == 3 {
-            visual::mount_barrel(
-                commands,
-                assets,
-                content,
-                if entry.enemy {
-                    visual::ENEMY_BARREL.path
-                } else {
-                    visual::PLAYER_BARREL.path
-                },
-            );
+            if entry.enemy {
+                visual::mount_barrel(commands, assets, content, visual::ENEMY_BARREL.path);
+            } else {
+                crate::tank::articulation::mount_player(commands, assets, content);
+            }
         }
-        // 伴随子弹：炮管 lance（唯一配置）在正上方叠加，表达与炮管的组合关系；
+        // 伴随子弹：玩家炮管（唯一配置）在正上方叠加，表达与炮管的组合关系；
         // 不改变模型中心，也不参与尺寸与包围盒（测量时按 BulletCompanion 排除）。
         if entry.path == visual::PLAYER_BARREL.path {
             let bullet = commands
@@ -177,7 +172,7 @@ pub(crate) fn spawn(
                     BulletCompanion,
                     Transform::default(),
                     Visibility::Inherited,
-                    WorldAssetRoot(assets.load(visual::LANCE_BULLET)),
+                    WorldAssetRoot(assets.load(visual::PLAYER_BULLET)),
                 ))
                 .id();
             commands.entity(content).add_child(bullet);
