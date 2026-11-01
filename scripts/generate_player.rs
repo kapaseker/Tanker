@@ -108,7 +108,10 @@ fn package(models: &[(String, Vec<Voxel>)]) -> Vec<u8> {
             .iter()
             .flatten()
             .find(|wheel| wheel.name == name)
-            .map_or(SIZE, |wheel| wheel.size);
+            .map_or(SIZE, |wheel| {
+                // 旧粗源仍按整数参考格写 SIZE；astra 的细格尺寸不进入此生成器。
+                (wheel.size.0 as u32, wheel.size.1 as u32, wheel.size.2 as u32)
+            });
         push_model(&mut children, m, size);
     }
     let colors = [
