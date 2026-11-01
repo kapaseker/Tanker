@@ -54,57 +54,18 @@ function buildModel(model) {
   return el;
 }
 
-// 伴随子弹：把 model.bullet（可选）的占位盒子组附加到模型正上方，
-// 仅表达"子弹与炮管组合"，不改变模型中心，也不参与 dims 与尺寸轴包围盒计算。
-// spec.gap 为子弹与模型上缘的间距（px）；模型空间 Y 轴向下，越小越靠上。
-function attachBullet(modelEl, model) {
-  const spec = model.bullet;
-  if (!spec) return;
-  // 模型上缘 = 各部件最高点（Y 最小处）
-  let top = 0;
-  for (const p of model.parts) top = Math.min(top, (p.y || 0) - p.h / 2);
-  // 子弹组高度 = 子弹部件的最大高度
-  let h = 0;
-  for (const p of spec.parts) h = Math.max(h, p.h);
-  const group = document.createElement('div');
-  group.className = 'model__box'; // 复用绝对定位与 preserve-3d
-  group.style.transform = `translate3d(0px, ${top - spec.gap - h / 2}px, 0px)`;
-  for (const part of spec.parts) group.append(buildBox(part, model.tone));
-  modelEl.append(group);
-}
-
-// 分类与模型数据；ci/mi 为分类与模型下标，用于页面间 URL 传递
-// 与游戏当前九项真实清单同步；尺寸为可见几何长宽高（米）。
-// 网页盒子仅表达构图，游戏必须通过 VOX 加载器渲染真实资产。
-// bullet 为可选伴随子弹（正上方展示，不参与尺寸）；仅 lance 配了真实资产 bullet.vox。
-// specs 为可选装备参数行；只写游戏内已定义的真实数值，占位 0 的敌人装备不写。
+// 与游戏同步：独立弹丸一项，完整坦克两项；网页盒子只表达构图。
 const CATEGORIES = [
-  { name: '炮管', code: 'BR', models: [
-    { name: 'lance', tone: 'mint', dims: [4.5, 0.4, 0.4], specs: [{ label: '初速', value: '1200', unit: 'm/s' }, { label: '射速', value: '12', unit: 'rpm' }], bullet: { gap: 30, parts: [{ w: 28, h: 12, d: 12 }] }, parts: [{ w: 170, h: 16, d: 16 }] },
-    { name: 'spit', tone: 'sand', dims: [3.8, 0.4, 0.4], parts: [{ w: 144, h: 16, d: 16 }] },
-  ] },
-  { name: '履带', code: 'TR', models: [
-    { name: 'cleat', tone: 'dark', dims: [7.5, 3.6, 1.3], specs: [{ label: '前进速度', value: '16', unit: 'm/s' }, { label: '倒车速度', value: '8', unit: 'm/s' }], parts: [{ w: 180, h: 31, d: 20, z: 33 }, { w: 180, h: 31, d: 20, z: -33 }] },
-    { name: 'crawl', tone: 'sand', dims: [6.6, 3.4, 1.4], parts: [{ w: 158, h: 34, d: 20, z: 31 }, { w: 158, h: 34, d: 20, z: -31 }] },
-  ] },
-  { name: '车身', code: 'CH', models: [
-    { name: 'anvil', tone: 'mint', dims: [7.5, 3.4, 2.2], parts: [{ w: 180, h: 30, d: 82 }, { w: 76, h: 23, d: 60, y: -26 }] },
-    { name: 'carapace', tone: 'sand', dims: [6.5, 3.2, 2.1], parts: [{ w: 156, h: 30, d: 77 }, { w: 68, h: 20, d: 52, y: -25 }] },
+  { name: '子弹', code: 'AM', models: [
+    { name: 'APFSDS', tone: 'dark', dims: [0.72, 0.10, 0.10], parts: [{ w: 180, h: 10, d: 10 }, { w: 30, h: 25, d: 4, x: -75 }, { w: 30, h: 4, d: 25, x: -75 }] },
   ] },
   { name: '坦克', code: 'TK', models: [
-    { name: 'anvil', tone: 'mint', dims: [10.5, 3.6, 2.6], parts: [{ w: 150, h: 30, d: 72 }, { w: 60, h: 22, d: 48, y: -26 }, { w: 90, h: 8, d: 8, x: 90, y: -26 }, { w: 150, h: 20, d: 16, y: 20, z: 28, tone: 'dark' }, { w: 150, h: 20, d: 16, y: 20, z: -28, tone: 'dark' }] },
+    { name: 'LeoPard2 A6', tone: 'mint', dims: [10.98, 3.76, 4.32], specs: [{ label: '初速', value: '1200', unit: 'm/s' }, { label: '射速', value: '12', unit: 'rpm' }, { label: '前进速度', value: '16', unit: 'm/s' }, { label: '倒车速度', value: '8', unit: 'm/s' }], parts: [{ w: 150, h: 30, d: 72 }, { w: 60, h: 22, d: 48, y: -26 }, { w: 106, h: 8, d: 8, x: 90, y: -26 }, { w: 150, h: 20, d: 16, y: 20, z: 28, tone: 'dark' }, { w: 150, h: 20, d: 16, y: 20, z: -28, tone: 'dark' }] },
     { name: 'carapace', tone: 'sand', dims: [9, 3.4, 2.6], parts: [{ w: 132, h: 30, d: 68 }, { w: 54, h: 22, d: 46, y: -26 }, { w: 76, h: 8, d: 8, x: 78, y: -26 }, { w: 132, h: 20, d: 16, y: 20, z: 26, tone: 'dark' }, { w: 132, h: 20, d: 16, y: 20, z: -26, tone: 'dark' }] },
-  ] },
-  { name: '障碍物', code: 'OB', models: [
-    { name: 'concrete', tone: 'gray', dims: [4, 1.5, 3], parts: [
-      { w: 120, h: 30, d: 45, y: 30 },
-      { w: 120, h: 30, d: 36 },
-      { w: 120, h: 30, d: 27, y: -30 },
-    ] },
   ] },
 ];
 
-// 模型卡片/详情页锚点编号，例如 BR-01；画廊与详情页用它互相对应
+// 模型卡片/详情页锚点编号，例如 AM-01；画廊与详情页用它互相对应
 function modelCardId(category, modelIndex) {
   return `${category.code}-${String(modelIndex + 1).padStart(2, '0')}`;
 }

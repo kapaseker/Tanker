@@ -2,22 +2,24 @@
 
 模块导航：`scripts/generate_enemy.py` 读取 `src/tank/model/enemy.rs`，共用轮型契约在 `src/tank/model/mod.rs`；生成与销毁消息归 `src/gameplay/enemy.rs`，共用驾驶与表现归 `src/tank/`，战斗归 `src/gameplay/combat/`。目录整理验收见 [任务 10](testing/architecture-step10-20261023.md)。
 
-默认敌人为原创现代坦克：暗红倾斜首上、紧凑削角炮塔、短尾舱、分段侧裙和深灰透空履带。敌人仍是开局生成的10辆静止靶车，不新增AI、开火或补充生成。
+默认敌车名为 **carapace**，为原创现代坦克：暗红倾斜首上、紧凑削角炮塔、短尾舱、分段侧裙和深灰透空履带。敌人仍是开局生成的10辆静止靶车，不新增AI、开火或补充生成。
+
+2026-11-01：运行资源按整车统一放在 `assets/tank/enemy/carapace/`，body/barrel/track 仅表示装配用途；无弹丸资源，不在画廊生成子弹。旧车身、炮管和履带分类已移除，外观和运动行为沿用。
 
 ## 尺寸与坐标
 
 权威定义在 `src/tank/model/enemy.rs`；坐标一律按参考格（每格 0.1 米，`REFERENCE_VOXEL_SIZE`）。交付的车身、炮管与履带资产已按 0.02 米/格细分（`.vox.meta` 声明），契约数值不随细分改变；VOX +X 为车头、Y 为宽度、Z 为高度。参考画布为114×34×26格，车体 X=[24,90)，画布中心X=57与车体中心一致；细分后资产画布为570×170×130格。
 
-- 非炮管圆角碰撞体：长6.6米、高2.6米、宽3.4米，圆角0.2米。运行时尺寸由 `src/tank/model/enemy.rs` 的 `COLLISION_SIZE` 统一推导，高度沿用玩家底盘契约（同一权威值），资源测试同时核对两种模型高度契约。
+- 非炮管圆角碰撞体：长6.6米、高2.6米、宽3.4米，圆角0.2米。运行时尺寸由 `src/tank/model/enemy.rs` 的 `COLLISION_SIZE` 统一推导，高度取自敌方自身画布边界，独立于玩家车型。
 - 非炮管几何边界为[24,0,0]至[90,34,26]；地面至顶盖2.6米，零偏移挂载，底部与玩家一致。
 - 炮管 X=[76,114)，轴线离地2米，炮口在车体中心前方5.7米；车尾至炮口全长9米。炮管不拥有碰撞体，也不扩大整车碰撞框。
 - 现实比例参考加拿大坦克博物馆的 [T-72M1](https://tankmuseum.ca/blog-post/t-72m1-at-the-museum/)（车体长6.95米、宽3.6米、高2.2米）；本模型为适应游戏高度与4+2轮组的原创设计，不是实车复刻。
 
 | 资源路径（相对 assets） | 节点 | 内容 |
 |---|---|---|
-| tank/bodies/enemy/carapace/body.vox | body | 车身、炮塔、炮盾、顶盖、侧裙与支架 |
-| tank/barrels/enemy/spit/barrel.vox | barrel | 炮管、抽烟器与炮口 |
-| tank/tracks/enemy/crawl/track.vox | track_l_0..2 / track_r_0..2、wheel_l_0..5 / wheel_r_0..5 | 六相位履带与十二个独立轮 |
+| tank/enemy/carapace/body.vox | body | 车身、炮塔、炮盾、顶盖、侧裙与支架 |
+| tank/enemy/carapace/barrel.vox | barrel | 炮管、抽烟器与炮口 |
+| tank/enemy/carapace/track.vox | track_l_0..2 / track_r_0..2、wheel_l_0..5 / wheel_r_0..5 | 六相位履带与十二个独立轮 |
 
 三包保留原敌人五色调色板：RGB(100,42,38)、(121,55,46)、(75,31,29)、(36,39,37)、(66,60,53)。车身、炮管与履带相位共用画布；独立轮使用局部居中画布，按契约轴心安装。每辆敌人共20个场景根实例（车身、炮管、六相位与十二轮）；细分分块只增加子树实体，根实体销毁时整棵分块场景全部注销。
 

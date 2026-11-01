@@ -93,7 +93,7 @@ impl Scenario {
             (Self::Gallery | Self::Detail, 12) => &[KeyCode::Home],
             (Self::Gallery | Self::Detail, 13) => &[KeyCode::PageDown],
             (Self::Gallery | Self::Detail, 14) => &[KeyCode::ArrowDown],
-            (Self::Detail, 16) => &[KeyCode::ArrowRight],
+            (Self::Gallery | Self::Detail, 16) => &[KeyCode::ArrowRight],
             (Self::Detail, 17) => &[KeyCode::ArrowUp],
             (Self::Detail, 18) => &[KeyCode::ArrowLeft],
             _ => &[],
@@ -258,5 +258,6 @@ mod tests {
         assert_eq!(Scenario::Index.keys(3), &[KeyCode::Enter]);
         assert_eq!(Scenario::Index.keys(5), &[KeyCode::Escape]);
         assert!(Scenario::Index.keys(2).is_empty());
+        assert_eq!(Scenario::Gallery.keys(16), &[KeyCode::ArrowRight]);
     }
 }

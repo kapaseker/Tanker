@@ -8,10 +8,12 @@
 
 | 游戏内车型 | 现实参考 | 资源组合 | 状态 | 详细依据 |
 |---|---|---|---|---|
-| 当前玩家坦克 | Leopard 2A6（豹 2A6），L55 长炮管 | astraH 整车；运动分组不承担换装身份；复用原视觉弹丸 | 2026-11-01 用户确认采用 astraH 并保留外观；运动接入技术验收通过（完整自动回归与六项 Radeon/Vulkan 离屏），动态美术待用户确认 | [玩家模型](player-model.md)、[原始整车](../tank_model/leovox_astraH/README.md)、[接入验收](testing/astra-player-integration.md) |
-| 当前敌方坦克 | 原创现代坦克，未指定现实车型 | body: carapace；barrel: spit；track: crawl | 已有实现；按自身模型契约维护 | [敌方模型](enemy-model.md) |
+| LeoPard2 A6（玩家） | Leopard 2A6（豹 2A6），L55 长炮管 | astraH 整车，运行目录 `tank/player/leopard2_a6/`；独立 APFSDS 弹丸 `tank/ammunition/apfsds/` | 2026-11-01 用户确认采用 astraH 并保留外观；运动接入技术验收通过（完整自动回归与六项 Radeon/Vulkan 离屏），动态美术待用户确认 | [玩家模型](player-model.md)、[原始整车](../tank_model/leovox_astraH/README.md)、[接入验收](testing/astra-player-integration.md) |
+| carapace（敌方） | 原创现代坦克，未指定现实车型 | `tank/enemy/carapace/` 下 body/barrel/track；无弹丸 | 已有实现；按自身模型契约维护 | [敌方模型](enemy-model.md) |
 
 状态核对日期：2026-11-01。进行中的工作区改动不能直接作为已验收依据。
+
+2026-11-01 目录整理：旧玩家三包、专用生成器及测试已删除，原始 astraH 作者源与历史说明保留。画廊仅登记 APFSDS、LeoPard2 A6 和 carapace；弹丸参考 DM53/DM63 系列，未指定具体型号。
 
 历史说明：旧 anvil/lance/cleat 玩家版本已于 2026-10-29 通过最终美术验收，见[旧契约](player-model-legacy.md)及[历史验收](testing/player-a6-final-acceptance.md)。该结论不延伸到 astraH 动画接入。
 

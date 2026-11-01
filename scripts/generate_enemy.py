@@ -15,9 +15,9 @@ from generate_ground import chunk, dictionary
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / 'assets' / 'tank'
-BODY_OUTPUT = ASSETS / 'bodies/enemy/carapace/body.vox'
-BARREL_OUTPUT = ASSETS / 'barrels/enemy/spit/barrel.vox'
-TRACKS_OUTPUT = ASSETS / 'tracks/enemy/crawl/track.vox'
+BODY_OUTPUT = ASSETS / 'enemy/carapace/body.vox'
+BARREL_OUTPUT = ASSETS / 'enemy/carapace/barrel.vox'
+TRACKS_OUTPUT = ASSETS / 'enemy/carapace/track.vox'
 OUTPUTS = (BODY_OUTPUT, BARREL_OUTPUT, TRACKS_OUTPUT)
 CONTRACT = (ROOT / 'src/tank/model/enemy.rs').read_text()
 
@@ -186,8 +186,7 @@ def build_assets():
 
 def main():
     """三包粗源经共同转换器细分发布；--check 逐字节比对交付资产。"""
-    from subdivide_vox import convert, rewrite_meta_unit
-    from publish_player import COARSE_UNIT, FINE_UNIT, compare_pair
+    from subdivide_vox import convert, rewrite_meta_unit, compare_pair, TARGET_UNIT
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--check', action='store_true')
@@ -204,9 +203,9 @@ def main():
             coarse.write_bytes(packages[i])
             meta = delivered.with_name(delivered.name + '.meta').read_text(encoding='utf-8')
             coarse.with_name(coarse.name + '.meta').write_text(
-                rewrite_meta_unit(meta, COARSE_UNIT), encoding='utf-8')
+                rewrite_meta_unit(meta, 0.1), encoding='utf-8')
             staging = work / f'staging-{i}'
-            stats = convert(coarse, FINE_UNIT, staging, publish=False)
+            stats = convert(coarse, TARGET_UNIT, staging, publish=False)
             sources.append(coarse)
             if args.check:
                 problems = compare_pair(staging, coarse, delivered)
@@ -215,7 +214,7 @@ def main():
             print(f'{delivered.relative_to(ROOT)}：{stats["source_voxels"]} → {stats["output_voxels"]}')
         if not args.check:
             for i, (coarse, delivered) in enumerate(zip(sources, OUTPUTS)):
-                convert(coarse, FINE_UNIT, work / f'publish-{i}', publish=True, dest_path=delivered)
+                convert(coarse, TARGET_UNIT, work / f'publish-{i}', publish=True, dest_path=delivered)
         complete = True
     finally:
         if complete:

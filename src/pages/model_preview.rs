@@ -11,77 +11,47 @@ use bevy::{
     world_serialization::{WorldInstance, WorldInstanceSpawner},
 };
 
-/// 分类索引与页面顺序一致；整车显示其车身型号。
+/// 分类索引与页面顺序一致；展示名称独立于资产目录和作者来源。
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Entry {
     pub category: usize,
     pub path: &'static str,
     pub enemy: bool,
+    /// 用户可见的车型或弹种名称。
+    pub name: &'static str,
 }
 impl Entry {
-    /// 型号严格取主资产的父目录，排除扩展名和车型目录。
+    /// 画廊卡片与详情标题共用的正式名称。
     pub fn name(self) -> &'static str {
-        self.path.rsplit('/').nth(1).unwrap()
+        self.name
     }
 }
 
-/// 当前已接入的真实资源，不枚举 ADR 中的预留型号或炮管附属子弹。
-pub(crate) const ENTRIES: [Entry; 9] = [
+/// 只登记有真实资产的弹丸和完整坦克，敌方暂无弹丸。
+pub(crate) const ENTRIES: [Entry; 3] = [
     Entry {
         category: 0,
-        path: visual::PLAYER_BARREL.path,
+        path: visual::PLAYER_BULLET,
         enemy: false,
-    },
-    Entry {
-        category: 0,
-        path: visual::ENEMY_BARREL.path,
-        enemy: true,
+        name: "APFSDS",
     },
     Entry {
         category: 1,
-        path: crate::tank::model::astra::TRACK_PATH,
+        path: crate::tank::model::astra::BODY_PATH,
         enemy: false,
+        name: "LeoPard2 A6",
     },
     Entry {
         category: 1,
-        path: "tank/tracks/enemy/crawl/track.vox",
+        path: "tank/enemy/carapace/body.vox",
         enemy: true,
-    },
-    Entry {
-        category: 2,
-        path: crate::tank::model::astra::BODY_PATH,
-        enemy: false,
-    },
-    Entry {
-        category: 2,
-        path: "tank/bodies/enemy/carapace/body.vox",
-        enemy: true,
-    },
-    Entry {
-        category: 3,
-        path: crate::tank::model::astra::BODY_PATH,
-        enemy: false,
-    },
-    Entry {
-        category: 3,
-        path: "tank/bodies/enemy/carapace/body.vox",
-        enemy: true,
-    },
-    Entry {
-        category: 4,
-        path: "obstacles/concrete/obstacle.vox",
-        enemy: false,
+        name: "carapace",
     },
 ];
 
 /// 预览专用实体；页面退出时统一清理，避免混入玩法。
 #[derive(Component)]
 pub(crate) struct PreviewEntity;
-
-/// 伴随子弹子树标记（仅玩家炮管）：只作"子弹与炮管组合"示意，
-/// 不参与包围盒测量、自转中心与详情尺寸轴（测量时按本标记整树排除）。
-#[derive(Component)]
-pub(crate) struct BulletCompanion;
 
 /// 一张卡片独占的模型、相机与纹理；尺寸在未旋转的模型空间测量。
 pub(crate) struct Preview {
@@ -94,7 +64,7 @@ pub(crate) struct Preview {
     pub(crate) camera: Entity,
     pub(crate) image: Handle<Image>,
     pub(crate) size: Option<Vec3>,
-    /// 测得的可见几何包围盒（content 局部空间，米；不含伴随子弹），
+    /// 测得的可见几何包围盒（content 局部空间，米），
     /// 供详情页尺寸轴贴合模型边沿取位。
     pub(crate) bounds: Option<(Vec3, Vec3)>,
     /// 自转轴（content 局部空间）；content 平移取其负值，详情投影复用。
@@ -134,48 +104,23 @@ pub(crate) fn spawn(
             .spawn((PreviewEntity, Transform::default(), Visibility::Inherited))
             .id();
         let content = commands
-            .spawn((
-                // 墩体资产厚度沿 X；预览转向后统一按长、宽、高展示尺寸。
-                Transform::from_rotation(if entry.category == 4 {
-                    Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)
-                } else {
-                    Quat::IDENTITY
-                }),
-                Visibility::Inherited,
-            ))
+            .spawn((Transform::default(), Visibility::Inherited))
             .id();
         commands.entity(root).add_child(content);
-        if entry.category != 1 {
             commands
                 .entity(content)
                 .insert(WorldAssetRoot(assets.load(entry.path)));
-        }
-        if entry.category == 1 || entry.category == 3 {
+        if entry.category == 1 {
             commands.entity(content).insert(if entry.enemy {
                 track::ENEMY_TRACKS
             } else {
                 track::PLAYER_TRACKS
             });
-        }
-        if entry.category == 3 {
             if entry.enemy {
                 visual::mount_barrel(commands, assets, content, visual::ENEMY_BARREL.path);
             } else {
                 crate::tank::articulation::mount_player(commands, assets, content);
             }
-        }
-        // 伴随子弹：玩家炮管（唯一配置）在正上方叠加，表达与炮管的组合关系；
-        // 不改变模型中心，也不参与尺寸与包围盒（测量时按 BulletCompanion 排除）。
-        if entry.path == visual::PLAYER_BARREL.path {
-            let bullet = commands
-                .spawn((
-                    BulletCompanion,
-                    Transform::default(),
-                    Visibility::Inherited,
-                    WorldAssetRoot(assets.load(visual::PLAYER_BULLET)),
-                ))
-                .id();
-            commands.entity(content).add_child(bullet);
         }
         let image = images.add(Image::new_target_texture(
             460,
@@ -232,21 +177,19 @@ pub(crate) fn spawn(
     });
 }
 
-/// 层级展开时累计局部变换，显隐与伴随子弹排除沿父链传播；只显示的网格参与尺寸计算。
-/// 返回元组为 (实体, 局部仿射, 是否可见, 是否位于伴随子弹子树内)。
-pub(crate) fn model_nodes(world: &World, content: Entity) -> Vec<(Entity, Affine3A, bool, bool)> {
+/// 层级展开时累计局部变换与显隐；返回 (实体, 局部仿射, 是否可见)。
+pub(crate) fn model_nodes(world: &World, content: Entity) -> Vec<(Entity, Affine3A, bool)> {
     let mut result = Vec::new();
-    let mut pending = vec![(content, Affine3A::IDENTITY, true, false)];
-    while let Some((entity, parent, visible, bullet)) = pending.pop() {
+    let mut pending = vec![(content, Affine3A::IDENTITY, true)];
+    while let Some((entity, parent, visible)) = pending.pop() {
         let transform = world
             .get::<Transform>(entity)
             .map_or(Affine3A::IDENTITY, Transform::compute_affine);
         let affine = parent * transform;
         let visible = visible && world.get::<Visibility>(entity) != Some(&Visibility::Hidden);
-        let bullet = bullet || world.get::<BulletCompanion>(entity).is_some();
-        result.push((entity, affine, visible, bullet));
+        result.push((entity, affine, visible));
         if let Some(children) = world.get::<Children>(entity) {
-            pending.extend(children.iter().map(|child| (child, affine, visible, bullet)));
+            pending.extend(children.iter().map(|child| (child, affine, visible)));
         }
     }
     result
@@ -260,7 +203,7 @@ pub(crate) fn prepare_previews(world: &mut World) {
     for (index, preview) in previews.items.iter_mut().enumerate() {
         let nodes = model_nodes(world, preview.content);
         // VOX 插件可能在实例就绪后继续展开后代；渲染层不能只在首帧设置。
-        for (entity, _, _, _) in &nodes {
+        for (entity, _, _) in &nodes {
             if world.get::<RenderLayers>(*entity) != Some(&RenderLayers::layer(index + 1)) {
                 world
                     .entity_mut(*entity)
@@ -274,7 +217,7 @@ pub(crate) fn prepare_previews(world: &mut World) {
         let spawner = world.resource::<WorldInstanceSpawner>();
         let mut ready = !nodes.is_empty();
         let mut error = None;
-        for (entity, _, _, _) in &nodes {
+        for (entity, _, _) in &nodes {
             if let Some(root) = world.get::<WorldAssetRoot>(*entity) {
                 if let Some(LoadState::Failed(reason)) = server.get_load_state(&root.0) {
                     error = Some(reason.to_string());
@@ -288,7 +231,7 @@ pub(crate) fn prepare_previews(world: &mut World) {
                 error = Some(failure.0.clone());
             }
         }
-        if preview.entry.category == 1 || preview.entry.category == 3 {
+        if preview.entry.category == 1 {
             ready &= world
                 .get::<track::TracksValidated>(preview.content)
                 .is_some();
@@ -309,7 +252,7 @@ pub(crate) fn prepare_previews(world: &mut World) {
         }
         let mesh_count = nodes
             .iter()
-            .filter(|(entity, _, _, _)| world.get::<Mesh3d>(*entity).is_some())
+            .filter(|(entity, _, _)| world.get::<Mesh3d>(*entity).is_some())
             .count();
         preview.stable_frames = if mesh_count > 0 && mesh_count == preview.mesh_count {
             preview.stable_frames + 1
@@ -320,12 +263,10 @@ pub(crate) fn prepare_previews(world: &mut World) {
         if preview.stable_frames < 8 {
             continue;
         }
-        // 主体包围盒与子弹本地包围盒分别累计；子弹不计入模型尺寸与自转中心。
+        // 弹丸作为独立预览，所有可见几何都参与尺寸与自转中心计算。
         let mut low = Vec3::splat(f32::INFINITY);
         let mut high = Vec3::splat(f32::NEG_INFINITY);
-        let mut bullet_low = Vec3::splat(f32::INFINITY);
-        let mut bullet_high = Vec3::splat(f32::NEG_INFINITY);
-        for (entity, affine, visible, bullet) in &nodes {
+        for (entity, affine, visible) in &nodes {
             world
                 .entity_mut(*entity)
                 .insert(RenderLayers::layer(index + 1));
@@ -344,17 +285,12 @@ pub(crate) fn prepare_previews(world: &mut World) {
             };
             let center = Vec3::from(aabb.center);
             let half = Vec3::from(aabb.half_extents);
-            let (target_low, target_high) = if *bullet {
-                (&mut bullet_low, &mut bullet_high)
-            } else {
-                (&mut low, &mut high)
-            };
             for x in [-1.0, 1.0] {
                 for y in [-1.0, 1.0] {
                     for z in [-1.0, 1.0] {
                         let point = affine.transform_point3(center + half * Vec3::new(x, y, z));
-                        *target_low = target_low.min(point);
-                        *target_high = target_high.max(point);
+                        low = low.min(point);
+                        high = high.max(point);
                     }
                 }
             }
@@ -366,28 +302,11 @@ pub(crate) fn prepare_previews(world: &mut World) {
         }
         let size = high - low;
         // 整车保留与游戏一致的 body 根原点，炮管不能把旋转轴拉向车头。
-        let pivot = if preview.entry.category == 3 {
+        let pivot = if preview.entry.category == 1 {
             Vec3::ZERO
         } else {
             (low + high) * 0.5
         };
-        // 伴随子弹就位：模型上缘上方 0.8 米（design.md 标准间距），XZ 对中自转轴；
-        // content 平移为 -pivot，故本地目标 = pivot + 上方偏移；子弹本地包围盒
-        // 在其根尚未平移时测得，平移量按该包围盒换算。
-        if let Some((bullet_root, _, _, _)) =
-            nodes.iter().find(|(e, _, _, _)| world.get::<BulletCompanion>(*e).is_some()).copied()
-            .filter(|_| bullet_low.is_finite())
-        {
-            let bullet_center = (bullet_low + bullet_high) * 0.5;
-            world
-                .get_mut::<Transform>(bullet_root)
-                .unwrap()
-                .translation = Vec3::new(
-                pivot.x - bullet_center.x,
-                high.y + crate::ui::resources::dimens::BULLET_GAP - bullet_low.y,
-                pivot.z - bullet_center.z,
-            );
-        }
         world
             .get_mut::<Transform>(preview.content)
             .unwrap()
@@ -445,7 +364,7 @@ pub(crate) fn validate(world: &World) -> Result<String, String> {
         let nodes = model_nodes(world, preview.content);
         let mut visible_phases = 0;
         let mut wheels = 0;
-        for (entity, _, visible, _) in nodes {
+        for (entity, _, visible) in nodes {
             if world.get::<crate::gameplay::player::Tank>(entity).is_some()
                 || world
                     .get::<crate::gameplay::enemy::EnemyTank>(entity)
@@ -474,19 +393,17 @@ pub(crate) fn validate(world: &World) -> Result<String, String> {
                 );
             }
         }
-        if matches!(preview.entry.category, 1 | 3)
+        if preview.entry.category == 1
             && (visible_phases != 2 || wheels != if preview.entry.enemy { 12 } else { 18 })
         {
             return Err(format!("履带可见相位/轮组异常：{visible_phases}/{wheels}"));
         }
-        if preview.entry.category == 3 {
+        if preview.entry.category == 1 {
             let expected = if preview.entry.enemy {
                 9.0
             } else {
-                // 资产格车尾换回参考格，与炮口契约比较；不以碰撞长度代替视觉全长。
-                (crate::tank::model::player::BARREL_X.1
-                    - crate::tank::model::player::VISUAL_HULL_X.0 as f32 / 5.0)
-                    * crate::tank::model::REFERENCE_VOXEL_SIZE
+                // astraH 原始几何：车尾至前向水平炮口共 10.98 米。
+                10.98
             };
             if (size.x - expected).abs() > 0.01 {
                 return Err(format!("整车视觉长度异常：{}", size.x));

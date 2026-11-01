@@ -20,7 +20,7 @@ from subdivide_vox import Model, Node, parse_vox, publish_pair, write_vox
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'tank_model/leovox_astraH/leopard_2a6.vox'
-DEST = ROOT / 'assets/tank/player/astra'
+DEST = ROOT / 'assets/tank/player/leopard2_a6'
 PIVOT = (192, 0, 67)
 TURRET_PIVOT = (192, 0, 80)
 BARREL_PIVOT = (278, 0, 104)

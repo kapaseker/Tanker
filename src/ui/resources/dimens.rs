@@ -183,9 +183,6 @@ pub(crate) mod index {
     pub(crate) const EXIT_FADE_IN: f32 = 0.12;
 }
 
-/// 伴随子弹与模型上缘的标准间距（世界单位：米，design.md 约定）。
-pub(crate) const BULLET_GAP: f32 = 0.8;
-
 /// 详情查看区与浮层的逻辑像素，取自 model-detail.html。
 pub(crate) mod detail {
     /// 平面网格间距；从标题栏底部开始计格。
@@ -209,7 +206,7 @@ pub(crate) mod detail {
     pub(crate) const SPEC_VALUE_GAP: f32 = 8.0;
     pub(crate) const SPEC_UNIT_SIZE: f32 = 14.0;
     pub(crate) const SPEC_UNIT_SPACING: f32 = 2.0;
-    /// 以下为尺寸轴几何（世界单位：米）；px→米换算按网页模型 37.8px/m 取整。
+    /// 以下为 10 米级整车的尺寸轴几何（米）；小模型由详情按最大尺寸同比缩小。
     /// 轴线与模型边沿的间距（网页 GAP 14px ≈ 0.37m）。
     pub(crate) const AXIS_GAP: f32 = 0.4;
     /// 端点刻度半长（网页 HALF_TICK 7px ≈ 0.19m）。

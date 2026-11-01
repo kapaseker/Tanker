@@ -55,8 +55,12 @@ pub(super) enum Part {
 
 /// 卡片有两项仍占固定四列中的前两列，不按数据量拉伸。
 pub(crate) fn card_rect(index: usize, left: f32, scroll: f32) -> Rect {
-    let row = index / 2;
-    let x = left + (index % 2) as f32 * (dims::CARD_WIDTH + dims::GAP);
+    let row = ENTRIES[index].category;
+    let column = ENTRIES[..index]
+        .iter()
+        .filter(|e| e.category == row)
+        .count();
+    let x = left + column as f32 * (dims::CARD_WIDTH + dims::GAP);
     let y = bar::HEIGHT + dims::SECTION_GAP + row as f32 * section_height() + dims::SECTION_TO_CARD
         - scroll;
     Rect::from_corners(
@@ -236,19 +240,24 @@ fn navigate(focus: Option<usize>, key: KeyCode) -> usize {
     let Some(index) = focus else {
         return 0;
     };
-    match key {
-        KeyCode::ArrowLeft => index - index % 2,
-        KeyCode::ArrowRight => (index / 2 * 2 + 1).min(ENTRIES.len() - 1),
-        KeyCode::ArrowUp => {
-            if index >= 2 {
-                index - 2
-            } else {
-                index
-            }
-        }
-        KeyCode::ArrowDown if index + 2 < ENTRIES.len() => index + 2,
-        _ => index,
-    }
+    let category = ENTRIES[index].category;
+    let column = ENTRIES[..index]
+        .iter()
+        .filter(|e| e.category == category)
+        .count();
+    let (row, column) = match key {
+        KeyCode::ArrowLeft => (category, column.saturating_sub(1)),
+        KeyCode::ArrowRight => (category, column + 1),
+        KeyCode::ArrowUp if category > 0 => (category - 1, column),
+        KeyCode::ArrowDown => (category + 1, column),
+        _ => return index,
+    };
+    ENTRIES
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.category == row)
+        .nth(column)
+        .map_or(index, |(i, _)| i)
 }
 
 /// 焦点优先完整落在标题栏下方；高度不足时对齐卡片顶部。
@@ -543,14 +552,18 @@ mod tests {
     use super::*;
     use crate::ui::widgets::title_bar::{TitleBarBack, TitleBarState};
     use bevy::render::render_resource::TextureFormat;
-    /// 第五类只有一张卡片：不能移向空位，右列向下也不能跨列跳到它。
+    /// 首类单弹丸，次类双坦克；导航按分类保持列，空位不产生焦点。
     #[test]
-    fn single_obstacle_card_has_no_phantom_neighbor() {
-        assert_eq!(navigate(Some(6), KeyCode::ArrowDown), 8);
-        assert_eq!(navigate(Some(7), KeyCode::ArrowDown), 7);
-        assert_eq!(navigate(Some(8), KeyCode::ArrowRight), 8);
-        assert_eq!(navigate(Some(8), KeyCode::ArrowDown), 8);
-        assert_eq!(navigate(Some(8), KeyCode::ArrowUp), 6);
+    fn ammunition_and_tanks_have_no_phantom_neighbor() {
+        assert_eq!(navigate(Some(0), KeyCode::ArrowRight), 0);
+        assert_eq!(navigate(Some(0), KeyCode::ArrowDown), 1);
+        assert_eq!(navigate(Some(1), KeyCode::ArrowRight), 2);
+        assert_eq!(navigate(Some(2), KeyCode::ArrowUp), 2);
+        assert_eq!(navigate(Some(1), KeyCode::ArrowUp), 0);
+        assert_eq!(navigate(Some(2), KeyCode::ArrowDown), 2);
+        assert_eq!(card_rect(0, 0.0, 0.0).min.x, card_rect(1, 0.0, 0.0).min.x);
+        assert_eq!(card_rect(1, 0.0, 0.0).min.y, card_rect(2, 0.0, 0.0).min.y);
+        assert!(card_rect(0, 0.0, 0.0).max.y < card_rect(1, 0.0, 0.0).min.y);
     }
     /// 仅安装页面输入需要的资源与共享控件系统，不加载渲染器或创建窗口；
     /// 返回框交互在控件内，需提供标题栏 marker 实体与 TitleBarState。
@@ -592,20 +605,21 @@ mod tests {
     /// 网格边界不跨列、不环绕；焦点滚入标题栏下方。
     #[test]
     fn navigation_edges_and_focus_reveal() {
-        for i in 0..ENTRIES.len() {
-            assert_eq!(navigate(Some(i), KeyCode::ArrowLeft), i / 2 * 2);
-            assert_eq!(
-                navigate(Some(i), KeyCode::ArrowRight),
-                (i / 2 * 2 + 1).min(ENTRIES.len() - 1)
-            );
-            assert_eq!(
-                navigate(Some(i), KeyCode::ArrowUp),
-                if i < 2 { i } else { i - 2 }
-            );
-            assert_eq!(
-                navigate(Some(i), KeyCode::ArrowDown),
-                if i + 2 >= ENTRIES.len() { i } else { i + 2 }
-            );
+        for (i, expected) in [[0, 0, 0, 1], [1, 2, 0, 1], [1, 2, 2, 2]]
+            .iter()
+            .enumerate()
+        {
+            for (key, target) in [
+                KeyCode::ArrowLeft,
+                KeyCode::ArrowRight,
+                KeyCode::ArrowUp,
+                KeyCode::ArrowDown,
+            ]
+            .into_iter()
+            .zip(expected)
+            {
+                assert_eq!(navigate(Some(i), key), *target);
+            }
         }
         let mut view = View {
             focus: Some(ENTRIES.len() - 1),
@@ -702,7 +716,7 @@ mod tests {
     #[test]
     fn fixed_grid_and_scroll_bounds() {
         assert_eq!(card_rect(0, 0.0, 0.0).width(), 270.0);
-        assert_eq!(card_rect(1, 0.0, 0.0).min.x, 294.0);
+        assert_eq!(card_rect(2, 0.0, 0.0).min.x, 294.0);
         assert!(max_scroll(720.0) > 0.0);
         assert_eq!(max_scroll(3000.0), 0.0);
         assert!(max_scroll(400.0) > max_scroll(720.0));
@@ -729,7 +743,7 @@ mod tests {
         assert_eq!(app.world().resource::<View>().scroll, 0.0);
         key(&mut app, KeyCode::Home);
         key(&mut app, KeyCode::PageDown);
-        assert_eq!(app.world().resource::<View>().scroll, 568.0);
+        assert_eq!(app.world().resource::<View>().scroll, 264.0);
         key(&mut app, KeyCode::End);
         assert_eq!(app.world().resource::<View>().scroll, max_scroll(720.0));
         key(&mut app, KeyCode::Home);

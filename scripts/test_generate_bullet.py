@@ -1,9 +1,4 @@
-"""publish_player 统一入口回归测试：python -X utf8 -m unittest scripts.test_publish_player。
-
-跑 --check 完整粗源兼容、细分和细网格作者化管线，逐字节比对四个交付配对，
-并检查内容与写入时间不变；漂移诊断和配对回滚另有小范围回归。
-前置：PATH 中有 rustc 与 python；首次运行会编译 target/generate_player(.exe)。
-"""
+"""独立弹丸重生成、只读检查与回读校验回归。"""
 import subprocess
 import sys
 import unittest
@@ -14,7 +9,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / 'scripts'))
-import publish_player as pp
+import generate_bullet as pp
 
 
 class PublishCheckTests(unittest.TestCase):
@@ -23,7 +18,7 @@ class PublishCheckTests(unittest.TestCase):
         before = {p: (hashlib.sha256(p.read_bytes()).digest(), p.stat().st_mtime_ns)
                   for p in paths}
         proc = subprocess.run(
-            [sys.executable, '-X', 'utf8', 'scripts/publish_player.py', '--check'],
+            [sys.executable, '-X', 'utf8', 'scripts/generate_bullet.py', '--check'],
             cwd=REPO, capture_output=True, text=True, encoding='utf-8')
         self.assertEqual(
             proc.returncode, 0,

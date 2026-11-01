@@ -1,4 +1,4 @@
-//! 履带多帧滚动动画：履带是独立 vox 资产（`assets/tank/tracks/<底盘ID>/<变体>/track.vox`），
+//! 履带多帧滚动动画：履带是独立 vox 资产（`assets/tank/<阵营>/<车型>/track.vox`），
 //! 每侧 3 个相位变体节点（`track_l_0..2` / `track_r_0..2`，齿图案相位错位 1 格）。
 //! 随坦克出生以子实体形式 spawn 履带包并直接持有变体句柄，运行时按左右履带
 //! 线速度积分里程、切换变体可见性产生滚动感；原地转向时左右差速反向滚动。
@@ -53,7 +53,7 @@ pub(crate) const PLAYER_TRACKS: TrackSpec = TrackSpec {
 /// 尺寸与敌人生成同源：直接推导自敌人模型契约，不依赖敌人生成模块。
 /// 敌人当前零输入不驾驶，速度为未设定占位值，接入敌方 AI 前需赋真实数值。
 pub(crate) const ENEMY_TRACKS: TrackSpec = TrackSpec {
-    path: "tank/tracks/enemy/crawl/track.vox",
+    path: "tank/enemy/carapace/track.vox",
     phase_step: TRACK_PHASE_STEP,
     size: Vec3::from_array(crate::tank::model::enemy::COLLISION_SIZE),
     wheels: [
@@ -760,27 +760,6 @@ mod tests {
         assert!((forward.rotation * bottom).x > 0.0);
         assert!((reverse.rotation * bottom).x < 0.0);
         // 正 Z 角速度叉乘底部 −Y，得到 +X 接触速度。
-    }
-
-    /// 画布扩高只增加顶部空间；轮轴安装高度仍由独立轴心保持，不能随画布中心漂移。
-    #[test]
-    fn expanded_canvas_keeps_wheel_install_height() {
-        let spec = &crate::tank::model::player::WHEELS[0][0];
-        let transform = wheel_transform(spec, crate::tank::model::player::CANVAS_PIVOT, 0.0);
-        // 若误用扩高后画布中心（CANVAS.2/2），轮轴会整体下沉 0.5 米；轴心必须保持 13.5。
-        let canvas_center = (
-            crate::tank::model::player::CANVAS_PIVOT.0,
-            crate::tank::model::player::CANVAS_PIVOT.1,
-            crate::tank::model::player::CANVAS.2 as f32 / 2.0,
-        );
-        let with_canvas_center = wheel_transform(spec, canvas_center, 0.0);
-        assert!((transform.translation.y - with_canvas_center.translation.y - 0.5).abs() < 1e-5);
-        assert_eq!(crate::tank::model::player::CANVAS_PIVOT.2, 13.5);
-        assert_eq!(
-            crate::tank::model::player::CANVAS.2,
-            37,
-            "高度扩展用于车顶附件，与物理碰撞分开"
-        );
     }
 
     /// 每相位移动一格（0.1 米），三相位对应完整 0.3 米齿距；倒车按反向回绕。

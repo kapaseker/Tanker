@@ -69,7 +69,7 @@
           card.className = 'card';
           // 详情页用 URL 参数 c/m（栏目与模型下标）定位模型；用 <a> 才能被 transition.js 接管切页动画
           card.href = `model-detail.html?c=${ci}&m=${mi}`;
-          // 锚点编号与详情页返回定位共用，例如 BR-01
+          // 锚点编号与详情页返回定位共用，例如 AM-01
           card.id = modelCardId(category, mi);
           card.innerHTML =
             `<span class="card__stage"></span>` +
@@ -80,7 +80,6 @@
 
           // 卡片内缩小展示并慢速自转；负延迟让各卡片错开相位
           const spin = buildModel(model);
-          attachBullet(spin, model); // 配置了伴随子弹的模型（炮管 lance）在正上方叠加子弹
           spin.classList.add('model--spin');
           spin.style.setProperty('--model-scale', '0.62');
           spin.style.animationDelay = `${-3 - mi * 2.6}s`;

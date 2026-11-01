@@ -2,13 +2,13 @@
 
 ## 车型参考与还原范围
 
-当前玩家采用 **Leopard 2A6 · astraH** 完整坦克模型，原始交付位于 [tank_model/leovox_astraH](../tank_model/leovox_astraH/README.md)。本次按[坦克模型意图](intent/tank-model.md)接入，用户于 2026-11-01 确认保留现有造型、配色与尺寸，只改造运动所需结构。资源组织依据 [ADR-0006](adr/0006-whole-tank-motion-assembly.md)。
+当前玩家采用 **LeoPard2 A6**（来源：astraH Leopard 2A6）完整坦克模型，原始交付位于 [tank_model/leovox_astraH](../tank_model/leovox_astraH/README.md)。本次按[坦克模型意图](intent/tank-model.md)接入，用户于 2026-11-01 确认保留现有造型、配色与尺寸，只改造运动所需结构。资源组织依据 [ADR-0006](adr/0006-whole-tank-motion-assembly.md)。
 
-原模型及作者源完整保留。游戏用资产集中在 `assets/tank/player/astra/`，不再用 anvil/lance/cleat 表达新整车身份。原三包与生成器保留用于历史资源；旧尺寸和美术验收见[历史玩家模型](player-model-legacy.md)，不能作为 astraH 集成的验收记录。车型及美术来源仍见[车型目录](tank-catalog.md)、[精细体素半写实基线](art-direction.md)和原模型说明中的冲突取舍。
+原模型及作者源完整保留。游戏用资产集中在 `assets/tank/player/leopard2_a6/`，不再用 anvil/lance/cleat 表达新整车身份。旧 anvil/lance/cleat 三包、专用生成器、旧作者化契约与回归夹具已于 2026-11-01 按用户要求删除；历史说明保留。旧尺寸和美术验收见[历史玩家模型](player-model-legacy.md)，不能作为 astraH 集成的验收记录。车型及美术来源仍见[车型目录](tank-catalog.md)、[精细体素半写实基线](art-direction.md)和原模型说明中的冲突取舍。
 
 ## 尺寸与运动
 
-安装轴心、轮位和炮口以 `src/tank/model/astra.rs` 为准，旧 `model/player.rs` 仅供历史生成器使用。
+安装轴心、轮位和炮口以 `src/tank/model/astra.rs` 为准。
 
 每资产格 0.02 米；车体长 7.66 米、标准宽 3.76 米，炮向前时全长 10.98 米。炮轴离地 2.08 米、炮塔主体屋顶 2.64 米，双天线顶高 4.32 米。观瞄与天线高度为原模型依据设计图的造型估算，不是实车测量。VOX +X 向车首、+Y 向车体左侧、+Z 向上；加载映射为 Bevy `(-X, Z, Y)`。
 
@@ -24,10 +24,10 @@
 
 ## 实现与验收状态
 
-技术验收已通过：完整 Rust/Python 回归与六个 Radeon 780M / Vulkan 硬件离屏场景均通过，关键帧已读取。
+原 astraH 运动接入技术验收已通过：完整 Rust/Python 回归与六个 Radeon 780M / Vulkan 硬件离屏场景均通过，关键帧已读取。2026-11-01 命名、资源目录与画廊整理的最新验证见[模型目录整理](testing/model-catalog-2026-11-01.md)。
 
 本次为运动结构与游戏接入，不重新制作外观。默认姿态应与原始带颜色体素几何一致，履带的非初始相位为运动派生。技术验证和实际关键帧记录见[astraH 接入验收](testing/astra-player-integration.md)。用户确认保留外观，不等于已确认新集成版本的动态美术验收。
 
 ## 转换与回归入口
 
-原始作者源见原模型目录；运行时转换器只重组既有体素，不重新作者化整车。旧 `scripts/publish_player.py` 继续维护历史三包与复用的弹丸，运行它不会替换当前 astraH 整车。转换命令和最终验证结果见[接入验收](testing/astra-player-integration.md)。
+原始作者源见原模型目录；运行时转换器只重组既有体素，不重新作者化整车。现用 APFSDS 弹丸已迁至 `assets/tank/ammunition/apfsds/`，独立入口为 `python3 scripts/generate_bullet.py [--check]`；参考 DM53/DM63 系列飞行体，不声称为某个具体弹种的精确复刻。整车转换仍使用 `python3 scripts/prepare_astra.py [--check]`。转换命令和最终验证结果见[接入验收](testing/astra-player-integration.md)。

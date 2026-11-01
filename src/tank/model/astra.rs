@@ -3,13 +3,13 @@
 use super::WheelSpec;
 
 /// 运行时整车资源：分文件只服务活动层级，不代表可换装部件。
-pub const BODY_PATH: &str = "tank/player/astra/body.vox";
+pub const BODY_PATH: &str = "tank/player/leopard2_a6/body.vox";
 /// 含舱盖、观瞄、机枪、天线和烟幕的炮塔视觉。
-pub const TURRET_PATH: &str = "tank/player/astra/turret.vox";
+pub const TURRET_PATH: &str = "tank/player/leopard2_a6/turret.vox";
 /// 绕炮轴俯仰的炮管及防盾。
-pub const BARREL_PATH: &str = "tank/player/astra/barrel.vox";
+pub const BARREL_PATH: &str = "tank/player/leopard2_a6/barrel.vox";
 /// 左右三相位与十八个独立轮节点。
-pub const TRACK_PATH: &str = "tank/player/astra/track.vox";
+pub const TRACK_PATH: &str = "tank/player/leopard2_a6/track.vox";
 /// 简化非炮管碰撞尺寸（长、高、宽），单位米；不以天线等附件扩高。
 pub const COLLISION_SIZE: [f32; 3] = [7.68, 2.68, 3.76];
 /// 车根在作者坐标中的轴心，单位参考格；地面 Z=0，因此车根落地高为 1.34 米。

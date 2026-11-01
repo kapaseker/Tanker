@@ -3,8 +3,6 @@
 
 pub(crate) mod astra;
 pub(crate) mod enemy;
-#[allow(dead_code)] // 历史玩家作者源仍供独立资源生成器及回归测试使用。
-pub(crate) mod player;
 
 /// 作者化参考网格的单格边长，单位：米。仅用于尺寸/轮位/炮口契约换算米制值，
 /// 不是资产加载单位——后者来自每个 `.vox` 旁的 `.vox.meta`（voxel_size 字段）。

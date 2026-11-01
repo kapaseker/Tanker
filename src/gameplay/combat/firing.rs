@@ -97,7 +97,7 @@ impl Plugin for FiringPlugin {
 /// 启动时预加载子弹场景；加载完成前由发射系统忽略开火输入。
 fn load_bullet(mut commands: Commands, assets: Res<AssetServer>) {
     commands.insert_resource(Gun {
-        bullet_scene: assets.load(crate::tank::visual::PLAYER_BARREL.bullet),
+        bullet_scene: assets.load(crate::tank::visual::PLAYER_BULLET),
         cadence: default(),
     });
 }
@@ -113,7 +113,7 @@ fn report_bullet(gun: Res<Gun>, assets: Res<AssetServer>, mut reported: Local<bo
             *reported = true;
         }
         _ if assets.is_loaded_with_dependencies(&gun.bullet_scene) => {
-            info!("子弹资源加载完成：assets/{}", crate::tank::visual::PLAYER_BARREL.bullet);
+            info!("子弹资源加载完成：assets/{}", crate::tank::visual::PLAYER_BULLET);
             *reported = true;
         }
         _ => {}
@@ -744,7 +744,7 @@ mod tests {
         let enemy_asset: Handle<WorldAsset> = app
             .world()
             .resource::<AssetServer>()
-            .load("tank/bodies/enemy/carapace/body.vox");
+            .load("tank/enemy/carapace/body.vox");
         let enemy = app
             .world_mut()
             .spawn((
