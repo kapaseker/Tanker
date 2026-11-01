@@ -10,13 +10,8 @@ import subdivide_vox as sv
 ASSETS = Path(__file__).resolve().parents[1] / 'assets' / 'tank'
 
 
-# 各车型共享画布契约（参考格数），与 Rust 侧 CANVAS 一致；必须显式传给解析器，
-# 避免对敌人包误套玩家画布。
-PLAYER_CANVAS = (144, 38, 37)
+# 敌方生成器的共享画布，单位为 0.1 米参考格。
 ENEMY_CANVAS = (114, 34, 26)
-# 画布扩高的高度全部在屋顶以上；几何整体上移画布中心增量 25 资产格，
-# 因此资产格里的地面线是 z=25（运行时用独立轴心还原离地高度）。
-PLAYER_Z0 = 25
 
 
 def read_reference_models(path, canvas, asset_grid=False):
@@ -84,63 +79,33 @@ def read_reference_models(path, canvas, asset_grid=False):
 
 
 class TrackLoopTests(unittest.TestCase):
-    def test_both_chassis_roll_around_the_rim(self):
-        for chassis, top in (('player', PLAYER_Z0 + 42), ('enemy', 12)):
-            with self.subTest(chassis=chassis):
-                # VOX +X 是车头：前进时上段向 +X、前端向下、下段向 −X、后端向上。
-                if chassis == 'player':
-                    # 梯形闭环（资产格）：下段贴 z=25 x169..551、顶段 z=67 x173..546，
-                    # 两端斜坡自下向上内收 4 格；周长 840 = 齿距 15 × 56。
-                    rim = ([(x, PLAYER_Z0 + 42) for x in range(173, 547)]
-                           + [(551 - ((z-PLAYER_Z0)*4)//42, z) for z in range(PLAYER_Z0 + 42, PLAYER_Z0, -1)]
-                           + [(x, PLAYER_Z0) for x in range(551, 168, -1)]
-                           + [(169 + ((z-PLAYER_Z0)*4)//42, z) for z in range(PLAYER_Z0 + 1, PLAYER_Z0 + 42)])
-                else:
-                    rim = ([(x,12) for x in range(24,90)] + [(89,z) for z in range(11,1,-1)]
-                           + [(88,1)] + [(x,0) for x in range(87,25,-1)]
-                           + [(25,1)] + [(24,z) for z in range(2,12)])
-                self.assertEqual(len(rim), len(set(rim)))
-                self.assertEqual(len(rim) % 3, 0, '闭环接缝的齿距也必须连续')
-                canvas = PLAYER_CANVAS if chassis == 'player' else ENEMY_CANVAS
-                track = read_reference_models(ASSETS / 'tracks' / chassis / ('cleat' if chassis == 'player' else 'crawl') / 'track.vox', canvas, asset_grid=chassis == 'player')
-                self.assertEqual(len(track), 24 if chassis == 'player' else 18)
-                body = read_reference_models(ASSETS / 'bodies' / chassis / ('anvil' if chassis == 'player' else 'carapace') / 'body.vox', canvas, asset_grid=chassis == 'player')['body']
-                sides = ((0,1,5),(1,188,184)) if chassis == 'player' else ((0,0,1),(1,33,32))
-                for side, outer_y, face_y in sides:
-                    phases = [track[f'track_{"lr"[side]}_{phase}'] for phase in range(3)]
-                    stationary = None
-                    for phase, cells in enumerate(phases):
-                        self.assertFalse(cells.keys() & body.keys())
-                        outer = {(x, z) for x, y, z in cells if y == outer_y}
-                        step, pitch, width = (5, 15, 5) if chassis == 'player' else (1, 3, 1)
-                        # 工单 02：玩家板体加厚——底段贴地单格，其余每格向上加厚
-                        # 4 资产格（0.08 米），外齿块随之同厚；敌人包保持单格。
-                        thick = ((lambda z: 1 if z == PLAYER_Z0 else 4)
-                                 if chassis == 'player' else (lambda z: 1))
-                        expected = {(x, z + k) for s, (x, z) in enumerate(rim)
-                                    if (s-phase*step) % pitch < width
-                                    for k in range(thick(z))}
-                        self.assertEqual(outer, expected, f'{chassis} 侧 {side} 相位 {phase} 必须沿轮廓滚动')
-                        # 两种底盘内侧连接结构不随履带相位平移或变色。
-                        wheels = {(x, z): c for (x, y, z), c in cells.items()
-                                  if y == face_y and (x, z) not in rim and z <= top}
-                        if stationary is None:
-                            stationary = wheels
-                        self.assertEqual(wheels, stationary)
-                        if chassis == 'enemy':
-                            self.assertFalse(any((x,face_y,6) in cells for x in (44,57,70)), '敌人轮间必须透空')
-                        else:
-                            # 闭环内部（含原内侧面板位置）不得有任何填充体素。
-                            self.assertFalse(any((x, y, PLAYER_Z0 + 6) in cells for x in (255, 320, 390, 460)
-                                                 for y in (6, 20, 34)), '玩家轮间必须透空')
-                        # 下一相位齿位 = 当前齿位沿轮廓推进 step 格（按序号运算，
-                        # 不能用 y=外沿集合判断：斜坡同列加厚体会与相邻轮廓格重合）。
-                        next_teeth = {rim[(s+step) % len(rim)] for s in range(len(rim))
-                                      if (s-phase*step) % pitch < width}
-                        next_cells = phases[(phase+1) % 3]
-                        self.assertEqual({(x, z + k) for x, z in next_teeth
-                                          for k in range(thick(z))},
-                                         {(x, z) for x, y, z in next_cells if y == outer_y})
+    def test_enemy_tracks_roll_around_the_rim(self):
+        # VOX +X 是车头：前进时上段向 +X、前端向下、下段向 −X、后端向上。
+        rim = ([(x,12) for x in range(24,90)] + [(89,z) for z in range(11,1,-1)]
+               + [(88,1)] + [(x,0) for x in range(87,25,-1)]
+               + [(25,1)] + [(24,z) for z in range(2,12)])
+        self.assertEqual(len(rim), len(set(rim)))
+        self.assertEqual(len(rim) % 3, 0, '闭环接缝的齿距也必须连续')
+        root = ASSETS / 'enemy/carapace'
+        track = read_reference_models(root / 'track.vox', ENEMY_CANVAS)
+        body = read_reference_models(root / 'body.vox', ENEMY_CANVAS)['body']
+        self.assertEqual(len(track), 18)
+        for side, outer_y, face_y in ((0,0,1), (1,33,32)):
+            phases = [track[f'track_{"lr"[side]}_{phase}'] for phase in range(3)]
+            stationary = None
+            for phase, cells in enumerate(phases):
+                self.assertFalse(cells.keys() & body.keys())
+                outer = {(x, z) for x, y, z in cells if y == outer_y}
+                expected = {point for s, point in enumerate(rim) if (s-phase) % 3 == 0}
+                self.assertEqual(outer, expected, f'敌人侧 {side} 相位 {phase} 必须沿轮廓滚动')
+                wheels = {(x, z): c for (x, y, z), c in cells.items()
+                          if y == face_y and (x, z) not in rim and z <= 12}
+                if stationary is None:
+                    stationary = wheels
+                self.assertEqual(wheels, stationary)
+                self.assertFalse(any((x,face_y,6) in cells for x in (44,57,70)), '敌人轮间必须透空')
+                next_teeth = {rim[(s+1) % len(rim)] for s in range(len(rim)) if (s-phase) % 3 == 0}
+                self.assertEqual(next_teeth, {(x, z) for x, y, z in phases[(phase+1) % 3] if y == outer_y})
 
 
 if __name__ == '__main__':

@@ -25,7 +25,8 @@
    - 运行时几何与物理统一比较米制值，不把参考格数当资产 SIZE，也不把契约数值机械乘五。
 5. **细分只分格、不做美术**：转换器 `scripts/subdivide_vox.py` 强制 source_unit/target_unit = 5，
    拒绝重复细分；VOX 与 meta 配对原子发布、失败配对回滚；生成器只产出 0.1 粗样，
-   交付必须经统一发布入口（`publish_player.py` / `generate_enemy.py --check`）。
+   交付必须经统一发布入口（当时为 `publish_player.py` / `generate_enemy.py --check`）。
+   2026-11-01 补充：旧玩家生成器已随旧模型删除，现用整车转换为 `prepare_astra.py`，独立弹丸为 `generate_bullet.py`，敌方仍为 `generate_enemy.py`；三者均提供 `--check`。配对发布与失败回滚规则不变。
 
 ## 后果
 

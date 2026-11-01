@@ -16,8 +16,8 @@ use crate::terrain;
 use crate::tank;
 
 /// 当前加载的 MagicaVoxel 场景资源路径（相对 `assets/`）。
-/// 三部件按 `tank/<部件>/<车型>/<变体>/` 分包，共用画布；炮管与履带挂载到玩家根实体。
-const VOX_SCENE_PATH: &str = "tank/bodies/player/anvil/body.vox";
+/// 玩家使用 astraH 整车契约，炮塔、炮管及履带由活动层级挂载。
+const VOX_SCENE_PATH: &str = tank::model::astra::BODY_PATH;
 
 /// 仅对局拥有的根实体标记；删除时连同场景实例与后代一起回收。
 /// 玩家、敌人、混凝土墩、炮弹、爆炸与对局相机都挂此标记，[`cleanup`] 统一销毁。

@@ -23,7 +23,7 @@ fn capture_view(app: &mut App, path: &Path, offset: Vec3) -> Result<(), String> 
 }
 
 /// 以固定目标拍摄近景；临时机位仅用于离屏取证，不改变游戏相机参数。
-fn capture_at(app: &mut App, path: &Path, target: Vec3, offset: Vec3) -> Result<(), String> {
+pub(super) fn capture_at(app: &mut App, path: &Path, target: Vec3, offset: Vec3) -> Result<(), String> {
     let world = app.world_mut();
     let (camera, saved) = world
         .query_filtered::<(Entity, &Transform), With<crate::gameplay::camera::FollowCamera>>()

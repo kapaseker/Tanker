@@ -1,0 +1,51 @@
+场景：Gallery
+随机种子：42
+分辨率：1280×720
+模拟步长：16.666667ms
+GPU/后端：AMD Radeon 780M Graphics (RADV PHOENIX) (Vulkan)
+第1次进入画廊：过渡完成，alpha=0
+tank/player/astra/barrel.vox：astra，长宽高 5.4×0.5×0.5 米；可见相位 0；轮 0
+tank/barrels/enemy/spit/barrel.vox：spit，长宽高 3.8×0.4×0.4 米；可见相位 0；轮 0
+tank/player/astra/track.vox：astra，长宽高 7.7×3.8×0.9 米；可见相位 2；轮 18
+tank/tracks/enemy/crawl/track.vox：crawl，长宽高 6.6×3.4×1.4 米；可见相位 2；轮 12
+tank/player/astra/body.vox：astra，长宽高 7.7×3.8×1.4 米；可见相位 0；轮 0
+tank/bodies/enemy/carapace/body.vox：carapace，长宽高 6.5×3.2×2.1 米；可见相位 0；轮 0
+整车旋转轴：body 根节点原点；不按组合包围盒重新居中
+tank/player/astra/body.vox：astra，长宽高 11.0×3.8×4.3 米；可见相位 2；轮 18
+整车旋转轴：body 根节点原点；不按组合包围盒重新居中
+tank/bodies/enemy/carapace/body.vox：carapace，长宽高 9.0×3.4×2.6 米；可见相位 2；轮 12
+obstacles/concrete/obstacle.vox：concrete，长宽高 8.0×1.5×8.0 米；可见相位 0；轮 0
+滚轮、PageDown、Home/End、悬停、自转与三种窗口尺寸已验证；空白区域确认无动作
+第1次返回：首页焦点恢复；预览实体、场景实例和纹理全部清理
+第2次进入画廊：过渡完成，alpha=0
+tank/player/astra/barrel.vox：astra，长宽高 5.4×0.5×0.5 米；可见相位 0；轮 0
+tank/barrels/enemy/spit/barrel.vox：spit，长宽高 3.8×0.4×0.4 米；可见相位 0；轮 0
+tank/player/astra/track.vox：astra，长宽高 7.7×3.8×0.9 米；可见相位 2；轮 18
+tank/tracks/enemy/crawl/track.vox：crawl，长宽高 6.6×3.4×1.4 米；可见相位 2；轮 12
+tank/player/astra/body.vox：astra，长宽高 7.7×3.8×1.4 米；可见相位 0；轮 0
+tank/bodies/enemy/carapace/body.vox：carapace，长宽高 6.5×3.2×2.1 米；可见相位 0；轮 0
+整车旋转轴：body 根节点原点；不按组合包围盒重新居中
+tank/player/astra/body.vox：astra，长宽高 11.0×3.8×4.3 米；可见相位 2；轮 18
+整车旋转轴：body 根节点原点；不按组合包围盒重新居中
+tank/bodies/enemy/carapace/body.vox：carapace，长宽高 9.0×3.4×2.6 米；可见相位 2；轮 12
+obstacles/concrete/obstacle.vox：concrete，长宽高 8.0×1.5×8.0 米；可见相位 0；轮 0
+返回框悬停高亮与键帽描边已截图
+第2次返回：首页焦点恢复；预览实体、场景实例和纹理全部清理
+第3次进入画廊：过渡完成，alpha=0
+tank/player/astra/barrel.vox：astra，长宽高 5.4×0.5×0.5 米；可见相位 0；轮 0
+tank/barrels/enemy/spit/barrel.vox：spit，长宽高 3.8×0.4×0.4 米；可见相位 0；轮 0
+tank/player/astra/track.vox：astra，长宽高 7.7×3.8×0.9 米；可见相位 2；轮 18
+tank/tracks/enemy/crawl/track.vox：crawl，长宽高 6.6×3.4×1.4 米；可见相位 2；轮 12
+tank/player/astra/body.vox：astra，长宽高 7.7×3.8×1.4 米；可见相位 0；轮 0
+tank/bodies/enemy/carapace/body.vox：carapace，长宽高 6.5×3.2×2.1 米；可见相位 0；轮 0
+整车旋转轴：body 根节点原点；不按组合包围盒重新居中
+tank/player/astra/body.vox：astra，长宽高 11.0×3.8×4.3 米；可见相位 2；轮 18
+整车旋转轴：body 根节点原点；不按组合包围盒重新居中
+tank/bodies/enemy/carapace/body.vox：carapace，长宽高 9.0×3.4×2.6 米；可见相位 2；轮 12
+obstacles/concrete/obstacle.vox：concrete，长宽高 8.0×1.5×8.0 米；可见相位 0；轮 0
+obstacles/concrete/obstacle.vox：concrete，长宽高 8.0×1.5×8.0 米；可见相位 0；轮 0
+混凝土墩卡片、真实详情、纯视觉隔离与返回恢复通过
+第3次返回：首页焦点恢复；预览实体、场景实例和纹理全部清理
+性能：启动到渲染就绪墙钟 0.422s
+性能：模拟更新 2569 次，累计墙钟 30.600s（平均 11.91ms/帧；含同步渲染、物理与每帧 1ms 让出，不含截图等待）
+结果：通过

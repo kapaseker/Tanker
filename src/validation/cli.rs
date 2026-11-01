@@ -20,7 +20,7 @@ pub(crate) struct Options {
 impl Options {
     /// 无参数返回普通游戏；其余参数必须完整匹配已公布的接口。
     pub(crate) fn parse(args: Vec<OsString>) -> Result<Option<Self>, String> {
-        let usage = "用法：--capture <图片.png> 或 --offscreen-test <scene|drive|combat|wheels|index|gallery|detail|hud|pastoral> --output <目录> [--model enemy] [--lighting candidate]（后两者仅 wheels）";
+        let usage = "用法：--capture <图片.png> 或 --offscreen-test <scene|drive|combat|articulation|wheels|index|gallery|detail|hud|pastoral> --output <目录> [--model enemy] [--lighting candidate]（后两者仅 wheels）";
         if args.is_empty() {
             return Ok(None);
         }
@@ -45,6 +45,7 @@ impl Options {
         {
             let scenario = match args[1].to_str() {
                 Some("scene") => Scenario::Scene,
+                Some("articulation") => Scenario::Articulation,
                 Some("drive") => Scenario::Drive,
                 Some("combat") => Scenario::Combat,
                 Some("wheels") => Scenario::Wheels,
@@ -135,6 +136,11 @@ impl Options {
             if self.scenario == Scenario::Scene {
                 paths.push(self.output.join("concrete.png"));
             }
+            if self.scenario == Scenario::Articulation {
+                for frame in 1..=3 {
+                    paths.push(self.output.join(format!("joint-{frame}.png")));
+                }
+            }
             if self.scenario == Scenario::Wheels {
                 for name in [
                     "side",
@@ -196,6 +202,7 @@ mod tests {
         assert_eq!(capture.scenario, Scenario::Scene);
         for (name, scenario) in [
             ("scene", Scenario::Scene),
+            ("articulation", Scenario::Articulation),
             ("drive", Scenario::Drive),
             ("combat", Scenario::Combat),
             ("wheels", Scenario::Wheels),

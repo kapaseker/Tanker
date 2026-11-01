@@ -71,7 +71,7 @@
       addEventListener('resize', layoutTaskArea);
 
       // ---------- 装填状态 ----------
-      // 装填时长取自 lance 射速 12 发/分钟 → 5 秒，与 src/gameplay/combat/firing.rs 的发射间隔一致；
+      // 装填时长取自 LeoPard2 A6 射速 12 发/分钟 → 5 秒，与 src/gameplay/combat/firing.rs 的发射间隔一致；
       // 装填条固定 5 格（.bar__ticks 每格 20%），一格即 1 秒，射速变化时两处需同步
       const RELOAD_MS = 5000;
       const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;

@@ -85,9 +85,8 @@ fn wheel(app: &mut App, lines: f32) -> Result<(), String> {
     update(app, STEP, None)
 }
 
-/// 尺寸轴与屏幕层标签存在性断言：3 个标签文本为数值、轴线组唯一、
-/// 伴随子弹只在 lance（玩家炮管）出现。
-fn assert_dims(app: &mut App, index: usize) -> Result<(), String> {
+/// 每个独立模型均有三条数值尺寸标签和唯一的尺寸轴组。
+fn assert_dims(app: &mut App) -> Result<(), String> {
     let world = app.world_mut();
     let mut values = world.query::<(&crate::pages::detail::DimValue, &Text)>();
     let mut found: [Option<String>; 3] = [None, None, None];
@@ -112,28 +111,10 @@ fn assert_dims(app: &mut App, index: usize) -> Result<(), String> {
         .iter(world)
         .count();
     ensure(axes == 1, "详情缺少唯一的尺寸轴组")?;
-    let content = world.resource::<Previews>().items[0].content;
-    let mut stack = vec![content];
-    let mut bullet = false;
-    while let Some(entity) = stack.pop() {
-        if world
-            .get::<crate::pages::model_preview::BulletCompanion>(entity)
-            .is_some()
-        {
-            bullet = true;
-        }
-        if let Some(children) = world.get::<Children>(entity) {
-            stack.extend(children.iter());
-        }
-    }
-    ensure(
-        bullet == (preview::ENTRIES[index].path == crate::tank::visual::PLAYER_BARREL.path),
-        "伴随子弹只应出现在 lance",
-    )?;
     Ok(())
 }
 
-/// 规格行只出现在已定义参数的玩家装备：lance（0）与 cleat（2）各两行，其余为零。
+/// 玩家整车显示武器与驾驶共四行参数，其他目录项不显示空行。
 /// 数值与单位的人工核对由初始帧截图完成，这里防止空行重新出现。
 fn assert_specs(app: &mut App, index: usize) -> Result<(), String> {
     let world = app.world_mut();
@@ -141,7 +122,7 @@ fn assert_specs(app: &mut App, index: usize) -> Result<(), String> {
         .query_filtered::<(), With<SpecRow>>()
         .iter(world)
         .count();
-    let expected = if matches!(index, 0 | 2) { 2 } else { 0 };
+    let expected = if index == 1 { 4 } else { 0 };
     ensure(
         rows == expected,
         format!("目录项{index}规格行应为 {expected}，实际 {rows}").as_str(),
@@ -170,16 +151,8 @@ pub(super) fn run_detail_scenario(
         GameState::Gallery,
     )?;
     for index in 0..preview::ENTRIES.len() {
-        // 初次方向键落首卡；其后左右/上下沿真实网格走到下一项。
-        if index == 0 {
-            key(app, 14)?;
-        } else if index % 2 == 1 {
-            key(app, 16)?;
-        } else {
-            // 先回左列再下移，才能进入末行只有左卡的障碍物分类。
-            key(app, 18)?;
-            key(app, 14)?;
-        }
+        // 首次落弹丸，再向下到玩家坦克、向右到敌方坦克。
+        key(app, if index == 2 { 16 } else { 14 })?;
         ensure(
             gallery::view_mut(app.world_mut()).focus == Some(index),
             "方向键未选中目标卡片",
@@ -237,7 +210,7 @@ pub(super) fn run_detail_scenario(
             app.world().get::<Transform>(root).unwrap().rotation == rotation,
             "详情不应自动旋转",
         )?;
-        assert_dims(app, index)?;
+        assert_dims(app)?;
         assert_specs(app, index)?;
         capture(
             app,

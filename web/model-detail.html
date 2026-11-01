@@ -71,7 +71,7 @@
       }
 
       const back = document.getElementById('detail-back');
-      // 型号 = 分类代码-编号（如 BR-01），与画廊卡片编号一致
+      // 型号 = 分类代码-编号（如 AM-01），与画廊卡片编号一致
       const modelCode = modelCardId(category, mi);
       // 带锚点返回画廊，画廊据此聚焦原卡片；同时更新标签页标题
       back.href = `model-gallery.html#${modelCode}`;
@@ -102,7 +102,6 @@
       // 详情页模型由 JS 直接写 transform，缩放与旋转合并应用
       const detailModel = buildModel(model);
       // 伴随子弹只作组合示意展示，尺寸轴的包围盒只读 parts，不把子弹计入
-      attachBullet(detailModel, model);
       viewer.append(detailModel);
 
       // ---------- 三维尺寸轴：贴合模型包围盒边沿的工程标注 ----------

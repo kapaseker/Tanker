@@ -108,8 +108,8 @@ struct Spec {
     unit: &'static str,
 }
 
-/// lance 炮管规格；敌人 spit 的初速与射速仍是占位 0，不展示。
-const LANCE_SPECS: [Spec; 2] = [
+/// 玩家整车规格；武器和驾驶参数取自同一运行时配置。
+const PLAYER_SPECS: [Spec; 4] = [
     Spec {
         label: strings_cn::detail::MUZZLE_VELOCITY,
         value: visual::PLAYER_BARREL.muzzle_velocity,
@@ -120,10 +120,6 @@ const LANCE_SPECS: [Spec; 2] = [
         value: visual::PLAYER_BARREL.rate_of_fire,
         unit: strings::UNIT_ROUNDS_PER_MINUTE,
     },
-];
-
-/// cleat 履带规格；敌人 crawl 的速度仍是占位 0，不展示。
-const CLEAT_SPECS: [Spec; 2] = [
     Spec {
         label: strings_cn::detail::FORWARD_SPEED,
         value: track::PLAYER_TRACKS.forward_speed,
@@ -136,11 +132,10 @@ const CLEAT_SPECS: [Spec; 2] = [
     },
 ];
 
-/// 按目录分类与阵营返回已定义的规格；坦克与敌人装备暂无真实参数，返回空。
+/// 玩家整车显示四项规格；弹丸和无已设定性能的敌车不生成空行。
 fn specs_for(entry: preview::Entry) -> &'static [Spec] {
     match (entry.category, entry.enemy) {
-        (0, false) => &LANCE_SPECS,
-        (1, false) => &CLEAT_SPECS,
+        (1, false) => &PLAYER_SPECS,
         _ => &[],
     }
 }
@@ -465,12 +460,18 @@ fn spawn_axes(
     }
 }
 
+/// 以 10 米级整车为标尺缩小小模型的标注；避免弹丸的线宽和间距盖住本体。
+fn dimension_scale(bounds: (Vec3, Vec3)) -> f32 {
+    ((bounds.1 - bounds.0).max_element() / 10.0).min(1.0)
+}
+
 /// 尺寸轴几何（content 局部空间，米）。布局复刻网页 buildDimAxes：
 /// 长度轴沿前缘正下方沿 X、宽度轴沿右缘正下方沿 Z，在右前下角相接成 L；
 /// 高度轴在右前角外侧沿 Y；端点带刻度，角点引出延长线。
 /// 返回 (中心, 尺寸, 材质序号 0 轴线 / 1 刻度 / 2 延长线)。
 fn axis_segments(bounds: (Vec3, Vec3)) -> Vec<(Vec3, Vec3, usize)> {
-    let (low, high) = bounds;
+    let scale = dimension_scale(bounds);
+    let (low, high) = (bounds.0 / scale, bounds.1 / scale);
     let ground = low.y - dims::AXIS_GAP; // 轴线地面：模型最低点再向下偏移
     let t = dims::AXIS_THICKNESS;
     let tick = dims::HALF_TICK * 2.0;
@@ -531,12 +532,13 @@ fn axis_segments(bounds: (Vec3, Vec3)) -> Vec<(Vec3, Vec3, usize)> {
             1,
         );
     }
-    segments
+    segments.into_iter().map(|(center, size, kind)| (center * scale, size * scale, kind)).collect()
 }
 
 /// 尺寸标签锚点（content 局部空间，米）：长/宽钉在各自轴线中点，高度钉在轴外侧中点。
 fn tag_anchors(bounds: (Vec3, Vec3)) -> [Vec3; 3] {
-    let (low, high) = bounds;
+    let scale = dimension_scale(bounds);
+    let (low, high) = (bounds.0 / scale, bounds.1 / scale);
     let ground = low.y - dims::AXIS_GAP;
     [
         Vec3::new((low.x + high.x) / 2.0, ground, high.z),
@@ -546,7 +548,7 @@ fn tag_anchors(bounds: (Vec3, Vec3)) -> [Vec3; 3] {
             (low.y + high.y) / 2.0,
             high.z,
         ),
-    ]
+    ].map(|anchor| anchor * scale)
 }
 
 /// 模型空间锚点 → 查看区逻辑坐标。复现预览链路的正交投影：
@@ -571,7 +573,10 @@ fn project_to_viewer(
         (1.0 - ndc.y) / 2.0 * image_size.y,
     );
     // 图像恰好铺满查看区，物理像素线性映射为逻辑坐标
-    Vec2::new(pixel.x / image_size.x * viewer.x, pixel.y / image_size.y * viewer.y)
+    Vec2::new(
+        pixel.x / image_size.x * viewer.x,
+        pixel.y / image_size.y * viewer.y,
+    )
 }
 
 /// 控件只发返回消息，详情决定返回画廊；失焦/过渡立即取消拖拽。
@@ -690,7 +695,9 @@ fn update_view(
     if let Ok(mut projection) = projections.get_mut(p.camera) {
         if let Projection::Orthographic(ref mut ortho) = *projection {
             let vh = (p.radius * 2.0 * 1.15 / (size.x / height).min(1.0) / view.zoom).max(0.1);
-            ortho.scaling_mode = ScalingMode::FixedVertical { viewport_height: vh };
+            ortho.scaling_mode = ScalingMode::FixedVertical {
+                viewport_height: vh,
+            };
             viewport_height = vh;
         }
     }
@@ -790,6 +797,19 @@ mod tests {
             .add_message::<widgets::TitleBarBackActivated>()
             .add_systems(Update, input);
         app
+    }
+
+    /// 独立弹丸初始取景也必须容纳尺寸轴，不能沿用坦克米制线宽和偏移。
+    #[test]
+    fn ammunition_axes_fit_the_model_scale() {
+        let half = Vec3::new(0.36, 0.05, 0.05);
+        let bounds = (-half, half);
+        for (_, size, _) in axis_segments(bounds) {
+            // 弹丸长度外，轴线的各向厚度/刻度均不应超过 5 厘米。
+            assert!(size.min_element() < 0.002);
+            assert!(size.y < 0.11 && size.z < 0.11);
+        }
+        assert!(tag_anchors(bounds).iter().all(|anchor| anchor.length() < 0.45));
     }
 
     /// 标题栏不开始拖拽，查看区开始后进入标题栏仍持续，松开/过渡/失焦均取消。

@@ -2,6 +2,7 @@
 import math
 import struct
 import unittest
+from unittest import mock
 import generate_enemy as enemy
 from test_tracks import read_reference_models, ENEMY_CANVAS
 import subprocess
@@ -10,6 +11,16 @@ import subdivide_vox as sv
 
 
 class EnemyModelTests(unittest.TestCase):
+    def test_formatted_float_sizes_keep_integer_grid_and_reject_fractional_dimensions(self):
+        contract = "size: if end {\n (6.0, 4.0, 6.0)\n } else {\n (10.0, 4.0, 10.0)\n }"
+        with mock.patch.object(enemy, 'wheel_fn', contract):
+            self.assertEqual(enemy.wheel_value('size', True), (6, 4, 6))
+            self.assertEqual(enemy.wheel_value('size', False), (10, 4, 10))
+            self.assertTrue(all(type(v) is int for v in enemy.wheel_value('size', True)))
+        with mock.patch.object(enemy, 'wheel_fn', contract.replace('6.0', '6.2')):
+            with self.assertRaisesRegex(ValueError, '整数参考格'):
+                enemy.wheel_value('size', True)
+
     def test_packages_are_reproducible_and_share_palette(self):
         packages = enemy.build_assets()
         self.assertEqual(packages, enemy.build_assets())

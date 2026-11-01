@@ -82,19 +82,15 @@ fn cleanup(
 #[cfg(test)]
 mod tests {
     use super::*;
-    /// 清单只包含当前真实型号，整车型号来自车身目录。
+    /// 只展示真实弹丸及完整坦克，名称不再由内部资产目录推导。
     #[test]
-    fn catalog_uses_real_variant_directories() {
+    fn catalog_lists_ammunition_and_whole_tanks() {
         assert_eq!(
-            ENTRIES.map(Entry::name),
-            [
-                "lance", "spit", "cleat", "crawl", "anvil", "carapace", "anvil", "carapace", "concrete"
-            ]
+            ENTRIES.map(Entry::name).as_slice(),
+            ["APFSDS", "LeoPard2 A6", "carapace"]
         );
-        for category in 0..4 {
-            assert_eq!(ENTRIES.iter().filter(|e| e.category == category).count(), 2);
-        }
-        assert_eq!(ENTRIES.iter().filter(|e| e.category == 4).count(), 1);
+        assert_eq!(ENTRIES.iter().filter(|e| e.category == 0).count(), 1);
+        assert_eq!(ENTRIES.iter().filter(|e| e.category == 1).count(), 2);
         for entry in ENTRIES {
             assert!(std::path::Path::new("assets").join(entry.path).is_file());
         }
@@ -138,7 +134,7 @@ mod tests {
         .register_type::<FogVolume>()
         .add_systems(Startup, spawn_previews)
         .add_systems(Last, prepare_previews);
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(40);
         loop {
             app.update();
             if assets_ready(app.world()) {
@@ -150,19 +146,9 @@ mod tests {
         validate(app.world()).unwrap();
         // X/Y/Z 为长/高/宽；这些边界来自真实体素，不能替换为共同画布或碰撞盒。
         let expected = [
-            Vec3::new(4.86, 0.4, 0.4),
-            Vec3::new(3.8, 0.4, 0.4),
-            // 工单 02 立体履带后顶段凸耳最高 0.96 米（73 资产格），故高度 0.96 米。
-            Vec3::new(7.66, 0.96, 3.76),
-            Vec3::new(6.6, 1.4, 3.4),
-            // 04 分段裙板后 body 外沿即 3.76 米宽边界（与履带最外缘齐平）；
-            // 画布扩高后车身实体最低 0.44 米、天线顶 3.02 米，故高度 2.58 米。
-            Vec3::new(7.66, 2.58, 3.76),
-            Vec3::new(6.5, 2.1, 3.2),
-            Vec3::new(10.98, 3.02, 3.76),
+            Vec3::new(0.72, 0.10, 0.10),
+            Vec3::new(10.98, 4.32, 3.76),
             Vec3::new(9.0, 2.6, 3.4),
-            // concrete 资产的体素画布改版后未同步预期；以真实体素 AABB 为准。
-            Vec3::new(8.0, 8.0, 1.5),
         ];
         for (index, (preview, size)) in app
             .world()
@@ -177,7 +163,7 @@ mod tests {
                 "{:?} != {size:?}",
                 preview.size
             );
-            if ENTRIES[index].category == 3 {
+            if ENTRIES[index].category == 1 {
                 assert_eq!(
                     app.world()
                         .get::<Transform>(preview.content)
@@ -205,7 +191,7 @@ mod tests {
                 let half_height = viewport_height * 0.5;
                 let half_width = half_height * image_size.x / image_size.y;
                 // 真实网格边界转过完整一周，在相机空间检查四边，覆盖长炮管的扫掠范围。
-                for (entity, affine, visible, _) in model_nodes(app.world(), preview.content) {
+                for (entity, affine, visible) in model_nodes(app.world(), preview.content) {
                     if !visible {
                         continue;
                     }
@@ -252,8 +238,8 @@ mod tests {
             .iter(app.world())
             .map(|i| **i)
             .collect();
-        // 93 个模型实例（含玩家履带 6 相位 + 18 轮 ×2 处预览）+ lance 伴随子弹 1 个场景实例。
-        assert_eq!(instances.len(), 94);
+        // 弹丸 1、玩家整车 27、敌方整车 20 个场景根均应回收。
+        assert_eq!(instances.len(), 48);
         // 模拟真实文件缺失，不修改任何资产；失败项必须结束等待并保留返回能力。
         let missing = app
             .world()

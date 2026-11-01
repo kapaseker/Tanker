@@ -6,7 +6,7 @@
 之下的匿名 nTRN 平移承载，命名子资产 `#节点名` 返回完整分块子树。
 
 安全边界：
-- 只接受七个真实文件所需的格式（版本 150；SIZE/XYZI/RGBA/MATL/nTRN/nGRP/nSHP/LAYR）；
+- 只接受已接入资产所需的格式（版本 150；SIZE/XYZI/RGBA/MATL/nTRN/nGRP/nSHP/LAYR）；
   多帧动画、多模型 nSHP、非空 ShapeModel 属性、未知块一律明确报错。
 - 命名节点帧：`_t` 各分量 ×5，`_r` 原样保留；根节点的帧被运行时忽略，原样复制。
 - 默认只写 staging（先 .vox 后 .vox.meta）；--publish 用 os.replace 原子替换发布目标
@@ -42,6 +42,17 @@ FULL_BITS = (1 << (FACTOR ** 3)) - 1
 
 # 允许出现的 MAIN 子块；其余（PACK/IMAP/动画等）一律拒绝。
 KNOWN_CHUNKS = {'SIZE', 'XYZI', 'RGBA', 'MATL', 'nTRN', 'nGRP', 'nSHP', 'LAYR'}
+
+
+def compare_pair(staging: Path, vox: Path, delivered: Path) -> list[str]:
+    """比对 staging 细分产物与交付资产对；返回不一致项（空 = 一致）。"""
+    problems = []
+    if (staging / vox.name).read_bytes() != delivered.read_bytes():
+        problems.append(f'{delivered.name} 体素字节与管线产物不一致')
+    staged_meta = (staging / (vox.name + '.meta')).read_text(encoding='utf-8')
+    if staged_meta != delivered.with_name(delivered.name + '.meta').read_text(encoding='utf-8'):
+        problems.append(f'{delivered.name} 的 meta 与管线产物不一致')
+    return problems
 
 
 class ConvertError(Exception):
@@ -565,7 +576,7 @@ def convert(src_path: Path, target_unit: float, staging_dir: Path,
     """完整流程：读 → 校验 → 细分 → 写 staging → 验证 →（可选）发布。返回统计。
 
     dest_path 为发布目标（缺省即 src_path 自身）：允许以临时目录里的粗产物为
-    转换源，把验证后的细分对原子发布到交付资产路径（publish_player 统一入口）。
+    转换源，把验证后的细分对原子发布到交付资产路径。
     单位门与 meta 改写始终读取 src 旁的 meta，dest 只承担替换目标。
     """
     name = src_path.name
