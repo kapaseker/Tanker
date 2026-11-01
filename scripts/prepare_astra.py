@@ -11,11 +11,12 @@ from functools import lru_cache
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import struct
 import tempfile
 
-from subdivide_vox import Model, Node, parse_vox, write_vox
+from subdivide_vox import Model, Node, parse_vox, publish_pair, write_vox
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'tank_model/leovox_astraH/leopard_2a6.vox'
@@ -237,6 +238,23 @@ def verify(source, output, assignments, wheel_info):
             'track_note': 'phase0原样；其他相位沿原中心线搬移并按2cm格重新量化'}
 
 
+def publish_astra_pair(staged, target):
+    """更新复用配对回滚；首次安装失败时撤下已发布 VOX，避免留下无 meta 资源。"""
+    meta = target.with_name(target.name + '.meta')
+    staged_meta = staged.with_name(staged.name + '.meta')
+    if target.exists() != meta.exists():
+        raise ValueError(f'目标已有不完整 VOX/meta 配对：{target}')
+    if target.exists():
+        publish_pair(staged, staged_meta, target)
+    else:
+        try:
+            os.replace(staged, target)
+            os.replace(staged_meta, meta)
+        except OSError:
+            target.unlink(missing_ok=True)
+            raise
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--check', action='store_true', help='重生成到临时目录，比较所有交付文件')
@@ -248,7 +266,10 @@ def main():
     turret_parts = set(names)-BODY_PARTS-moving
     assignments = []
     wheel_info = []
-    with tempfile.TemporaryDirectory(prefix='tanker-astra-') as temp:
+    if not args.check:
+        DEST.mkdir(parents=True, exist_ok=True)
+    # 发布临时文件必须与目标同卷；--check 仍只写系统临时目录。
+    with tempfile.TemporaryDirectory(prefix='tanker-astra-', dir=None if args.check else DEST) as temp:
         staging = Path(temp)
         for filename, parts, pivot in [('body', sorted(BODY_PARTS), PIVOT),
                                        ('turret', sorted(turret_parts), TURRET_PIVOT),
@@ -288,9 +309,9 @@ def main():
             for path in staging.iterdir():
                 assert path.read_bytes() == (DEST/path.name).read_bytes(), f'交付不一致：{path.name}'
         else:
-            DEST.mkdir(parents=True, exist_ok=True)
-            for path in staging.iterdir():
-                (DEST/path.name).write_bytes(path.read_bytes())
+            for path in sorted(staging.glob('*.vox')):
+                publish_astra_pair(path, DEST/path.name)
+            os.replace(staging/'validation.json', DEST/'validation.json')
         print(json.dumps({k:v for k,v in report.items() if k != 'independent_wheels'}, ensure_ascii=False))
 
 
