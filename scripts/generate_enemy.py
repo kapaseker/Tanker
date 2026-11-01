@@ -37,8 +37,17 @@ wheel_fn = CONTRACT[CONTRACT.index('const fn wheel'):]
 
 def wheel_value(field, end):
     """读取端轮/负重轮对应字段；不解释或执行其它 Rust 表达式。"""
-    branches = re.search(field+r': if end \{ (.*?) \} else \{ (.*?) \}', wheel_fn)
-    return ast.literal_eval(branches.group(1 if end else 2))
+    branches = re.search(field+r':\s*if end\s*\{\s*(.*?)\s*\}\s*else\s*\{\s*(.*?)\s*\}',
+                         wheel_fn, re.DOTALL)
+    if branches is None:
+        raise ValueError(f'无法读取敌人轮契约字段：{field}')
+    value = ast.literal_eval(branches.group(1 if end else 2).strip())
+    if field == 'size':
+        # 共享契约允许细格小数尺寸，旧敌人粗源的 SIZE 仍必须是精确正整数格。
+        if any(not isinstance(v, (int, float)) or v <= 0 or not float(v).is_integer() for v in value):
+            raise ValueError('敌人轮 size 必须为整数参考格，不能截断小数')
+        return tuple(map(int, value))
+    return value
 
 
 heights = tuple(map(float, re.search(
