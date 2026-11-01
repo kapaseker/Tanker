@@ -1,0 +1,15 @@
+(
+    meta_format_version: "1.0",
+    asset: Load(
+        loader: "bevy_vox_scene::load::VoxSceneLoader",
+        settings: (
+            voxel_size: 0.02,
+            mesh_outer_faces: true,
+            mesh_offset: ((0.5, 0.5, 0.5)),
+            emission_strength: 0.0,
+            uses_srgb: true,
+            diffuse_roughness: 0.88,
+            retain_mesh_data: true,
+        ),
+    ),
+)
