@@ -65,7 +65,11 @@ const fn wheel(name: &'static str, x: f32, y: f32, end: bool) -> WheelSpec {
     WheelSpec {
         name,
         center: [x, y, 4.2],
-        size: if end { (5, 4, 5) } else { (8, 4, 8) },
+        size: if end {
+            (5.0, 4.0, 5.0)
+        } else {
+            (8.0, 4.0, 8.0)
+        },
         radius: if end { 2.5 } else { 4.0 },
         envelope: if end { 2.6 } else { 4.1 },
     }

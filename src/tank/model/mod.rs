@@ -1,7 +1,9 @@
 //! 坦克模型的作者化契约：体素尺度与各车型的尺寸、轮位数据。
 //! 纯标准库数据；运行时与 `scripts/` 下的生成器共同读取，不依赖引擎类型。
 
+pub(crate) mod astra;
 pub(crate) mod enemy;
+#[allow(dead_code)] // 历史玩家作者源仍供独立资源生成器及回归测试使用。
 pub(crate) mod player;
 
 /// 作者化参考网格的单格边长，单位：米。仅用于尺寸/轮位/炮口契约换算米制值，
@@ -32,7 +34,7 @@ pub struct WheelSpec {
     /// VOX 全局轴心（长、宽、高），加载时映射为（−X、Z、Y）。
     pub center: [f32; 3],
     /// 局部画布：静止外包络直径、轮宽、直径。
-    pub size: (u32, u32, u32),
+    pub size: (f32, f32, f32),
     /// 名义滚动半径，单位为体素格。
     pub radius: f32,
     /// 全部体素顶点旋转后的最大半径，单位为体素格。

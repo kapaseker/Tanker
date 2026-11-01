@@ -2,7 +2,6 @@
 
 use crate::gameplay::enemy::{EnemyDestroyed, EnemyTank};
 use crate::gameplay::player::Tank;
-use crate::tank::visual;
 use avian3d::prelude::{Collider, ShapeCastConfig, SpatialQuery, SpatialQueryFilter};
 use bevy::{
     asset::LoadState,
@@ -20,30 +19,31 @@ const BULLET_SPEED: f32 = crate::tank::visual::PLAYER_BARREL.muzzle_velocity;
 const BULLET_SIZE: f32 = 0.4;
 /// 从出生点累计计算的最大飞行距离，单位：世界单位。
 const BULLET_RANGE: f32 = 2000.0;
-/// 炮口与作者化炮管共用格坐标；安装轴心随扩高画布单独定义，不能取画布中心。
+/// 炮管局部的弹丸出生中心；炮口外移半个扫掠碰撞盒，避免初生时嵌入炮口。
 const MUZZLE_POSITION: Vec3 = Vec3::new(
-    -(crate::tank::model::player::BARREL_X.1 as f32
-        - crate::tank::model::player::CANVAS_PIVOT.0)
-        * crate::tank::model::REFERENCE_VOXEL_SIZE
-        - BULLET_SIZE / 2.0,
-    (crate::tank::model::player::BORE_HEIGHT - crate::tank::model::player::CANVAS_PIVOT.2)
-        * crate::tank::model::REFERENCE_VOXEL_SIZE,
-    0.0,
+    crate::tank::model::astra::MUZZLE_POSITION[0] - BULLET_SIZE / 2.0,
+    crate::tank::model::astra::MUZZLE_POSITION[1],
+    crate::tank::model::astra::MUZZLE_POSITION[2],
 );
 
-/// 玩家独立炮管的场景根；资源位于 tank/barrels/player/<变体>/，随车身销毁，不拥有碰撞体。
+/// 玩家实际活动炮管的场景根，世界姿态决定弹丸发射方向。
 #[derive(Component)]
 struct PlayerBarrel;
 
-/// 玩家根出现时挂载一次炮管，三包按共同画布中心零偏移组合。
+/// 玩家根出现时挂载炮塔及炮管；不覆盖外部已经设置的角度。
 fn spawn_barrels(
     mut commands: Commands,
     assets: Res<AssetServer>,
-    tanks: Query<Entity, Added<Tank>>,
+    tanks: Query<(Entity, Option<&crate::tank::articulation::TankAim>), Added<Tank>>,
 ) {
-    for tank in &tanks {
-        let barrel = visual::mount_barrel(&mut commands, &assets, tank, visual::PLAYER_BARREL.path);
+    for (tank, aim) in &tanks {
+        let barrel = crate::tank::articulation::mount_player(&mut commands, &assets, tank);
         commands.entity(barrel).insert(PlayerBarrel);
+        if aim.is_none() {
+            commands
+                .entity(tank)
+                .insert(crate::tank::articulation::TankAim::default());
+        }
     }
 }
 
@@ -51,7 +51,7 @@ fn spawn_barrels(
 #[derive(Component)]
 pub(crate) struct Bullet {
     /// 发射瞬间确定的世界空间单位方向向量，不随相机或坦克转向。
-    direction: Vec3,
+    pub(crate) direction: Vec3,
     /// 自出生以来累计飞行的距离，单位：世界单位。
     distance: f32,
 }
@@ -87,7 +87,8 @@ pub(crate) struct FiringPlugin;
 impl Plugin for FiringPlugin {
     /// 在变换传播完成后发射，确保读取到坦克本帧的世界位置和方向。
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, load_bullet)
+        app.add_plugins(crate::tank::articulation::ArticulationPlugin)
+            .add_systems(Startup, load_bullet)
             .add_systems(Update, (spawn_barrels, move_bullets, report_bullet))
             .add_systems(PostUpdate, fire_bullets.after(TransformSystems::Propagate));
     }
@@ -172,15 +173,15 @@ fn fire_bullets(
     mut gun: ResMut<Gun>,
     assets: Res<AssetServer>,
     instances: Res<WorldInstanceSpawner>,
-    tanks: Query<(&GlobalTransform, &WorldInstance, &WorldAssetRoot), With<Tank>>,
-    barrels: Query<(&WorldAssetRoot, &WorldInstance), With<PlayerBarrel>>,
+    tanks: Query<(&WorldInstance, &WorldAssetRoot), With<Tank>>,
+    barrels: Query<(&GlobalTransform, &WorldAssetRoot, &WorldInstance), With<PlayerBarrel>>,
     fade: Option<Res<crate::app::transition::Fade>>,
 ) {
     // 场景资源加载完成不等于实体已实例化，两者都就绪后才能确定发射位置。
-    let barrel_ready = barrels.single().ok().is_some_and(|(root, instance)| {
+    let barrel_ready = barrels.single().ok().is_some_and(|(_, root, instance)| {
         instances.instance_is_ready(**instance) && assets.is_loaded_with_dependencies(&root.0)
     });
-    let tank = tanks.single().ok().filter(|&(_, instance, root)| {
+    let tank = tanks.single().ok().filter(|&(instance, root)| {
         barrel_ready
             && instances.instance_is_ready(**instance)
             && assets.is_loaded_with_dependencies(&root.0)
@@ -195,11 +196,11 @@ fn fire_bullets(
         return;
     }
     // tick 返回 true 时必有可用坦克，因此这里可以取出此前筛选的结果。
-    let (tank, _, _) = tank.unwrap();
+    let (barrel, _, _) = barrels.single().unwrap();
     // 位置和方向均为世界空间数据，子弹不成为坦克的子实体。
-    let (position, direction) = muzzle_pose(tank);
+    let (position, direction) = muzzle_pose(barrel);
     debug!("发射子弹：位置={position:?}，方向={direction:?}");
-    let transform = Transform::from_translation(position).with_rotation(tank.rotation());
+    let transform = Transform::from_translation(position).with_rotation(barrel.rotation());
     commands.spawn((
         crate::gameplay::session::SessionEntity,
         Bullet {
@@ -401,8 +402,8 @@ mod tests {
                 .with_rotation(Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)),
         );
         let (position, direction) = muzzle_pose(&tank);
-        // 新炮口局部中心 (-7.36, 0.73, 0)，偏航 90° 后前向映射到世界 +Z。
-        assert!(position.abs_diff_eq(Vec3::new(3.0, 2.73, 8.36), 1e-5));
+        // 炮管局部出生中心 (-5.62, 0, 0)，偏航 90° 后前向映射到世界 +Z。
+        assert!(position.abs_diff_eq(Vec3::new(3.0, 2.0, 6.62), 1e-5));
         assert!(direction.abs_diff_eq(Vec3::Z, 1e-5));
     }
 
@@ -465,6 +466,25 @@ mod tests {
             .id()
     }
 
+    /// 炮管俯仰后的世界弹道能命中高低目标，不依赖地形或新瞄准操作。
+    #[test]
+    fn pitched_muzzle_hits_elevated_and_lower_targets() {
+        for (pitch_degrees, target_height) in [(20.0_f32, 14.55881_f32), (-5.0, -3.4995465)] {
+            let (mut app, targets) = hit_test_app(&[(Vec3::new(-40.0, target_height, 0.0), 0.0)]);
+            let barrel = GlobalTransform::from(Transform::from_rotation(Quat::from_rotation_z(
+                -pitch_degrees.to_radians(),
+            )));
+            let (origin, direction) = muzzle_pose(&barrel);
+            let bullet = test_bullet(&mut app, origin, direction, 0.0);
+            advance_test_bullets(&mut app, 0.05);
+            assert!(
+                app.world().get_entity(targets[0]).is_err(),
+                "俯仰{pitch_degrees}°应命中对应高度目标"
+            );
+            assert!(app.world().get_entity(bullet).is_err(), "命中弹丸应清理");
+        }
+    }
+
     /// 多发高速弹必须被最近的墩拦下；侧方无墩的射线仍能击毁敌人。
     #[test]
     fn concrete_stops_repeated_bullets_and_protects_enemy_behind_it() {
@@ -519,8 +539,14 @@ mod tests {
     /// 玩家真实炮口水平命中平地敌人；目标底部远高于弹道时仍应掠过。
     #[test]
     fn modern_muzzle_hits_ground_level_enemy_without_platform() {
-        let origin = MUZZLE_POSITION + Vec3::Y * crate::tank::driving::TANK_SIZE.y / 2.0;
-        for (height, should_hit) in [(crate::gameplay::enemy::ENEMY_SIZE.y / 2.0, true), (4.0, false)] {
+        let origin = MUZZLE_POSITION
+            + Vec3::from_array(crate::tank::model::astra::BARREL_POSITION)
+            + Vec3::from_array(crate::tank::model::astra::TURRET_POSITION)
+            + Vec3::Y * crate::tank::driving::TANK_SIZE.y / 2.0;
+        for (height, should_hit) in [
+            (crate::gameplay::enemy::ENEMY_SIZE.y / 2.0, true),
+            (4.0, false),
+        ] {
             let (mut app, enemies) = hit_test_app(&[(Vec3::new(-12.0, height, 0.0), 0.0)]);
             let bullet = test_bullet(&mut app, origin, Vec3::NEG_X, 0.0);
             advance_test_bullets(&mut app, 0.5);
@@ -706,7 +732,7 @@ mod tests {
         let tank_asset = app
             .world()
             .resource::<AssetServer>()
-            .load("tank/bodies/player/anvil/body.vox");
+            .load(crate::tank::model::astra::BODY_PATH);
         let tank = app
             .world_mut()
             .spawn((
@@ -815,17 +841,42 @@ mod tests {
         }));
 
         let (_, tank_minimum, tank_maximum) = scene_bounds(app.world(), tank);
-        // 三包组合必须覆盖真实尺寸；底部与两侧由履带补全；炮管超出碰撞框是预期行为。
-        // 车顶天线按 3.02 米照片估算，高于 2.70 米碰撞框，不扩大物理体。
+        // astraH 整车默认外观必须保持原始尺寸，天线不扩大简化物理体。
         assert!(
-            (tank_maximum - tank_minimum).abs_diff_eq(Vec3::new(10.98, 3.02, 3.76), 1e-4),
+            (tank_maximum - tank_minimum).abs_diff_eq(Vec3::new(10.98, 4.32, 3.76), 1e-4),
             "车身与炮管组合尺寸：{tank_minimum:?}～{tank_maximum:?}"
         );
-        assert!((MUZZLE_POSITION.x + BULLET_SIZE / 2.0 - tank_minimum.x).abs() < 1e-4);
+        let default_muzzle = Vec3::from_array(crate::tank::model::astra::TURRET_POSITION)
+            + Vec3::from_array(crate::tank::model::astra::BARREL_POSITION)
+            + MUZZLE_POSITION;
+        assert!((default_muzzle.x + BULLET_SIZE / 2.0 - tank_minimum.x).abs() < 1e-4);
         assert!(tank_minimum.x < -crate::tank::driving::TANK_SIZE.x / 2.0);
 
+        // 可设置姿态必须作用于实际炮口，车体根保持不动；新增瞄准输入不在本次范围。
+        app.world_mut()
+            .entity_mut(tank)
+            .insert(crate::tank::articulation::TankAim {
+                yaw: std::f32::consts::FRAC_PI_2,
+                pitch: 20.0_f32.to_radians(),
+            });
+        app.update();
+        let barrel = app
+            .world_mut()
+            .query_filtered::<&GlobalTransform, With<PlayerBarrel>>()
+            .single(app.world())
+            .unwrap();
+        let (_, direction) = muzzle_pose(barrel);
+        assert!(
+            direction.abs_diff_eq(Vec3::new(0.0, 0.34202015, 0.9396926), 1e-4),
+            "转塔90°并仰角20°后应向右上方发射：{direction:?}"
+        );
+        app.world_mut()
+            .entity_mut(tank)
+            .insert(crate::tank::articulation::TankAim::default());
+        app.update();
+
         // 多色车身仍须通过 UV 采样到生成器中的三种装甲色，不能退化成单色材质。
-        let armor_colors = [[83, 99, 55, 255], [108, 121, 72, 255], [58, 70, 40, 255]];
+        let armor_colors = [[112, 119, 72, 255], [89, 98, 58, 255], [125, 130, 80, 255]];
         let mut sampled_colors = std::collections::BTreeSet::new();
         let mut pending = vec![tank];
         while let Some(entity) = pending.pop() {
@@ -926,7 +977,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             app.world().get::<Transform>(bullet).unwrap().translation,
-            MUZZLE_POSITION
+            default_muzzle
         );
         assert!(app.world().get::<ChildOf>(bullet).is_none());
         // 先松开 0.125 秒再重按，验证实际输入路径也不能绕过发射间隔。
@@ -990,10 +1041,7 @@ mod tests {
         let material = app
             .world()
             .resource::<Assets<StandardMaterial>>()
-            .get(
-                &bullet_material
-                    .expect("子弹层级内应加载 36×5×5 格（0.72×0.1×0.1 米）的弹体网格"),
-            )
+            .get(&bullet_material.expect("子弹层级内应加载 36×5×5 格（0.72×0.1×0.1 米）的弹体网格"))
             .unwrap();
         assert!(material.perceptual_roughness >= 0.8);
         assert_eq!(material.metallic, 0.0);
@@ -1026,7 +1074,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             app.world().get::<Transform>(second).unwrap().translation,
-            MUZZLE_POSITION
+            default_muzzle
         );
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
@@ -1051,7 +1099,7 @@ mod tests {
         // 玩家销毁后，车身、炮管、六个履带与十八个轮实例都必须注销。
         let mut scene_roots = app.world_mut().query::<&WorldInstance>();
         let player_instances: Vec<_> = scene_roots.iter(app.world()).map(|i| **i).collect();
-        assert_eq!(player_instances.len(), 26);
+        assert_eq!(player_instances.len(), 27);
         app.world_mut().despawn(tank);
         app.update();
         assert!(player_instances.into_iter().all(|i| {

@@ -1,20 +1,21 @@
 //! 场景帧表、输入脚本与公共预热/计帧流程；各场景保留原有断言。
 
-mod pastoral;
+mod articulation;
 mod combat;
 mod detail;
 mod drive;
 mod gallery;
 mod hud;
 mod index;
+mod pastoral;
 pub(super) mod scene;
 mod wheels;
 
 use super::*;
 use super::{
     capture::{
-        PixelCheck, capture, capture_bullet, capture_checked, capture_concrete, capture_side,
-        capture_wheel_views,
+        PixelCheck, capture, capture_at, capture_bullet, capture_checked, capture_concrete,
+        capture_side, capture_wheel_views,
     },
     offscreen::{update, wait_render},
 };
@@ -28,6 +29,8 @@ use scene::{subject_state, validate_scene};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Scenario {
     Scene,
+    /// 玩家炮塔、炮管与多发弹丸的世界姿态验证。
+    Articulation,
     /// 田园视觉样板、自由相机与首页往返。
     Pastoral,
     Drive,
@@ -49,6 +52,7 @@ impl Scenario {
     pub(super) fn frames(self) -> &'static [u32] {
         match self {
             Self::Scene => &[0],
+            Self::Articulation => &[0, 1, 2, 3, 30],
             // 先直行 1 秒，再持续前进左转；路径不会触及 25 米外的混凝土墩。
             Self::Drive => &[0, 60, 180],
             Self::Combat => &[0, 1, 6, 24, 48, 60, 120],
@@ -68,17 +72,21 @@ impl Scenario {
             (Self::Pastoral, 20..=80) => &[KeyCode::KeyW],
             (Self::Drive, 1..=60) => &[KeyCode::ArrowUp],
             (Self::Drive, 61..=180) => &[KeyCode::ArrowUp, KeyCode::ArrowLeft],
-            (Self::Combat, 1) => &[KeyCode::Space],
+            (Self::Combat, 1) | (Self::Articulation, 1..=3) => &[KeyCode::Space],
             (Self::Hud, 1) => &[KeyCode::Space],
             (Self::Wheels, 1..=30) => &[KeyCode::ArrowUp],
             (Self::Wheels, 31..=60) => &[KeyCode::ArrowDown],
             (Self::Wheels, 61..=90) => &[KeyCode::ArrowLeft],
             (Self::Wheels, 91..=120) => &[KeyCode::ArrowRight],
-            (Self::Index | Self::Gallery | Self::Detail | Self::Pastoral, 1) => &[KeyCode::ArrowDown],
+            (Self::Index | Self::Gallery | Self::Detail | Self::Pastoral, 1) => {
+                &[KeyCode::ArrowDown]
+            }
             (Self::Index | Self::Gallery | Self::Detail | Self::Pastoral, 3) => &[KeyCode::Enter],
             (Self::Index | Self::Gallery | Self::Detail | Self::Pastoral, 5) => &[KeyCode::Escape],
             (Self::Index | Self::Gallery | Self::Detail | Self::Pastoral, 7) => &[KeyCode::Tab],
-            (Self::Index | Self::Gallery | Self::Detail | Self::Pastoral, 8) => &[KeyCode::Tab, KeyCode::ShiftLeft],
+            (Self::Index | Self::Gallery | Self::Detail | Self::Pastoral, 8) => {
+                &[KeyCode::Tab, KeyCode::ShiftLeft]
+            }
             // 首页退出确认弹框：← 在两按钮间切换选中。
             (Self::Index, 15) => &[KeyCode::ArrowLeft],
             (Self::Gallery | Self::Detail, 11) => &[KeyCode::End],
@@ -173,6 +181,9 @@ pub(super) fn run_scenario(
         report.push_str("混凝土墩近景：concrete.png（截图等待不推进模拟时间）\n");
     }
     for frame in 1..=*options.scenario.frames().last().unwrap() {
+        if options.scenario == Scenario::Articulation {
+            articulation::prepare(app.world_mut(), frame)?;
+        }
         update(app, STEP, Some(frame))?;
         validate_scene(app.world_mut())?;
         if options.scenario == Scenario::Wheels {
@@ -188,6 +199,9 @@ pub(super) fn run_scenario(
                 report.push_str("弹丸出生近景：bullet-close.png\n");
             }
         }
+        if options.scenario == Scenario::Articulation {
+            articulation::check(app.world_mut(), frame, report)?;
+        }
         if options.scenario == Scenario::Hud {
             hud::check(app, frame, report, &mut failures)?;
         }
@@ -201,6 +215,15 @@ pub(super) fn run_scenario(
                 capture_side(app, &options.image_path(frame))?;
             } else {
                 capture(app, &options.image_path(frame))?;
+                if options.scenario == Scenario::Articulation && frame <= 3 {
+                    let (player, _) = subject_state(app.world_mut())?;
+                    capture_at(
+                        app,
+                        &options.output.join(format!("joint-{frame}.png")),
+                        player.translation + Vec3::Y * 0.9,
+                        Vec3::new(-5.5, 3.0, 6.0),
+                    )?;
+                }
             }
             report.push_str(&format!("图片：{}\n", options.image_path(frame).display()));
         }
