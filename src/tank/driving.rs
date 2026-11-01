@@ -148,7 +148,7 @@ mod tests {
         let mut world = World::new();
         let tank = world.spawn(tank_body()).id();
         let collider = world.get::<Collider>(tank).unwrap();
-        assert!(TANK_SIZE.abs_diff_eq(Vec3::new(7.8, 2.7, 3.8), 1e-5));
+        assert!(TANK_SIZE.abs_diff_eq(Vec3::new(7.68, 2.68, 3.76), 1e-5));
         for yaw in [
             0.0,
             std::f32::consts::FRAC_PI_4,
