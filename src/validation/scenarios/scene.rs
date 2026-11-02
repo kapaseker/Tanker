@@ -42,10 +42,13 @@ fn validate_scene_state(
             With<crate::gameplay::enemy::EnemyTank>,
         )>,
     >,
-    players: Query<&Transform, With<crate::gameplay::player::Tank>>,
+    players: Query<
+        (&Transform, &crate::tank::articulation::TankAim),
+        With<crate::gameplay::player::Tank>,
+    >,
     cameras: Query<&Transform, With<crate::gameplay::camera::FollowCamera>>,
 ) -> Result<(), String> {
-    let player = players.single().map_err(|e| format!("玩家状态异常：{e}"))?;
+    let (player, aim) = players.single().map_err(|e| format!("玩家状态异常：{e}"))?;
     for (tank, is_player) in &tanks {
         ensure(
             tank.translation.is_finite() && tank.rotation.is_finite() && tank.translation.y < 4.0,
@@ -73,7 +76,7 @@ fn validate_scene_state(
         )?;
     }
     let camera = cameras.single().map_err(|e| format!("跟随相机异常：{e}"))?;
-    let expected = crate::gameplay::camera::camera_transform(&player);
+    let expected = crate::gameplay::camera::camera_transform(player, aim.yaw);
     // 直接比较分量，避免 acos 将同一姿态的归一化舍入误差放大成角度误差。
     ensure(
         camera.translation.distance(expected.translation) < 0.01
@@ -91,7 +94,9 @@ mod tests {
     fn scene_assertions_detect_penetration_against_actual_collider() {
         use avian3d::prelude::{Collider, PhysicsPlugins, RigidBody};
         let mut app = App::new();
-        app.insert_resource(crate::tank::driving::TankConfigs::load(std::path::Path::new("assets")).unwrap());
+        app.insert_resource(
+            crate::tank::driving::TankConfigs::load(std::path::Path::new("assets")).unwrap(),
+        );
         app.add_plugins((
             MinimalPlugins,
             TransformPlugin,
@@ -114,6 +119,7 @@ mod tests {
             .world_mut()
             .spawn((
                 crate::gameplay::player::Tank,
+                crate::tank::articulation::TankAim::default(),
                 crate::tank::driving::tank_body(),
                 Transform::from_xyz(0.0, 0.75, 0.0),
             ))

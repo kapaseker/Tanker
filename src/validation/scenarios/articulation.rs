@@ -39,6 +39,7 @@ pub(super) fn check(world: &mut World, frame: u32, report: &mut String) -> Resul
         let (aim, body) = world
             .query_filtered::<(&TankAim, &Transform), With<Tank>>()
             .single(world)
+            .map(|(aim, body)| (*aim, *body))
             .map_err(|e| e.to_string())?;
         let expected_yaw: f32 = if frame <= 211 { 135.0 } else { 30.5 };
         let expected_pitch: f32 = if frame <= 211 { 20.0 } else { -9.0 };
@@ -54,6 +55,17 @@ pub(super) fn check(world: &mut World, frame: u32, report: &mut String) -> Resul
             (body.rotation * Vec3::NEG_X - Vec3::NEG_X).length() > 0.5,
             "驾驶输入未转动车体",
         )?;
+        let expected_position = body.translation
+            + body.rotation * Quat::from_rotation_y(expected_yaw.to_radians()) * Vec3::X * 16.0
+            + Vec3::Y * 9.0;
+        let camera = world
+            .query_filtered::<&Transform, With<crate::gameplay::camera::FollowCamera>>()
+            .single(world)
+            .map_err(|e| e.to_string())?;
+        ensure(
+            camera.translation.distance(expected_position) < 0.001,
+            "相机未在当帧跟随炮塔",
+        )?;
         if matches!(frame, 211 | 421) {
             let direction = body.rotation
                 * Quat::from_rotation_y(expected_yaw.to_radians())
@@ -68,6 +80,11 @@ pub(super) fn check(world: &mut World, frame: u32, report: &mut String) -> Resul
             )?;
         }
         report.push_str(&format!("断言通过：WASD 帧{frame}，相对偏航{expected_yaw}°、俯仰{expected_pitch}°，车体转向后保持相对角度，炮口发射方向正确\n"));
+    }
+    if frame == 749 {
+        let aim = world.query_filtered::<&TankAim, With<Tank>>().single(world).map_err(|e| e.to_string())?;
+        ensure((aim.yaw.to_degrees() - 180.0).abs() < 0.02, "真实输入未转到朝后")?;
+        report.push_str("断言通过：真实调炮朝后，跟随视角帧 749\n");
     }
     if !(1..=3).contains(&frame) {
         return Ok(());

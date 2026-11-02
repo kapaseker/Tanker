@@ -12,8 +12,8 @@ use bevy::{
 
 use crate::app::transition;
 use crate::gameplay::{camera, combat, enemy, health, player};
-use crate::terrain;
 use crate::tank;
+use crate::terrain;
 
 /// 当前加载的 MagicaVoxel 场景资源路径（相对 `assets/`）。
 /// 玩家使用 astraH 整车契约，炮塔、炮管及履带由活动层级挂载。
@@ -64,7 +64,7 @@ pub(crate) fn setup(
             steps: 1,
             quality: bevy::pbr::ScreenSpaceTransmissionQuality::High,
         },
-        camera::camera_transform(&tank_transform),
+        camera::camera_transform(&tank_transform, 0.0),
         bevy::core_pipeline::tonemapping::Tonemapping::BlenderFilmic,
         bevy::post_process::bloom::Bloom {
             intensity: 0.3,
@@ -84,7 +84,10 @@ pub(crate) fn setup(
     commands.spawn((
         player::Tank,
         tank::articulation::TankAim::default(),
-        tanks.player.articulation.expect("启动已校验豹 2A6 炮塔配置"),
+        tanks
+            .player
+            .articulation
+            .expect("启动已校验豹 2A6 炮塔配置"),
         SessionEntity,
         tank::track::PLAYER_TRACKS.with_size(size),
         WorldAssetRoot(scene.clone()),
@@ -186,7 +189,10 @@ mod tests {
         world.insert_resource(VoxScene(Handle::<WorldAsset>::default()));
         cleanup(&mut world);
         assert!(world.get_entity(entity).is_err(), "对局实体未被回收");
-        assert!(!world.contains_resource::<VoxScene>(), "vox 句柄资源未被移除");
+        assert!(
+            !world.contains_resource::<VoxScene>(),
+            "vox 句柄资源未被移除"
+        );
         // 二次清理：所有目标资源/实体均已缺失，仍须安全返回。
         cleanup(&mut world);
     }
