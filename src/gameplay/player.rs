@@ -1,6 +1,7 @@
 //! 玩家身份标记与方向键输入；过渡未放行时不写驾驶意图。
 
 use crate::app::transition::Fade;
+use crate::tank::articulation::{AimSpec, TankAim};
 use crate::tank::driving::{self, DrivingInput};
 use avian3d::prelude::PhysicsSystems;
 use bevy::prelude::*;
@@ -14,6 +15,7 @@ pub(crate) struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
+        app.add_systems(Update, read_aim_input);
         app.add_systems(
             FixedPostUpdate,
             // 输入写入先于驾驶消费，且两者都不越过物理步进。
@@ -22,6 +24,28 @@ impl Plugin for PlayerPlugin {
                 .before(PhysicsSystems::StepSimulation)
                 .before(driving::drive_tank),
         );
+    }
+}
+
+/// 双轴同时响应 WASD；失焦和页面过渡保持原角度，不累计待执行输入。
+fn read_aim_input(
+    keys: Res<ButtonInput<KeyCode>>,
+    time: Res<Time>,
+    windows: Query<&Window>,
+    fade: Option<Res<Fade>>,
+    mut players: Query<(&mut TankAim, &AimSpec), With<Tank>>,
+) {
+    if windows.iter().any(|window| !window.focused)
+        || fade.as_ref().is_some_and(|fade| !fade.accepts_input())
+    {
+        return;
+    }
+    let yaw =
+        (i32::from(keys.pressed(KeyCode::KeyA)) - i32::from(keys.pressed(KeyCode::KeyD))) as f32;
+    let pitch =
+        (i32::from(keys.pressed(KeyCode::KeyW)) - i32::from(keys.pressed(KeyCode::KeyS))) as f32;
+    for (mut aim, spec) in &mut players {
+        spec.advance(&mut aim, yaw, pitch, time.delta_secs());
     }
 }
 
@@ -54,10 +78,78 @@ fn read_player_input(
 mod tests {
     use super::*;
     use crate::gameplay::enemy::EnemyTank;
-    use crate::terrain;
     use crate::tank::driving::{DrivingPlugin, TANK_SIZE, TurnRate, tank_body};
+    use crate::terrain;
     use bevy::time::TimeUpdateStrategy;
     use std::time::Duration;
+
+    /// 真正输入系统覆盖双轴、反向抵消、松手、失焦和切页；敌车不接玩家输入。
+    #[test]
+    fn wasd_controls_only_player_and_obeys_input_gates() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .init_resource::<ButtonInput<KeyCode>>()
+            .init_resource::<Fade>()
+            .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
+                100,
+            )))
+            .add_systems(Update, read_aim_input);
+        let spec = AimSpec {
+            traverse_speed_deg_s: 30.0,
+            elevation_speed_deg_s: 9.0,
+            min_elevation_deg: -9.0,
+            max_elevation_deg: 20.0,
+        };
+        let player = app.world_mut().spawn((Tank, TankAim::default(), spec)).id();
+        let enemy = app
+            .world_mut()
+            .spawn((EnemyTank, TankAim::default(), spec))
+            .id();
+        app.update();
+        {
+            let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.press(KeyCode::KeyW);
+            keys.press(KeyCode::KeyA);
+        }
+        for _ in 0..10 {
+            app.update();
+        }
+        let aim = *app.world().get::<TankAim>(player).unwrap();
+        assert!((aim.yaw.to_degrees() - 30.0).abs() < 1e-3);
+        assert!((aim.pitch.to_degrees() - 9.0).abs() < 1e-3);
+        assert_eq!(app.world().get::<TankAim>(enemy).unwrap().yaw, 0.0);
+        {
+            let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.press(KeyCode::KeyS);
+            keys.press(KeyCode::KeyD);
+        }
+        app.update();
+        assert_eq!(app.world().get::<TankAim>(player).unwrap().yaw, aim.yaw);
+        assert_eq!(app.world().get::<TankAim>(player).unwrap().pitch, aim.pitch);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        app.update();
+        assert_eq!(app.world().get::<TankAim>(player).unwrap().yaw, aim.yaw);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyW);
+        let window = app
+            .world_mut()
+            .spawn(Window {
+                focused: false,
+                ..default()
+            })
+            .id();
+        app.update();
+        assert_eq!(app.world().get::<TankAim>(player).unwrap().pitch, aim.pitch);
+        app.world_mut().get_mut::<Window>(window).unwrap().focused = true;
+        app.world_mut()
+            .resource_mut::<Fade>()
+            .begin(crate::app::state::GameState::Index, false);
+        app.update();
+        assert_eq!(app.world().get::<TankAim>(player).unwrap().pitch, aim.pitch);
+    }
 
     /// 方向键映射：前后为油门、左右为转向，方向相反的按键互相抵消。
     #[test]

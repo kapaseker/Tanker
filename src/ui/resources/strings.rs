@@ -9,6 +9,12 @@ pub(crate) const KEY_UP: &str = "↑";
 /// 键帽提示：光标下移。
 pub(crate) const KEY_DOWN: &str = "↓";
 
+/// 炮管仰俯与炮塔左右旋转的键帽标识，不随语言翻译。
+pub(crate) const KEY_W: &str = "W";
+pub(crate) const KEY_S: &str = "S";
+pub(crate) const KEY_A: &str = "A";
+pub(crate) const KEY_D: &str = "D";
+
 /// 键帽提示：确认。英文白名单内的按键标识，不随语言翻译。
 pub(crate) const KEY_ENTER: &str = "ENTER";
 

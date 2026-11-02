@@ -33,6 +33,9 @@ pub(crate) mod index {
 
 /// 详情尺寸与装备规格标签；分类与单位沿用画廊文案。
 pub(crate) mod detail {
+    /// 只在豹 2A6 详情显示的操作说明。
+    pub(crate) const GUN_ELEVATION: &str = "炮管俯仰";
+    pub(crate) const TURRET_TRAVERSE: &str = "炮塔旋转（相对车体）";
     pub(crate) const DIMENSIONS: [&str; 3] = ["长度", "宽度", "高度"];
     /// 弹药规格：初速与射速。
     pub(crate) const MUZZLE_VELOCITY: &str = "初速";

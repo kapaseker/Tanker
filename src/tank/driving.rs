@@ -8,12 +8,14 @@ use bevy::prelude::*;
 use serde::Deserialize;
 use std::path::Path;
 
-/// 一种坦克的整车碰撞配置，单位为米。
+/// 一种坦克的整车配置；长度使用米，炮塔角度使用度。
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct TankConfig {
     /// 整车圆角碰撞体。
     pub(crate) collision: TankCollision,
+    /// 仅有独立炮塔控制的车型提供；玩家豹 2A6 必填。
+    pub(crate) articulation: Option<super::articulation::AimSpec>,
 }
 
 /// 整车碰撞体的外部尺寸与圆角半径。
@@ -38,10 +40,14 @@ pub(crate) struct TankConfigs {
 impl TankConfigs {
     /// 从资源根载入当前玩家与敌方车型。
     pub(crate) fn load(root: &Path) -> Result<Self, String> {
-        Ok(Self {
+        let configs = Self {
             player: TankConfig::load(root, "tank/player/leopard2_a6/tank.jsonc")?,
             enemy: TankConfig::load(root, "tank/enemy/carapace/tank.jsonc")?,
-        })
+        };
+        if configs.player.articulation.is_none() {
+            return Err("坦克配置非法 tank/player/leopard2_a6/tank.jsonc：缺少 articulation 炮塔参数".into());
+        }
+        Ok(configs)
     }
 }
 
@@ -60,6 +66,9 @@ impl TankConfig {
         let radius = config.collision.rounding_radius;
         if !radius.is_finite() || radius <= 0.0 || config.collision.size.iter().any(|v| !v.is_finite() || *v <= 2.0 * radius) {
             return Err("尺寸和圆角必须为有限正数，且尺寸大于圆角直径".into());
+        }
+        if let Some(spec) = config.articulation {
+            spec.validate()?;
         }
         Ok(config)
     }
@@ -227,6 +236,25 @@ mod tests {
             r#"{"collision":{"size":[1,2,3],"rounding_radius":0.2,}}"#,
         ] {
             assert!(TankConfig::parse(input.as_bytes()).is_err(), "{input}");
+        }
+    }
+
+    /// 角速度、俯仰范围与未知字段在启动边界校验，不能降级成静默默认值。
+    #[test]
+    fn tank_config_rejects_invalid_articulation() {
+        let source = std::fs::read_to_string("assets/tank/player/leopard2_a6/tank.jsonc").unwrap();
+        assert!(TankConfig::parse(source.as_bytes()).unwrap().articulation.is_some());
+        for (old, new) in [
+            ("\"traverse_speed_deg_s\": 30.0", "\"traverse_speed_deg_s\": 0.0"),
+            ("\"elevation_speed_deg_s\": 9.0", "\"elevation_speed_deg_s\": -1.0"),
+            ("\"min_elevation_deg\": -9.0", "\"min_elevation_deg\": 21.0"),
+            ("\"max_elevation_deg\": 20.0", "\"max_elevation_deg\": -20.0"),
+            ("\"max_elevation_deg\": 20.0", "\"max_elevation_deg\": 1e99"),
+            ("\"max_elevation_deg\": 20.0", "\"unknown\": 20.0"),
+        ] {
+            let changed = source.replace(old, new);
+            assert_ne!(source, changed);
+            assert!(TankConfig::parse(changed.as_bytes()).is_err(), "{new}");
         }
     }
 

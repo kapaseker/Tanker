@@ -1,7 +1,55 @@
-//! 玩家整车活动层级；角度由系统或测试设置，本模块不定义瞄准输入。
+//! 玩家整车活动层级与相对角度积分；输入来源由对局和详情页各自决定。
 
 use super::model::astra;
 use bevy::{prelude::*, transform::TransformSystems};
+use serde::Deserialize;
+
+/// 车型的炮塔运动参数；JSONC 使用度和秒，运行姿态使用弧度。
+#[derive(Component, Clone, Copy, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AimSpec {
+    /// 炮塔相对车体的最大水平角速度，度/秒；水平允许连续整圈旋转。
+    pub(crate) traverse_speed_deg_s: f32,
+    /// 炮管相对炮塔的最大俯仰角速度，度/秒。
+    pub(crate) elevation_speed_deg_s: f32,
+    /// 水平炮轴为零，负值向下，单位：度。
+    pub(crate) min_elevation_deg: f32,
+    /// 最大仰角，单位：度。
+    pub(crate) max_elevation_deg: f32,
+}
+
+impl AimSpec {
+    /// 配置进入运行前拒绝无效速度、反向区间或无法容纳默认水平姿态的限位。
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if !self.traverse_speed_deg_s.is_finite()
+            || self.traverse_speed_deg_s <= 0.0
+            || !self.elevation_speed_deg_s.is_finite()
+            || self.elevation_speed_deg_s <= 0.0
+            || !self.min_elevation_deg.is_finite()
+            || !self.max_elevation_deg.is_finite()
+            || self.min_elevation_deg <= -90.0
+            || self.min_elevation_deg > 0.0
+            || self.max_elevation_deg < 0.0
+            || self.max_elevation_deg >= 90.0
+            || self.min_elevation_deg >= self.max_elevation_deg
+        {
+            return Err(
+                "炮塔角速度必须为有限正数，俯仰区间须位于 (-90,90) 度并包含水平姿态".into(),
+            );
+        }
+        Ok(())
+    }
+
+    /// 按秒积分两轴意图（−1..=1），不改变车体；松手保持相对角度。
+    pub(crate) fn advance(&self, aim: &mut TankAim, yaw: f32, pitch: f32, dt: f32) {
+        aim.yaw = (aim.yaw + yaw * self.traverse_speed_deg_s.to_radians() * dt)
+            .rem_euclid(std::f32::consts::TAU);
+        aim.pitch = (aim.pitch + pitch * self.elevation_speed_deg_s.to_radians() * dt).clamp(
+            self.min_elevation_deg.to_radians(),
+            self.max_elevation_deg.to_radians(),
+        );
+    }
+}
 
 /// 炮塔相对车体的偏航和炮管相对炮塔的俯仰，单位弧度；默认朝前水平。
 #[derive(Component, Default, Clone, Copy)]
@@ -73,5 +121,39 @@ fn apply_aim(
                 transform.rotation = Quat::from_rotation_z(-aim.pitch);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 一秒的双轴输入独立积分；俯仰限位、水平回绕与松手不漂移。
+    #[test]
+    fn aim_motion_respects_rates_limits_and_release() {
+        let spec = AimSpec {
+            traverse_speed_deg_s: 40.0,
+            elevation_speed_deg_s: 20.0,
+            min_elevation_deg: -9.0,
+            max_elevation_deg: 20.0,
+        };
+        let mut aim = TankAim::default();
+        spec.advance(&mut aim, 1.0, 1.0, 1.0);
+        assert!((aim.yaw.to_degrees() - 40.0).abs() < 1e-4);
+        assert!((aim.pitch.to_degrees() - 20.0).abs() < 1e-4);
+        spec.advance(&mut aim, 0.0, -1.0, 2.0);
+        assert!((aim.pitch.to_degrees() + 9.0).abs() < 1e-4);
+        let stopped = aim;
+        spec.advance(&mut aim, 0.0, 0.0, 1.0);
+        assert_eq!(aim.yaw, stopped.yaw);
+        assert_eq!(aim.pitch, stopped.pitch);
+        spec.advance(&mut aim, 1.0, 0.0, 9.0);
+        assert!((aim.yaw.to_degrees() - 40.0).abs() < 1e-3);
+        let mut smooth = TankAim::default();
+        for _ in 0..60 {
+            spec.advance(&mut smooth, 1.0, 1.0, 1.0 / 60.0);
+        }
+        assert!((smooth.yaw.to_degrees() - 40.0).abs() < 1e-3);
+        assert!((smooth.pitch.to_degrees() - 20.0).abs() < 1e-3);
     }
 }

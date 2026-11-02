@@ -121,6 +121,10 @@ pub(crate) fn spawn(
             if entry.enemy {
                 visual::mount_barrel(commands, assets, content, visual::ENEMY_BARREL.path);
             } else {
+                commands.entity(content).insert((
+                    crate::tank::articulation::TankAim::default(),
+                    tanks.player.articulation.expect("启动已校验豹 2A6 炮塔配置"),
+                ));
                 crate::tank::articulation::mount_player(commands, assets, content);
             }
         }

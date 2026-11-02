@@ -216,7 +216,54 @@ pub(super) fn run_detail_scenario(
             app,
             &options.output.join(format!("detail-{index}-initial.png")),
         )?;
-        if index == 6 {
+        if index == 1 {
+            use crate::tank::articulation::TankAim;
+            let content = app.world().resource::<Previews>().items[0].content;
+            let aim = *app
+                .world()
+                .get::<TankAim>(content)
+                .ok_or("豹 2A6 详情缺少炮塔状态")?;
+            ensure(aim.yaw == 0.0 && aim.pitch == 0.0, "进入详情未复位炮塔")?;
+            for frame in 100..=279 {
+                update(app, STEP, Some(frame))?;
+            }
+            let aim = *app.world().get::<TankAim>(content).unwrap();
+            ensure(
+                (aim.yaw.to_degrees() - 90.0).abs() < 0.01
+                    && (aim.pitch.to_degrees() - 20.0).abs() < 0.01,
+                "详情 W/A 未按配置旋转或未达到仰角限位",
+            )?;
+            capture(app, &options.output.join("detail-aim-left-up.png"))?;
+            for frame in 280..=489 {
+                update(app, STEP, Some(frame))?;
+            }
+            let aim = *app.world().get::<TankAim>(content).unwrap();
+            ensure(
+                (aim.yaw.to_degrees() - 345.0).abs() < 0.01
+                    && (aim.pitch.to_degrees() + 9.0).abs() < 0.01,
+                "详情 S/D 未按配置旋转或未达到俯角限位",
+            )?;
+            capture(app, &options.output.join("detail-aim-right-down.png"))?;
+            for _ in 0..4 {
+                update(app, STEP, None)?;
+            }
+            let stopped = app.world().get::<TankAim>(content).unwrap();
+            ensure(
+                stopped.yaw == aim.yaw && stopped.pitch == aim.pitch,
+                "详情松键后炮塔漂移",
+            )?;
+            report.push_str("豹 2A6 详情：真实 WASD 双轴控制、水平回绕、上下限及松键停止通过\n");
+        } else {
+            let content = app.world().resource::<Previews>().items[0].content;
+            update(app, STEP, Some(100))?;
+            ensure(
+                app.world()
+                    .get::<crate::tank::articulation::TankAim>(content)
+                    .is_none(),
+                "非豹 2A6 详情不应提供炮塔控制",
+            )?;
+        }
+        if index == 1 {
             pointer(app, Some(Vec2::new(650.0, 400.0)));
             app.world_mut().resource_mut::<MenuMouse>().0 = true;
             update(app, STEP, None)?;
@@ -326,6 +373,34 @@ pub(super) fn run_detail_scenario(
         report.push_str(&format!(
             "目录项{index}：进入/返回、视角重置、原焦点与滚动恢复、实体/实例/纹理清理通过\n"
         ));
+        if index == 1 {
+            key(app, 3)?;
+            super::gallery::finish_gallery_transition(
+                app,
+                options,
+                2,
+                "aim-reenter",
+                GameState::Detail,
+            )?;
+            let content = app.world().resource::<Previews>().items[0].content;
+            let aim = app
+                .world()
+                .get::<crate::tank::articulation::TankAim>(content)
+                .ok_or("重进详情缺少炮塔")?;
+            ensure(
+                aim.yaw == 0.0 && aim.pitch == 0.0,
+                "重进详情继承了旧炮塔角度",
+            )?;
+            key(app, 5)?;
+            super::gallery::finish_gallery_transition(
+                app,
+                options,
+                2,
+                "aim-return",
+                GameState::Gallery,
+            )?;
+            report.push_str("重进豹 2A6 详情：炮塔朝前水平复位通过\n");
+        }
     }
     capture(app, &options.output.join("detail-return-gallery.png"))?;
     // 真实缺失文件验证错误揭幕与返回；只豁免指定文件的预期事件，其它错误照常失败。
@@ -404,5 +479,18 @@ pub(super) fn run_detail_scenario(
             == UVec2::new(1280, 720),
         "详情场景内容纹理尺寸异常",
     )?;
+    key(app, 5)?;
+    super::gallery::finish_gallery_transition(app, options, 2, "aim-index", GameState::Index)?;
+    key(app, 17)?; // 方向键上：从画廊入口移到开始游戏。
+    key(app, 3)?;
+    super::gallery::finish_gallery_transition(app, options, 2, "aim-game", GameState::InGame)?;
+    let aim = app
+        .world_mut()
+        .query_filtered::<&crate::tank::articulation::TankAim, With<crate::gameplay::player::Tank>>(
+        )
+        .single(app.world())
+        .map_err(|e| e.to_string())?;
+    ensure(aim.yaw == 0.0 && aim.pitch == 0.0, "详情角度污染了新对局")?;
+    report.push_str("详情返回后进入真实对局：炮塔朝前水平，不继承预览角度\n");
     Ok(())
 }

@@ -83,6 +83,8 @@ pub(crate) fn setup(
     let scene = assets.load(VOX_SCENE_PATH);
     commands.spawn((
         player::Tank,
+        tank::articulation::TankAim::default(),
+        tanks.player.articulation.expect("启动已校验豹 2A6 炮塔配置"),
         SessionEntity,
         tank::track::PLAYER_TRACKS.with_size(size),
         WorldAssetRoot(scene.clone()),

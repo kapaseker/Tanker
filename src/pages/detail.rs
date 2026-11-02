@@ -163,7 +163,11 @@ impl Plugin for DetailPlugin {
             )
             .add_systems(
                 Update,
-                (input.before(widgets::title_bar::interaction), update_view)
+                (
+                    input.before(widgets::title_bar::interaction),
+                    control_aim,
+                    update_view,
+                )
                     .chain()
                     .run_if(in_detail),
             )
@@ -358,6 +362,28 @@ fn spawn_ui(
                 text_font(&font, 18.0, 400.0),
                 TextColor(colors::ON_SURFACE),
             ));
+            if previews.items[0].entry.category == 1 && !previews.items[0].entry.enemy {
+                root.spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        bottom: px(dims::AIM_HELP_BOTTOM),
+                        width: percent(100),
+                        ..default()
+                    },
+                    Text::new(format!(
+                        "{} / {} {} · {} / {} {}",
+                        strings::KEY_W,
+                        strings::KEY_S,
+                        strings_cn::detail::GUN_ELEVATION,
+                        strings::KEY_A,
+                        strings::KEY_D,
+                        strings_cn::detail::TURRET_TRAVERSE
+                    )),
+                    TextLayout::justify(Justify::Center),
+                    text_font(&font, dims::AIM_HELP_SIZE, 400.0),
+                    TextColor(colors::ON_SURFACE_MUTED),
+                ));
+            }
             widgets::spawn_version_text(root, &font);
         });
 }
@@ -646,6 +672,32 @@ fn input(
     }
     if inside {
         view.scale(delta);
+    }
+}
+
+/// 仅就绪的豹 2A6 详情接收按键，预览角度保存在独立实体，离页即销毁。
+fn control_aim(
+    keys: Res<ButtonInput<KeyCode>>,
+    time: Res<Time>,
+    windows: Query<&Window>,
+    fade: Res<Fade>,
+    previews: Res<Previews>,
+    mut aims: Query<(&mut crate::tank::articulation::TankAim, &crate::tank::articulation::AimSpec)>,
+) {
+    let preview = &previews.items[0];
+    if !fade.accepts_input()
+        || windows.iter().any(|window| !window.focused)
+        || preview.size.is_none()
+        || preview.error.is_some()
+    {
+        return;
+    }
+    if let Ok((mut aim, spec)) = aims.get_mut(preview.content) {
+        let yaw =
+            (i32::from(keys.pressed(KeyCode::KeyA)) - i32::from(keys.pressed(KeyCode::KeyD))) as f32;
+        let pitch =
+            (i32::from(keys.pressed(KeyCode::KeyW)) - i32::from(keys.pressed(KeyCode::KeyS))) as f32;
+        spec.advance(&mut aim, yaw, pitch, time.delta_secs());
     }
 }
 
