@@ -5,6 +5,65 @@
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
+use serde::Deserialize;
+use std::path::Path;
+
+/// 一种坦克的整车碰撞配置，单位为米。
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TankConfig {
+    /// 整车圆角碰撞体。
+    pub(crate) collision: TankCollision,
+}
+
+/// 整车碰撞体的外部尺寸与圆角半径。
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TankCollision {
+    /// 长、高、宽。
+    pub(crate) size: [f32; 3],
+    /// 圆角半径。
+    pub(crate) rounding_radius: f32,
+}
+
+/// 启动时载入的玩家和敌方车型参数。
+#[derive(Resource)]
+pub(crate) struct TankConfigs {
+    /// 玩家车型。
+    pub(crate) player: TankConfig,
+    /// 敌方车型。
+    pub(crate) enemy: TankConfig,
+}
+
+impl TankConfigs {
+    /// 从资源根载入当前玩家与敌方车型。
+    pub(crate) fn load(root: &Path) -> Result<Self, String> {
+        Ok(Self {
+            player: TankConfig::load(root, "tank/player/leopard2_a6/tank.jsonc")?,
+            enemy: TankConfig::load(root, "tank/enemy/carapace/tank.jsonc")?,
+        })
+    }
+}
+
+impl TankConfig {
+    /// 从车型目录读取并校验碰撞参数。
+    pub(crate) fn load(root: &Path, path: &str) -> Result<Self, String> {
+        let path = root.join(path);
+        let bytes = std::fs::read(&path).map_err(|e| format!("坦克配置读取失败 {}：{e}", path.display()))?;
+        Self::parse(&bytes).map_err(|e| format!("坦克配置非法 {}：{e}", path.display()))
+    }
+
+    /// 校验 JSONC 及圆角盒的几何范围。
+    fn parse(bytes: &[u8]) -> Result<Self, String> {
+        let config: Self = serde_json::from_reader(json_comments::StripComments::with_settings(
+            json_comments::CommentSettings::c_style(), bytes)).map_err(|e| e.to_string())?;
+        let radius = config.collision.rounding_radius;
+        if !radius.is_finite() || radius <= 0.0 || config.collision.size.iter().any(|v| !v.is_finite() || *v <= 2.0 * radius) {
+            return Err("尺寸和圆角必须为有限正数，且尺寸大于圆角直径".into());
+        }
+        Ok(config)
+    }
+}
 
 /// 玩家车身与履带的单一碰撞框（X 长、Y 高、Z 宽），不包含伸出的炮管，单位米。
 pub(crate) const TANK_SIZE: Vec3 = Vec3::from_array(crate::tank::model::astra::COLLISION_SIZE);
@@ -45,6 +104,7 @@ impl Plugin for DrivingPlugin {
 /// 简化刚体承托整个模型，锁住全部旋转（俯仰、侧倾、偏航）。
 /// 偏航由驾驶系统直接积分写入，物理接触（起伏地形、碰撞）无法扭转车头，
 /// 避免体素台阶的接触冲量把直线行驶扭成蛇形。
+#[cfg(test)]
 pub(crate) fn tank_body() -> impl Bundle {
     body_for_size(TANK_SIZE)
 }
@@ -56,20 +116,29 @@ pub(crate) fn tank_body() -> impl Bundle {
 /// 分量，坦克借行驶推力翻上矮坎；两档及以上的高坎仍是墙。圆角通过
 /// "核心盒收短 2×半径 + 圆角半径"合成，碰撞体总尺寸与 [`TANK_SIZE`] 等车身
 /// 尺寸保持一致。
+#[cfg(test)]
 const STEP_CLIMB_RADIUS: f32 = 0.2;
 
 /// 按整车尺寸创建共享驾驶刚体与逐车状态；尺寸单位为米，敌人不接玩家输入。
+#[cfg(test)]
 pub(crate) fn body_for_size(size: Vec3) -> impl Bundle {
+    body_for_collision(TankCollision { size: size.to_array(), rounding_radius: STEP_CLIMB_RADIUS })
+}
+
+/// 根据车型配置生成碰撞体和驾驶状态。
+pub(crate) fn body_for_collision(collision: TankCollision) -> impl Bundle {
+    let size = Vec3::from_array(collision.size);
+    let radius = collision.rounding_radius;
     (
         DrivingInput::default(),
         TurnRate::default(),
         RigidBody::Dynamic,
         // 圆角箱形碰撞体：外形不变、四角收圆，让坦克能翻越一档体素台阶。
         Collider::round_cuboid(
-            size.x - 2.0 * STEP_CLIMB_RADIUS,
-            size.y - 2.0 * STEP_CLIMB_RADIUS,
-            size.z - 2.0 * STEP_CLIMB_RADIUS,
-            STEP_CLIMB_RADIUS,
+            size.x - 2.0 * radius,
+            size.y - 2.0 * radius,
+            size.z - 2.0 * radius,
+            radius,
         ),
         LockedAxes::new()
             .lock_rotation_x()
@@ -141,6 +210,35 @@ pub(crate) fn drive_tank(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 配置文件是碰撞尺寸来源，非法几何和多余字段不能被忽略。
+    #[test]
+    fn tank_config_validates_dimensions_and_fields() {
+        let tanks = TankConfigs::load(Path::new("assets")).unwrap();
+        assert_eq!(tanks.player.collision.size, [7.68, 2.68, 3.76]);
+        assert_eq!(tanks.enemy.collision.size, [6.6, 2.6, 3.4]);
+        assert!(TankConfig::load(Path::new("assets"), "missing-tank.jsonc").unwrap_err().contains("missing-tank.jsonc"));
+        assert!(TankConfig::parse(br#"{/*comment*/"collision":{"size":[1,2,3],"rounding_radius":0.2}}"#).is_ok());
+        for input in [
+            r#"{"collision":{"size":[0.4,2,3],"rounding_radius":0.2}}"#,
+            r#"{"collision":{"size":[1,2,3],"rounding_radius":0}}"#,
+            r#"{"collision":{"size":[1e99,2,3],"rounding_radius":0.2}}"#,
+            r#"{"collision":{"size":[1,2,3],"rounding_radius":0.2,"extra":1}}"#,
+            r#"{"collision":{"size":[1,2,3],"rounding_radius":0.2,}}"#,
+        ] {
+            assert!(TankConfig::parse(input.as_bytes()).is_err(), "{input}");
+        }
+    }
+
+    /// 非默认配置实际决定刚体外包络和圆角。
+    #[test]
+    fn configured_collider_uses_size_and_radius() {
+        let collision = TankCollision { size: [4.0, 2.0, 3.0], rounding_radius: 0.3 };
+        let mut world = World::new();
+        let entity = world.spawn(body_for_collision(collision)).id();
+        let aabb = world.get::<Collider>(entity).unwrap().aabb(Vec3::ZERO, Quat::IDENTITY, 0.0);
+        assert!((aabb.max - aabb.min).abs_diff_eq(Vec3::from_array(collision.size), 1e-5));
+    }
 
     /// 真实圆角碰撞体尺寸与偏航包围盒；炮管不得扩展刚体。
     #[test]

@@ -11,16 +11,8 @@ use bevy::{
     world_serialization::{WorldAsset, WorldInstance, WorldInstanceSpawner},
 };
 
-/// 扫掠碰撞固定为 0.4 米立方体，与视觉尺寸无关，单位：米。
-const BULLET_SIZE: f32 = 0.4;
 /// 从出生点累计计算的最大飞行距离，单位：世界单位。
 const BULLET_RANGE: f32 = 2000.0;
-/// 炮管局部的弹丸出生中心；炮口外移半个扫掠碰撞盒，避免初生时嵌入炮口。
-const MUZZLE_POSITION: Vec3 = Vec3::new(
-    crate::tank::model::astra::MUZZLE_POSITION[0] - BULLET_SIZE / 2.0,
-    crate::tank::model::astra::MUZZLE_POSITION[1],
-    crate::tank::model::astra::MUZZLE_POSITION[2],
-);
 
 /// 玩家实际活动炮管的场景根，世界姿态决定弹丸发射方向。
 #[derive(Component)]
@@ -144,9 +136,11 @@ impl FireCadence {
 }
 
 /// 将局部炮口数据换算到世界空间，依次返回子弹出生中心和归一化飞行方向。
-fn muzzle_pose(tank: &GlobalTransform) -> (Vec3, Vec3) {
+fn muzzle_pose(tank: &GlobalTransform, spec: &AmmunitionSpec) -> (Vec3, Vec3) {
+    let muzzle = Vec3::from_array(crate::tank::model::astra::MUZZLE_POSITION);
+    let root_offset = spec.collision.size[0] / 2.0 - spec.collision.center_forward_offset;
     (
-        tank.transform_point(MUZZLE_POSITION),
+        tank.transform_point(muzzle + Vec3::NEG_X * root_offset),
         tank.affine().transform_vector3(Vec3::NEG_X).normalize(),
     )
 }
@@ -202,7 +196,7 @@ fn fire_bullets(
     // tick 返回 true 时必有可用坦克，因此这里可以取出此前筛选的结果。
     let (barrel, _, _) = barrels.single().unwrap();
     // 位置和方向均为世界空间数据，子弹不成为坦克的子实体。
-    let (position, direction) = muzzle_pose(barrel);
+    let (position, direction) = muzzle_pose(barrel, &gun.spec);
     debug!("发射子弹：位置={position:?}，方向={direction:?}");
     let transform = Transform::from_translation(position).with_rotation(barrel.rotation());
     commands.spawn((
@@ -233,7 +227,8 @@ fn move_bullets(
 ) {
     // 本帧前进的世界距离，按游戏时间计算，单位：米。
     let step = spec.muzzle_velocity * time.delta_secs();
-    let shape = Collider::cuboid(BULLET_SIZE, BULLET_SIZE, BULLET_SIZE);
+    let [length, height, width] = spec.collision.size;
+    let shape = Collider::cuboid(length, height, width);
     // 子弹投射只认敌人和混凝土墩；越过场地边界（±FIELD_SIDE/2）即视为失效，
     // 防止穿墙飞满射程。单帧最大位移约 18.75 米（1/64 秒 × 1200 米/秒），
     // 出界后最远深入一帧位移才被销毁，对 ±300 米场地无实质影响。
@@ -253,7 +248,7 @@ fn move_bullets(
         let travel = step.min(remaining);
         let hit = spatial.cast_shape_predicate(
             &shape,
-            transform.translation,
+            transform.translation + bullet.direction * spec.collision.center_forward_offset,
             transform.rotation,
             Dir3::new(bullet.direction).expect("子弹方向必须为非零单位向量"),
             &ShapeCastConfig::from_max_distance(travel),
@@ -295,6 +290,9 @@ fn move_bullets(
 
 #[cfg(test)]
 mod tests {
+    fn ammo() -> AmmunitionSpec {
+        AmmunitionSpec::load(std::path::Path::new("assets"), crate::tank::visual::PLAYER_BULLET).unwrap()
+    }
     use super::*;
     use bevy::{
         asset::AssetPlugin,
@@ -358,6 +356,7 @@ mod tests {
         let spec = AmmunitionSpec {
             muzzle_velocity: 600.0,
             rate_of_fire: 30.0,
+            ..ammo()
         };
         let mut cadence = FireCadence::default();
         assert!(cadence.tick(true, 0.0, spec.cooldown()));
@@ -370,7 +369,7 @@ mod tests {
     fn movement_consumes_ammunition_speed() {
         use avian3d::collider_tree::ColliderTrees;
         let mut app = App::new();
-        app.insert_resource(AmmunitionSpec { muzzle_velocity: 600.0, rate_of_fire: 30.0 });
+        app.insert_resource(AmmunitionSpec { muzzle_velocity: 600.0, rate_of_fire: 30.0, ..ammo() });
         let mut time = Time::<()>::default();
         time.advance_by(std::time::Duration::from_secs_f32(0.05));
         app.insert_resource(time).init_resource::<ColliderTrees>().add_message::<EnemyDestroyed>().add_systems(Update, move_bullets);
@@ -435,7 +434,7 @@ mod tests {
             Transform::from_xyz(3.0, 2.0, 1.0)
                 .with_rotation(Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)),
         );
-        let (position, direction) = muzzle_pose(&tank);
+        let (position, direction) = muzzle_pose(&tank, &ammo());
         // 炮管局部出生中心 (-5.62, 0, 0)，偏航 90° 后前向映射到世界 +Z。
         assert!(position.abs_diff_eq(Vec3::new(3.0, 2.0, 6.62), 1e-5));
         assert!(direction.abs_diff_eq(Vec3::Z, 1e-5));
@@ -507,6 +506,16 @@ mod tests {
             .id()
     }
 
+    /// 高速弹的细截面不会击中旧碰撞盒会擦到的目标。
+    #[test]
+    fn narrow_body_misses_nearby_enemy() {
+        let (mut app, targets) = hit_test_app(&[(Vec3::new(-40.0, 1.3, 0.0), 0.0)]);
+        let bullet = test_bullet(&mut app, Vec3::new(0.0, 1.3, 1.8), Vec3::NEG_X, 0.0);
+        advance_test_bullets(&mut app, 0.05);
+        assert!(app.world().get_entity(targets[0]).is_ok());
+        assert!(app.world().get_entity(bullet).is_ok());
+    }
+
     /// 炮管俯仰后的世界弹道能命中高低目标，不依赖地形或新瞄准操作。
     #[test]
     fn pitched_muzzle_hits_elevated_and_lower_targets() {
@@ -515,7 +524,7 @@ mod tests {
             let barrel = GlobalTransform::from(Transform::from_rotation(Quat::from_rotation_z(
                 -pitch_degrees.to_radians(),
             )));
-            let (origin, direction) = muzzle_pose(&barrel);
+            let (origin, direction) = muzzle_pose(&barrel, &ammo());
             let bullet = test_bullet(&mut app, origin, direction, 0.0);
             advance_test_bullets(&mut app, 0.05);
             assert!(
@@ -580,7 +589,7 @@ mod tests {
     /// 玩家真实炮口水平命中平地敌人；目标底部远高于弹道时仍应掠过。
     #[test]
     fn modern_muzzle_hits_ground_level_enemy_without_platform() {
-        let origin = MUZZLE_POSITION
+        let origin = muzzle_pose(&GlobalTransform::IDENTITY, &ammo()).0
             + Vec3::from_array(crate::tank::model::astra::BARREL_POSITION)
             + Vec3::from_array(crate::tank::model::astra::TURRET_POSITION)
             + Vec3::Y * crate::tank::driving::TANK_SIZE.y / 2.0;
@@ -910,8 +919,9 @@ mod tests {
         );
         let default_muzzle = Vec3::from_array(crate::tank::model::astra::TURRET_POSITION)
             + Vec3::from_array(crate::tank::model::astra::BARREL_POSITION)
-            + MUZZLE_POSITION;
-        assert!((default_muzzle.x + BULLET_SIZE / 2.0 - tank_minimum.x).abs() < 1e-4);
+            + muzzle_pose(&GlobalTransform::IDENTITY, &ammo()).0;
+        let collision = ammo().collision;
+        assert!((default_muzzle.x - collision.center_forward_offset + collision.size[0] / 2.0 - tank_minimum.x).abs() < 1e-4);
         assert!(tank_minimum.x < -crate::tank::driving::TANK_SIZE.x / 2.0);
 
         // 可设置姿态必须作用于实际炮口，车体根保持不动；新增瞄准输入不在本次范围。
@@ -927,7 +937,7 @@ mod tests {
             .query_filtered::<&GlobalTransform, With<PlayerBarrel>>()
             .single(app.world())
             .unwrap();
-        let (_, direction) = muzzle_pose(barrel);
+        let (_, direction) = muzzle_pose(barrel, &ammo());
         assert!(
             direction.abs_diff_eq(Vec3::new(0.0, 0.34202015, 0.9396926), 1e-4),
             "转塔90°并仰角20°后应向右上方发射：{direction:?}"
@@ -1057,7 +1067,7 @@ mod tests {
                 .instance_is_ready(instance)
         );
         let (_, bullet_minimum, bullet_maximum) = scene_bounds(app.world(), bullet);
-        // 视觉尺寸与 0.4 米扫掠碰撞盒分开；模型前移使尾端贴合炮口。
+        // 模型前移使尾端贴合炮口，碰撞盒只覆盖细长主体。
         assert!(
             (bullet_maximum - bullet_minimum).abs_diff_eq(Vec3::new(0.72, 0.1, 0.1), 1e-4),
             "子弹视觉包围盒实际为 {:?}，中心 {:?}",

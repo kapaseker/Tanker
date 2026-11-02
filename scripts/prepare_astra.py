@@ -304,14 +304,12 @@ def main():
         tracks.save(staging/'track.vox')
         output = {n: read_source(staging/f'{n}.vox') for n in ['body', 'turret', 'barrel', 'track']}
         report = verify(source, output, assignments, wheel_info)
-        (staging/'validation.json').write_text(json.dumps(report, ensure_ascii=False, indent=2)+'\n')
         if args.check:
             for path in staging.iterdir():
                 assert path.read_bytes() == (DEST/path.name).read_bytes(), f'交付不一致：{path.name}'
         else:
             for path in sorted(staging.glob('*.vox')):
                 publish_astra_pair(path, DEST/path.name)
-            os.replace(staging/'validation.json', DEST/'validation.json')
         print(json.dumps({k:v for k,v in report.items() if k != 'independent_wheels'}, ensure_ascii=False))
 
 

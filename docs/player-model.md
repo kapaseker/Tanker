@@ -32,4 +32,6 @@
 
 原始作者源见原模型目录；运行时转换器只重组既有体素，不重新作者化整车。现用 APFSDS 弹丸已迁至 `assets/tank/ammunition/apfsds/`，独立入口为 `python3 scripts/generate_bullet.py [--check]`；参考 DM53/DM63 系列飞行体，不声称为某个具体弹种的精确复刻。整车转换仍使用 `python3 scripts/prepare_astra.py [--check]`。转换命令和最终验证结果见[接入验收](testing/astra-player-integration.md)。
 
-弹药初速与射速的权威来源是 `assets/tank/ammunition/apfsds/ammunition.jsonc`；冷却按 `60 / rate_of_fire` 推导，剩余冷却只存在于对局状态。配置缺失或非法时阻止启动，无数值兜底。
+弹药初速与射速的权威来源是 `assets/tank/ammunition/apfsds/bullet.jsonc`；冷却按 `60 / rate_of_fire` 推导，剩余冷却只存在于对局状态。配置缺失或非法时阻止启动，无数值兜底。
+
+玩家碰撞体尺寸与圆角半径由 `assets/tank/player/leopard2_a6/tank.jsonc` 配置；弹丸主体扫掠盒由 `bullet.jsonc` 配置。

@@ -86,8 +86,9 @@ pub(crate) fn spawn_previews(
     mut commands: Commands,
     assets: Res<AssetServer>,
     mut images: ResMut<Assets<Image>>,
+    tanks: Res<crate::tank::driving::TankConfigs>,
 ) {
-    spawn(&mut commands, &assets, &mut images, &ENTRIES);
+    spawn(&mut commands, &assets, &mut images, &ENTRIES, &tanks);
 }
 
 /// 画廊传完整清单，详情只传当前项；两者共用组装与就绪协议。
@@ -96,6 +97,7 @@ pub(crate) fn spawn(
     assets: &AssetServer,
     images: &mut Assets<Image>,
     entries: &[Entry],
+    tanks: &crate::tank::driving::TankConfigs,
 ) {
     let mut items = Vec::new();
     for (index, entry) in entries.iter().enumerate() {
@@ -112,9 +114,9 @@ pub(crate) fn spawn(
                 .insert(WorldAssetRoot(assets.load(entry.path)));
         if entry.category == 1 {
             commands.entity(content).insert(if entry.enemy {
-                track::ENEMY_TRACKS
+                track::ENEMY_TRACKS.with_size(Vec3::from_array(tanks.enemy.collision.size))
             } else {
-                track::PLAYER_TRACKS
+                track::PLAYER_TRACKS.with_size(Vec3::from_array(tanks.player.collision.size))
             });
             if entry.enemy {
                 visual::mount_barrel(commands, assets, content, visual::ENEMY_BARREL.path);

@@ -132,6 +132,7 @@ mod tests {
         .register_type::<Mesh3d>()
         .register_type::<MeshMaterial3d<StandardMaterial>>()
         .register_type::<FogVolume>()
+        .insert_resource(crate::tank::driving::TankConfigs::load(std::path::Path::new("assets")).unwrap())
         .add_systems(Startup, spawn_previews)
         .add_systems(Last, prepare_previews);
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(40);

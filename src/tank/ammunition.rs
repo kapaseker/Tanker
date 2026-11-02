@@ -11,6 +11,17 @@ pub(crate) struct AmmunitionSpec {
     pub(crate) muzzle_velocity: f32,
     /// 发射频率，发/分钟。
     pub(crate) rate_of_fire: f32,
+    /// 弹体主体的扫掠盒。
+    pub(crate) collision: BulletCollision,
+}
+/// 弹丸局部空间的主体包围盒，尺寸与偏移单位为米。
+#[derive(Deserialize, Clone, Copy, Debug)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct BulletCollision {
+    /// 沿飞行方向的长度、高度和宽度。
+    pub(crate) size: [f32; 3],
+    /// 盒中心从模型根沿前方的偏移。
+    pub(crate) center_forward_offset: f32,
 }
 impl AmmunitionSpec {
     /// 每发后的冷却秒数；加载时确保计算结果有效。
@@ -18,9 +29,9 @@ impl AmmunitionSpec {
         60.0 / self.rate_of_fire
     }
 
-    /// 从弹丸模型所在目录读取固定命名配置，root 为实际 assets 根目录。
+    /// 从弹丸模型同名的 JSONC 文件读取配置，root 为实际 assets 根目录。
     pub(crate) fn load(root: &Path, model: &str) -> Result<Self, String> {
-        let path = root.join(model).with_file_name("ammunition.jsonc");
+        let path = root.join(model).with_extension("jsonc");
         let bytes = std::fs::read(&path)
             .map_err(|e| format!("弹药配置读取失败 {}：{e}", path.display()))?;
         Self::parse(&bytes).map_err(|e| format!("弹药配置非法 {}：{e}", path.display()))
@@ -34,8 +45,10 @@ impl AmmunitionSpec {
         if [spec.muzzle_velocity, spec.rate_of_fire, spec.cooldown()]
             .iter()
             .any(|v| !v.is_finite() || *v <= 0.0)
+            || spec.collision.size.iter().any(|v| !v.is_finite() || *v <= 0.0)
+            || !spec.collision.center_forward_offset.is_finite()
         {
-            return Err("初速、射速与推导冷却必须为有限正数".into());
+            return Err("初速、射速、冷却和碰撞尺寸必须为有限正数，碰撞偏移必须有限".into());
         }
         Ok(spec)
     }
@@ -49,7 +62,7 @@ mod tests {
             AmmunitionSpec::load(Path::new("assets"), super::super::visual::PLAYER_BULLET).unwrap();
         assert_eq!(spec.cooldown(), 5.0);
         let spec = AmmunitionSpec::parse(
-            b"{/*block*/\"muzzle_velocity\":600, //line\n\"rate_of_fire\":30}",
+            b"{/*block*/\"muzzle_velocity\":600, //line\n\"rate_of_fire\":30,\"collision\":{\"size\":[0.72,0.04,0.04],\"center_forward_offset\":0.16}}",
         )
         .unwrap();
         assert_eq!(spec.muzzle_velocity, 600.0);
@@ -61,17 +74,25 @@ mod tests {
         let root = std::env::temp_dir().join(format!("tanker-ammunition-{}", std::process::id()));
         let dir = root.join("custom/ammo");
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("ammunition.jsonc"), br#"{"muzzle_velocity":600,"rate_of_fire":30}"#).unwrap();
-        let spec = AmmunitionSpec::load(&root, "custom/ammo/bullet.vox").unwrap();
+        std::fs::write(dir.join("shell.jsonc"), br#"{"muzzle_velocity":600,"rate_of_fire":30,"collision":{"size":[0.72,0.04,0.04],"center_forward_offset":0.16}}"#).unwrap();
+        let spec = AmmunitionSpec::load(&root, "custom/ammo/shell.vox").unwrap();
         assert_eq!(spec.muzzle_velocity, 600.0);
         assert_eq!(spec.cooldown(), 2.0);
-        std::fs::remove_file(dir.join("ammunition.jsonc")).unwrap();
+        std::fs::remove_file(dir.join("shell.jsonc")).unwrap();
         std::fs::remove_dir(&dir).unwrap();
         std::fs::remove_dir(root.join("custom")).unwrap();
         std::fs::remove_dir(root).unwrap();
     }
     #[test]
     fn invalid_configurations_are_rejected() {
+        for collision in [
+            r#"{"size":[0,0.04,0.04],"center_forward_offset":0.16}"#,
+            r#"{"size":[0.72,0.04,0.04],"center_forward_offset":1e99}"#,
+            r#"{"size":[0.72,0.04,0.04],"center_forward_offset":0.16,"extra":1}"#,
+        ] {
+            let input = format!(r#"{{"muzzle_velocity":1,"rate_of_fire":12,"collision":{collision}}}"#);
+            assert!(AmmunitionSpec::parse(input.as_bytes()).is_err(), "{input}");
+        }
         for input in [
             "{}",
             "{",
@@ -89,7 +110,7 @@ mod tests {
         assert!(
             AmmunitionSpec::load(Path::new("missing-assets"), "sample/bullet.vox")
                 .unwrap_err()
-                .contains("ammunition.jsonc")
+                .contains("bullet.jsonc")
         );
     }
 }

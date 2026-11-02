@@ -61,4 +61,4 @@
 - 迁移后的对局 `scene` 离屏 `.scratch/offscreen/concrete-relocated-01/` 退出0、报告通过，继续验证墩体真实网格、静态碰撞尺寸与贴地位置。
 - 后端为llvmpipe软件Vulkan（`LP_NUM_THREADS=4`）；未启动可见窗口，未验证硬件GPU。此次未重新运行完整九项 `detail` 预设，新增混凝土墩详情已由扩展后的 `gallery` 预设覆盖。
 
-弹药初速与射速的权威来源是 `assets/tank/ammunition/apfsds/ammunition.jsonc`；冷却按 `60 / rate_of_fire` 推导，剩余冷却只存在于对局状态。配置缺失或非法时阻止启动，无数值兜底。
+弹药初速与射速的权威来源是 `assets/tank/ammunition/apfsds/bullet.jsonc`；冷却按 `60 / rate_of_fire` 推导，剩余冷却只存在于对局状态。配置缺失或非法时阻止启动，无数值兜底。

@@ -2,7 +2,7 @@
 
 本仓库为单上下文（single-context）结构，领域词汇与跨模块共享的尺寸常量集中在本文件。
 
-**权威值以代码常量为准**，本表只做汇总与导航：数值的任何改动都必须落在表中“权威定义”一列所指向的常量上，并同步本表。单位一律为米（m），角度为度（°）。
+**碰撞参数以对应 JSONC 配置为准，其他权威值以代码常量为准**，本表只做汇总与导航：数值的任何改动都必须落在表中“权威定义”一列所指向的常量上，并同步本表。单位一律为米（m），角度为度（°）。
 
 ## 度量约定
 
@@ -16,9 +16,9 @@
 
 | 部件 | 网格尺寸（VOX X×Y×Z，格） | X 长 | Y 高 | Z 宽 | 权威定义 | 备注 |
 |---|---|---|---|---|---|---|
-| LeoPard2 A6（玩家碰撞框） | astraH 整车（多块编码） | 7.68 | 2.68 | 3.76 | `COLLISION_SIZE`（`src/tank/model/astra.rs`）→ `TANK_SIZE`（`src/tank/driving.rs`） | 简化圆角车体框，炮管与附件不碰撞；视觉全长 10.98 m、双天线顶 4.32 m，见 `docs/player-model.md` |
-| 敌人坦克（碰撞框） | 车体及履带相位画布114×34×26 | 6.6 | 2.6 | 3.4 | `COLLISION_SIZE`（`src/tank/model/enemy.rs`，高度取自敌方自身画布）→ `ENEMY_SIZE`、`ENEMY_TRACKS.size` | 非炮管圆角整车框（圆角0.2 m）；车身、炮管、履带轮组三包，含炮管视觉全长9 m，见 `docs/enemy-model.md` |
-| 子弹 | 资产格36×5×5 | 0.72 | 0.10 | 0.10 | `BULLET_SIZE`（`src/gameplay/combat/firing.rs`，扫掠碰撞 0.4 米立方） | 长条弹体视觉 + 独立 0.4 米扫掠碰撞；资产 `assets/tank/ammunition/apfsds/bullet.vox`（0.02 米/格） |
+| LeoPard2 A6（玩家碰撞框） | astraH 整车（多块编码） | 7.68 | 2.68 | 3.76 | `assets/tank/player/leopard2_a6/tank.jsonc` | 简化圆角车体框，炮管与附件不碰撞；视觉全长 10.98 m、双天线顶 4.32 m，见 `docs/player-model.md` |
+| 敌人坦克（碰撞框） | 车体及履带相位画布114×34×26 | 6.6 | 2.6 | 3.4 | `assets/tank/enemy/carapace/tank.jsonc` | 非炮管圆角整车框（圆角0.2 m）；车身、炮管、履带轮组三包，含炮管视觉全长9 m，见 `docs/enemy-model.md` |
+| 子弹 | 资产格36×5×5 | 0.72 | 0.10 | 0.10 | `assets/tank/ammunition/apfsds/bullet.jsonc` | 长条弹体视觉 + 独立 0.72 × 0.04 × 0.04 米主体扫掠碰撞；资产 `assets/tank/ammunition/apfsds/bullet.vox`（0.02 米/格） |
 
 坦克与敌人的视觉包围盒有集成测试断言，与上表一致（`src/gameplay/combat/firing.rs` 中 `real_vox_assets_fire_and_clean_up_scene_instances`）。
 
@@ -62,7 +62,7 @@
 
 | 含义 | 数值 | 权威定义 |
 |---|---|---|
-| 玩家坦克出生中心 Y | 1.34（= `TANK_SIZE.y / 2`） | `src/gameplay/session.rs` `setup` |
+| 玩家坦克出生中心 Y | 1.34（= 车型配置碰撞高度 / 2） | `src/gameplay/session.rs` `setup` |
 | 敌人坦克出生中心 Y | 3.0（落地后平地中心约 1.3） | `SPAWN_DROP_Y`（`src/gameplay/enemy.rs`） |
 | 炮口端面局部坐标（炮轴节点下，车头为 −X） | (−5.42, 0, 0) | `MUZZLE_POSITION`（`src/tank/model/astra.rs`）；发射时转换到世界坐标 |
 | 相机水平后退距离 / 竖直高度 | 16 / 9 | `CAMERA_DISTANCE` / `CAMERA_HEIGHT`（`src/gameplay/camera.rs`） |
@@ -92,6 +92,6 @@
 
 ## 弹药性能
 
-- `AmmunitionSpec`：模型同目录 `ammunition.jsonc` 的初速（米/秒）与射速（发/分钟）；启动时读取并校验，修改后重启生效。
+- `AmmunitionSpec`：模型同名 `bullet.jsonc` 的初速（米/秒）与射速（发/分钟）；启动时读取并校验，修改后重启生效。
 - 冷却时长：`60 / rate_of_fire` 秒；运行中的剩余冷却由 `Gun` 保存，不写入共享配置。
 - HUD 分格最多 60 格，仅限制显示，不截断真实冷却。弹药详情显示初速与射速，坦克详情保留驾驶速度。

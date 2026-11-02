@@ -33,6 +33,7 @@ pub(in crate::validation) fn validate_scene(world: &mut World) -> Result<(), Str
 /// 从上方向实际地形碰撞体投射射线，检查车体底面，不能只用全局高度范围判断穿地。
 fn validate_scene_state(
     spatial: SpatialQuery,
+    tank_configs: Res<crate::tank::driving::TankConfigs>,
     terrain: Query<(), With<crate::terrain::TerrainSurface>>,
     tanks: Query<
         (&Transform, Has<crate::gameplay::player::Tank>),
@@ -62,9 +63,9 @@ fn validate_scene_state(
             )
             .ok_or("坦克下方未找到地形碰撞体")?;
         let half_height = if is_player {
-            crate::tank::driving::TANK_SIZE.y
+            tank_configs.player.collision.size[1]
         } else {
-            crate::gameplay::enemy::ENEMY_SIZE.y
+            tank_configs.enemy.collision.size[1]
         } / 2.0;
         ensure(
             tank.translation.y - half_height >= origin.y - hit.distance - 0.1,
@@ -90,6 +91,7 @@ mod tests {
     fn scene_assertions_detect_penetration_against_actual_collider() {
         use avian3d::prelude::{Collider, PhysicsPlugins, RigidBody};
         let mut app = App::new();
+        app.insert_resource(crate::tank::driving::TankConfigs::load(std::path::Path::new("assets")).unwrap());
         app.add_plugins((
             MinimalPlugins,
             TransformPlugin,

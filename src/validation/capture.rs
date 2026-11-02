@@ -122,11 +122,12 @@ pub(super) fn capture_wheel_views(app: &mut App, output: &Path) -> Result<(), St
         &output.join("comparison.png"),
         Vec3::new(13.0, 10.0, 18.0),
     )?;
-    let half = if app.world().contains_resource::<WheelTarget>() {
-        crate::gameplay::enemy::ENEMY_SIZE
+    let tanks = app.world().resource::<crate::tank::driving::TankConfigs>();
+    let half = Vec3::from_array(if app.world().contains_resource::<WheelTarget>() {
+        tanks.enemy.collision.size
     } else {
-        crate::tank::driving::TANK_SIZE
-    } / 2.0;
+        tanks.player.collision.size
+    }) / 2.0;
     let mut edges = Vec::new();
     for axis in 0..3 {
         for a in [-1.0, 1.0] {

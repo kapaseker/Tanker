@@ -35,6 +35,14 @@ pub(crate) struct TrackSpec {
     pub(crate) reverse_speed: f32,
 }
 
+impl TrackSpec {
+    /// 使用车型碰撞宽度计算左右履带差速。
+    pub(crate) fn with_size(mut self, size: Vec3) -> Self {
+        self.size = size;
+        self
+    }
+}
+
 /// astraH 整车履带，沿用前进 16 米/秒、倒车 8 米/秒。
 pub(crate) const PLAYER_TRACKS: TrackSpec = TrackSpec {
     path: crate::tank::model::astra::TRACK_PATH,

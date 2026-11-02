@@ -44,8 +44,10 @@ pub(crate) fn setup(
     mut commands: Commands,
     assets: Res<AssetServer>,
     target: Res<transition::SceneTarget>,
+    tanks: Res<tank::driving::TankConfigs>,
 ) {
-    let tank_transform = Transform::from_xyz(0.0, tank::driving::TANK_SIZE.y / 2.0, 0.0);
+    let size = Vec3::from_array(tanks.player.collision.size);
+    let tank_transform = Transform::from_xyz(0.0, size.y / 2.0, 0.0);
     commands.spawn((
         Camera3d::default(),
         camera::FollowCamera,
@@ -82,9 +84,9 @@ pub(crate) fn setup(
     commands.spawn((
         player::Tank,
         SessionEntity,
-        tank::track::PLAYER_TRACKS,
+        tank::track::PLAYER_TRACKS.with_size(size),
         WorldAssetRoot(scene.clone()),
-        tank::driving::tank_body(),
+        tank::driving::body_for_collision(tanks.player.collision),
         tank_transform,
         // 生命上限 100 点；当前无伤害系统，固定满血，HUD 由此读出比例。
         health::Health::full(100),

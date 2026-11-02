@@ -9,6 +9,7 @@ use crate::tank::{driving, track, visual};
 
 /// 非炮管碰撞尺寸（长、高、宽），单位米；尺寸契约统一由敌人模型推导，
 /// 高度复用玩家底盘的权威值，避免与玩家驾驶刚体出现两套数据源。
+#[cfg(test)]
 pub(crate) const ENEMY_SIZE: Vec3 = Vec3::from_array(crate::tank::model::enemy::COLLISION_SIZE);
 /// 单轮敌人数；被击毁后不补充。
 pub(crate) const ENEMY_COUNT: usize = 10;
@@ -65,18 +66,24 @@ pub(super) fn spawn_enemy_barrels(
 }
 
 /// 返回完整一组出生姿态；失败时不生成部分敌人。玩家坐标只取水平分量。
+#[cfg(test)]
 fn spawn_transforms(rng: &mut fastrand::Rng, player: Vec2) -> Result<Vec<Transform>, &'static str> {
+    spawn_transforms_for_size(rng, player, driving::TANK_SIZE, ENEMY_SIZE)
+}
+
+/// 根据当前车型碰撞尺寸安排出生位置。
+fn spawn_transforms_for_size(rng: &mut fastrand::Rng, player: Vec2, player_size: Vec3, enemy_size: Vec3) -> Result<Vec<Transform>, &'static str> {
     let mut transforms: Vec<Transform> = Vec::with_capacity(ENEMY_COUNT);
     for _ in 0..SPAWN_ATTEMPTS {
         let position = Vec2::new(
             (rng.f32() * 2.0 - 1.0) * SPAWN_LIMIT,
             (rng.f32() * 2.0 - 1.0) * SPAWN_LIMIT,
         );
-        if position.distance(player) < spawn_clearance(ENEMY_SIZE, driving::TANK_SIZE)
+        if position.distance(player) < spawn_clearance(enemy_size, player_size)
             || position.distance(super::obstacle::POSITION.xz())
-                < spawn_clearance(ENEMY_SIZE, super::obstacle::SIZE)
+                < spawn_clearance(enemy_size, super::obstacle::SIZE)
             || transforms.iter().any(|other| {
-                position.distance(other.translation.xz()) < spawn_clearance(ENEMY_SIZE, ENEMY_SIZE)
+                position.distance(other.translation.xz()) < spawn_clearance(enemy_size, enemy_size)
             })
         {
             continue;
@@ -95,6 +102,7 @@ fn spawn_transforms(rng: &mut fastrand::Rng, player: Vec2) -> Result<Vec<Transfo
 /// 与玩家共用驾驶刚体和逐车输入状态，仅碰撞体按敌人尺寸标定。
 /// 零输入控制器停止水平驱动；保留重力和接触求解，允许碰撞导致短暂位移。
 // shortcut: 整车圆角框包含装甲间空隙，需要逐部件命中时再拆分；炮管不参与碰撞。
+#[cfg(test)]
 fn enemy_body() -> impl Bundle {
     driving::body_for_size(ENEMY_SIZE)
 }
@@ -112,6 +120,7 @@ fn spawn_enemies(
     ready: Option<Res<crate::terrain::TerrainReady>>,
     assets: Res<AssetServer>,
     config: Res<crate::gameplay::session::SpawnConfig>,
+    tanks: Res<driving::TankConfigs>,
 ) {
     // 地形图异步加载，碰撞体就绪前下落会穿透场地，故等待就绪信号。
     if spawned.is_some() || ready.is_none() {
@@ -121,7 +130,8 @@ fn spawn_enemies(
         Some(seed) => fastrand::Rng::with_seed(seed),
         None => fastrand::Rng::new(),
     };
-    let transforms = match spawn_transforms(&mut rng, Vec2::ZERO) {
+    let enemy_size = Vec3::from_array(tanks.enemy.collision.size);
+    let transforms = match spawn_transforms_for_size(&mut rng, Vec2::ZERO, Vec3::from_array(tanks.player.collision.size), enemy_size) {
         Ok(transforms) => transforms,
         Err(message) => {
             error!("敌人生成失败：{message}");
@@ -133,15 +143,15 @@ fn spawn_enemies(
         commands.spawn((
             EnemyTank,
             crate::gameplay::session::SessionEntity,
-            track::ENEMY_TRACKS,
+            track::ENEMY_TRACKS.with_size(enemy_size),
             WorldAssetRoot(scene.clone()),
-            enemy_body(),
+            driving::body_for_collision(tanks.enemy.collision),
             transform,
         ));
     }
     commands.insert_resource(EnemyAsset(scene));
     info!(
-        "已随机放置 {ENEMY_COUNT} 辆敌人坦克；碰撞尺寸 {ENEMY_SIZE:?} 米，炮管 {:.1} 米、轴高 {:.1} 米",
+        "已随机放置 {ENEMY_COUNT} 辆敌人坦克；碰撞尺寸 {enemy_size:?} 米，炮管 {:.1} 米、轴高 {:.1} 米",
         (crate::tank::model::enemy::BARREL_X.1 - crate::tank::model::enemy::BARREL_X.0) as f32
             * crate::tank::model::REFERENCE_VOXEL_SIZE,
         crate::tank::model::enemy::BORE_HEIGHT * crate::tank::model::REFERENCE_VOXEL_SIZE

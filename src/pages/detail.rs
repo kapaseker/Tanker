@@ -185,8 +185,9 @@ fn spawn_preview(
     assets: Res<AssetServer>,
     mut images: ResMut<Assets<Image>>,
     selected: Res<SelectedModel>,
+    tanks: Res<crate::tank::driving::TankConfigs>,
 ) {
-    preview::spawn(&mut commands, &assets, &mut images, &[ENTRIES[selected.0]]);
+    preview::spawn(&mut commands, &assets, &mut images, &[ENTRIES[selected.0]], &tanks);
 }
 
 /// 内容节点按网页原型布局；常驻标题栏和角标不在页面中重复生成。
@@ -947,7 +948,7 @@ mod tests {
     /// 弹药详情读取传入配置，坦克不再重复展示弹药性能。
     #[test]
     fn specs_follow_ammunition_configuration() {
-        let spec = crate::tank::ammunition::AmmunitionSpec { muzzle_velocity: 600.0, rate_of_fire: 30.0 };
+        let spec = crate::tank::ammunition::AmmunitionSpec { muzzle_velocity: 600.0, rate_of_fire: 30.0, ..crate::tank::ammunition::AmmunitionSpec::load(std::path::Path::new("assets"), crate::tank::visual::PLAYER_BULLET).unwrap() };
         let rows = specs_for(ENTRIES[0], &spec);
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].value, 600.0);

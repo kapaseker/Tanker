@@ -34,8 +34,11 @@ pub(super) fn run(options: Option<validation::Options>) -> Result<(), String> {
         &bevy::asset::io::file::FileAssetReader::get_base_path().join("assets"),
         tank::visual::PLAYER_BULLET,
     )?;
+    let assets_root = bevy::asset::io::file::FileAssetReader::get_base_path().join("assets");
+    let tanks = tank::driving::TankConfigs::load(&assets_root)?;
     let mut app = App::new();
     app.insert_resource(ammunition);
+    app.insert_resource(tanks);
     if options.is_some() {
         validation::configure(&mut app);
     } else {
