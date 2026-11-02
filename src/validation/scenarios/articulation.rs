@@ -20,8 +20,53 @@ struct FollowSample {
     camera_offset: Vec3,
 }
 
+/// 上一帧姿态，用于检查真实关节的逐帧速度。
+#[derive(Resource)]
+struct PreviousAim(TankAim);
+
+/// 离屏失焦验证使用临时窗口组件，不创建可见窗口。
+#[derive(Resource)]
+struct UnfocusedWindow(Entity);
+
+/// 仅模拟焦点状态的 ECS 组件；离屏入口禁用 Winit，不创建系统窗口。
+#[derive(Component)]
+pub(in crate::validation) struct SimulatedFocus;
+
 /// 前三帧验证独立弹丸，后段使用真实键盘控制；开火帧只解除测试冷却。
 pub(super) fn prepare(world: &mut World, frame: u32) -> Result<(), String> {
+    if frame == 872 {
+        world
+            .query_filtered::<&mut TankAim, With<Tank>>()
+            .single_mut(world)
+            .map_err(|e| e.to_string())?
+            .pitch = 0.0;
+    }
+    if frame == 884 {
+        let entity = world
+            .spawn((Window {
+                focused: false,
+                ..default()
+            }, SimulatedFocus))
+            .id();
+        world.insert_resource(UnfocusedWindow(entity));
+    }
+    if frame == 885 {
+        let entity = world
+            .remove_resource::<UnfocusedWindow>()
+            .ok_or("缺少失焦窗口")?
+            .0;
+        world.despawn(entity);
+    }
+    if frame == 886 {
+        world
+            .resource_mut::<crate::app::transition::Fade>()
+            .input_armed = false;
+    }
+    if frame == 887 {
+        world
+            .resource_mut::<crate::app::transition::Fade>()
+            .input_armed = true;
+    }
     if matches!(frame, 750 | 810 | 871) {
         let (aim, body) = world
             .query_filtered::<(&TankAim, &Transform), With<Tank>>()
@@ -43,11 +88,11 @@ pub(super) fn prepare(world: &mut World, frame: u32) -> Result<(), String> {
             .query_filtered::<&mut TankAim, With<Tank>>()
             .single_mut(world)
             .map_err(|e| e.to_string())?
-            .yaw = 359.75_f32.to_radians();
+            .yaw = 359.99_f32.to_radians();
     }
     let angles = match frame {
         1 => Some((90.0_f32, 20.0_f32)),
-        2 => Some((-90.0, -5.0)),
+        2 => Some((-90.0, 5.0)),
         3 => Some((45.0, 0.0)),
         _ => None,
     };
@@ -69,17 +114,97 @@ pub(super) fn prepare(world: &mut World, frame: u32) -> Result<(), String> {
 
 /// 预期方向来自独立的已知角度；检查弹丸仍沿发射时的方向飞行而非追随当前炮塔。
 pub(super) fn check(world: &mut World, frame: u32, report: &mut String) -> Result<(), String> {
+    let (aim, body) = world
+        .query_filtered::<(&TankAim, &Transform), With<Tank>>()
+        .single(world)
+        .map(|(a, b)| (*a, *b))
+        .map_err(|e| e.to_string())?;
+    if frame > 3 && frame != 870 && frame != 872 {
+        if let Some(previous) = world.get_resource::<PreviousAim>() {
+            let yaw_delta = (aim.yaw - previous.0.yaw + std::f32::consts::PI)
+                .rem_euclid(std::f32::consts::TAU)
+                - std::f32::consts::PI;
+            ensure(
+                yaw_delta.abs() <= 30.0_f32.to_radians() / 60.0 + 1e-5,
+                "水平关节超速",
+            )?;
+            ensure(
+                (aim.pitch - previous.0.pitch).abs() <= 9.0_f32.to_radians() / 60.0 + 1e-5,
+                "俯仰关节超速",
+            )?;
+        }
+        let barrel = world
+            .query_filtered::<&GlobalTransform, With<firing::PlayerBarrel>>()
+            .single(world)
+            .map_err(|e| e.to_string())?;
+        let expected = body.rotation
+            * Quat::from_rotation_y(aim.yaw)
+            * Quat::from_rotation_z(-aim.pitch)
+            * Vec3::NEG_X;
+        ensure(
+            (barrel.rotation() * Vec3::NEG_X).abs_diff_eq(expected, 1e-4),
+            "真实炮管未跟随输入姿态",
+        )?;
+    }
+    if (878..=887).contains(&frame) {
+        let previous = world.resource::<PreviousAim>().0;
+        let yaw_delta = (aim.yaw - previous.yaw + std::f32::consts::PI)
+            .rem_euclid(std::f32::consts::TAU)
+            - std::f32::consts::PI;
+        let pitch_delta = aim.pitch - previous.pitch;
+        match frame {
+            879..=880 => ensure(
+                yaw_delta.abs() < 1e-6 && pitch_delta > 0.0,
+                "单轴松键未立即停止或另一轴停止",
+            )?,
+            878 | 881 => ensure(
+                yaw_delta < 0.0 && yaw_delta.abs() < 0.1_f32.to_radians(),
+                "反向未从低速起步",
+            )?,
+            882 => ensure(
+                yaw_delta.abs() < 1e-6 && pitch_delta > 0.0,
+                "相反输入未抵消",
+            )?,
+            884 | 886 => ensure(
+                yaw_delta.abs() < 1e-6 && pitch_delta.abs() < 1e-6,
+                "失焦或锁定仍在调炮",
+            )?,
+            885 | 887 => ensure(
+                yaw_delta > 0.0
+                    && yaw_delta < 0.1_f32.to_radians()
+                    && pitch_delta > 0.0
+                    && pitch_delta < 0.03_f32.to_radians(),
+                "恢复后未从低速起步",
+            )?,
+            _ => {}
+        }
+        if frame == 887 {
+            report.push_str("断言通过：单轴松键、反向、抵消、失焦及锁定后低速恢复\n");
+        }
+    }
+    world.insert_resource(PreviousAim(aim));
+    if frame == 31 {
+        ensure(
+            (aim.yaw.to_degrees() - 45.02778).abs() < 0.001,
+            "水平短按角度异常",
+        )?;
+        ensure(
+            (aim.pitch.to_degrees() - 0.008333).abs() < 0.001,
+            "俯仰短按角度异常",
+        )?;
+        report.push_str("断言通过：双轴首帧微调小于恒速，真实炮管方向与关节一致\n");
+    }
     if matches!(frame, 210 | 211 | 420 | 421 | 450) {
         let (aim, body) = world
             .query_filtered::<(&TankAim, &Transform), With<Tank>>()
             .single(world)
             .map(|(aim, body)| (*aim, *body))
             .map_err(|e| e.to_string())?;
-        let expected_yaw: f32 = if frame <= 211 { 135.0 } else { 30.5 };
+        let expected_yaw: f32 = if frame <= 211 { 132.75 } else { 30.5 };
         let expected_pitch: f32 = if frame <= 211 { 20.0 } else { -9.0 };
         ensure(
             (aim.yaw.to_degrees() - expected_yaw).abs() < 0.01,
-            "WASD 水平角速度或松键停止异常",
+            &format!("WASD 水平角速度或松键停止异常：帧{frame}，实际{}°，预期{expected_yaw}°", aim.yaw.to_degrees()),
         )?;
         ensure(
             (aim.pitch.to_degrees() - expected_pitch).abs() < 0.01,
@@ -138,7 +263,8 @@ pub(super) fn check(world: &mut World, frame: u32, report: &mut String) -> Resul
         if frame == 871 {
             ensure(sample.yaw > 6.0 && aim.yaw < 0.1, "炮塔未跨越角度回绕边界")?;
             ensure(
-                (camera.translation - body.translation).distance(sample.camera_offset) < 0.2,
+                (body.rotation.inverse() * (camera.translation - body.translation))
+                    .distance(sample.body.rotation.inverse() * sample.camera_offset) < 0.2,
                 "回绕时相机跳变",
             )?;
         } else if matches!(frame, 809 | 869) {
@@ -165,7 +291,7 @@ pub(super) fn check(world: &mut World, frame: u32, report: &mut String) -> Resul
             .single(world)
             .map_err(|e| e.to_string())?;
         ensure(
-            (aim.yaw.to_degrees() - 180.0).abs() < 0.02,
+            (aim.yaw.to_degrees() - 177.75).abs() < 0.02,
             "真实输入未转到朝后",
         )?;
         report.push_str("断言通过：真实调炮朝后，跟随视角帧 749\n");
@@ -175,7 +301,7 @@ pub(super) fn check(world: &mut World, frame: u32, report: &mut String) -> Resul
     }
     let expected = [
         Vec3::new(0.0, 0.34202015, 0.9396926),
-        Vec3::new(0.0, -0.08715574, -0.9961947),
+        Vec3::new(0.0, 0.08715574, -0.9961947),
         Vec3::new(-0.70710677, 0.0, 0.70710677),
     ];
     let bullets: Vec<_> = world
@@ -201,5 +327,29 @@ pub(super) fn check(world: &mut World, frame: u32, report: &mut String) -> Resul
         "断言通过：姿态帧{frame}，{}颗独立弹丸方向与视觉朝向保持正确\n",
         bullets.len()
     ));
+    Ok(())
+}
+
+/// 以真实键盘链路比较不同模拟步长的同一秒调炮结果。
+pub(super) fn check_step_sizes(app: &mut App, report: &mut String) -> Result<(), String> {
+    let mut angles = Vec::new();
+    for (steps, dt) in [(30, 1.0 / 30.0), (120, 1.0 / 120.0)] {
+        update(app, STEP, Some(888))?;
+        *app.world_mut().query_filtered::<&mut TankAim, With<Tank>>()
+            .single_mut(app.world_mut()).map_err(|e| e.to_string())? = TankAim::default();
+        for _ in 0..steps {
+            update(app, std::time::Duration::from_secs_f64(dt), Some(872))?;
+        }
+        let aim = *app.world_mut().query_filtered::<&TankAim, With<Tank>>()
+            .single(app.world()).map_err(|e| e.to_string())?;
+        angles.push(aim);
+        update(app, STEP, Some(888))?;
+        let stopped = *app.world_mut().query_filtered::<&TankAim, With<Tank>>()
+            .single(app.world()).map_err(|e| e.to_string())?;
+        ensure((stopped.yaw - aim.yaw).abs() < 1e-6 && (stopped.pitch - aim.pitch).abs() < 1e-6, "松键后仍有角度尾巴")?;
+    }
+    ensure((angles[0].yaw - angles[1].yaw).abs() < 0.01_f32.to_radians()
+        && (angles[0].pitch - angles[1].pitch).abs() < 0.01_f32.to_radians(), "不同步长调炮偏差超过 0.01°")?;
+    report.push_str("断言通过：1/30 与 1/120 秒步长的双轴角度偏差小于 0.01°，松键立即停止\n");
     Ok(())
 }

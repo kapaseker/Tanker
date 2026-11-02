@@ -8,7 +8,37 @@ use bevy::prelude::*;
 
 /// 标记玩家控制的坦克根实体；驾驶、射击、相机与验证入口以它定位唯一玩家。
 #[derive(Component)]
+#[require(AimInputSpeed)]
 pub(crate) struct Tank;
+
+/// 对局中两轴的主动输入速度，按车型最高速度归一化。
+#[derive(Component, Default)]
+struct AimInputSpeed {
+    /// 水平主动速度，按车型最大速度归一化。
+    yaw: f32,
+    /// 俯仰主动速度，按车型最大速度归一化。
+    pitch: f32,
+}
+
+/// 从静止线性加速至最高速度所需时间，单位秒；手感尚待玩家确认。
+const AIM_ACCELERATION_SECONDS: f32 = 0.15;
+
+/// 积分归一化速度得到等效全速秒数；输入为 −1/0/1，dt 单位为秒。
+/// 松键、抵消或反向时不保留旧速度。
+fn aim_input_step(speed: &mut f32, input: f32, dt: f32) -> f32 {
+    if input == 0.0 {
+        *speed = 0.0;
+        return 0.0;
+    }
+    if speed.signum() != input.signum() {
+        *speed = 0.0;
+    }
+    let start = speed.abs();
+    let accelerating = dt.min((1.0 - start) * AIM_ACCELERATION_SECONDS);
+    let end = (start + accelerating / AIM_ACCELERATION_SECONDS).min(1.0);
+    *speed = input * end;
+    input * ((start + end) * 0.5 * accelerating + dt - accelerating)
+}
 
 /// 注册玩家方向键到驾驶意图的写入系统。
 pub(crate) struct PlayerPlugin;
@@ -33,19 +63,25 @@ fn read_aim_input(
     time: Res<Time>,
     windows: Query<&Window>,
     fade: Option<Res<Fade>>,
-    mut players: Query<(&mut TankAim, &AimSpec), With<Tank>>,
+    mut players: Query<(&mut TankAim, &AimSpec, &mut AimInputSpeed), With<Tank>>,
 ) {
     if windows.iter().any(|window| !window.focused)
         || fade.as_ref().is_some_and(|fade| !fade.accepts_input())
     {
+        for (_, _, mut speed) in &mut players {
+            *speed = AimInputSpeed::default();
+        }
         return;
     }
     let yaw =
         (i32::from(keys.pressed(KeyCode::KeyA)) - i32::from(keys.pressed(KeyCode::KeyD))) as f32;
     let pitch =
         (i32::from(keys.pressed(KeyCode::KeyW)) - i32::from(keys.pressed(KeyCode::KeyS))) as f32;
-    for (mut aim, spec) in &mut players {
-        spec.advance(&mut aim, yaw, pitch, time.delta_secs());
+    for (mut aim, spec, mut speed) in &mut players {
+        let yaw_step = aim_input_step(&mut speed.yaw, yaw, time.delta_secs());
+        let pitch_step = aim_input_step(&mut speed.pitch, pitch, time.delta_secs());
+        // 等效全速秒数已包含时间，避免再次乘以帧时长。
+        spec.advance(&mut aim, yaw_step, pitch_step, 1.0);
     }
 }
 
@@ -116,8 +152,8 @@ mod tests {
             app.update();
         }
         let aim = *app.world().get::<TankAim>(player).unwrap();
-        assert!((aim.yaw.to_degrees() - 30.0).abs() < 1e-3);
-        assert!((aim.pitch.to_degrees() - 9.0).abs() < 1e-3);
+        assert!((aim.yaw.to_degrees() - 27.75).abs() < 1e-3);
+        assert!((aim.pitch.to_degrees() - 8.325).abs() < 1e-3);
         assert_eq!(app.world().get::<TankAim>(enemy).unwrap().yaw, 0.0);
         {
             let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
@@ -218,24 +254,42 @@ mod tests {
             for _ in 0..64 {
                 app.update();
                 assert_eq!(
-                    app.world().get::<avian3d::prelude::LinearVelocity>(player).unwrap().0,
-                    app.world().get::<avian3d::prelude::LinearVelocity>(moving_enemy).unwrap().0
+                    app.world()
+                        .get::<avian3d::prelude::LinearVelocity>(player)
+                        .unwrap()
+                        .0,
+                    app.world()
+                        .get::<avian3d::prelude::LinearVelocity>(moving_enemy)
+                        .unwrap()
+                        .0
                 );
                 assert_eq!(
-                    app.world().get::<avian3d::prelude::Rotation>(player).unwrap().0,
-                    app.world().get::<avian3d::prelude::Rotation>(moving_enemy).unwrap().0
+                    app.world()
+                        .get::<avian3d::prelude::Rotation>(player)
+                        .unwrap()
+                        .0,
+                    app.world()
+                        .get::<avian3d::prelude::Rotation>(moving_enemy)
+                        .unwrap()
+                        .0
                 );
                 assert_eq!(
                     app.world().get::<TurnRate>(player).unwrap().0,
                     app.world().get::<TurnRate>(moving_enemy).unwrap().0
                 );
                 assert_eq!(
-                    app.world().get::<avian3d::prelude::LinearVelocity>(idle_enemy).unwrap().0,
+                    app.world()
+                        .get::<avian3d::prelude::LinearVelocity>(idle_enemy)
+                        .unwrap()
+                        .0,
                     Vec3::new(0.0, -0.4, 0.0)
                 );
                 assert_eq!(app.world().get::<TurnRate>(idle_enemy).unwrap().0, 0.0);
                 assert_eq!(
-                    app.world().get::<avian3d::prelude::Rotation>(idle_enemy).unwrap().0,
+                    app.world()
+                        .get::<avian3d::prelude::Rotation>(idle_enemy)
+                        .unwrap()
+                        .0,
                     Quat::IDENTITY
                 );
             }
@@ -250,7 +304,10 @@ mod tests {
             app.update();
         }
         assert_eq!(
-            app.world().get::<avian3d::prelude::LinearVelocity>(moving_enemy).unwrap().0,
+            app.world()
+                .get::<avian3d::prelude::LinearVelocity>(moving_enemy)
+                .unwrap()
+                .0,
             Vec3::new(0.0, -0.4, 0.0)
         );
         assert!(app.world().get::<TurnRate>(moving_enemy).unwrap().0.abs() < 0.01);

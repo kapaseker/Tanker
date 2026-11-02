@@ -260,7 +260,10 @@ struct Perf {
 pub(super) fn update(app: &mut App, duration: Duration, frame: Option<u32>) -> Result<(), String> {
     app.world_mut()
         .insert_resource(TimeUpdateStrategy::ManualDuration(duration));
-    app.world_mut().resource_mut::<InputFrame>().1 = frame;
+    // 截图等待不推进模拟，也不能把持续按键变成一次松手。
+    if duration != Duration::ZERO || frame.is_some() {
+        app.world_mut().resource_mut::<InputFrame>().1 = frame;
+    }
     let tick = std::time::Instant::now();
     app.update();
     if duration == STEP {
@@ -270,7 +273,7 @@ pub(super) fn update(app: &mut App, duration: Duration, frame: Option<u32>) -> R
     }
     ensure(
         app.world_mut()
-            .query::<&Window>()
+            .query_filtered::<&Window, Without<scenarios::articulation::SimulatedFocus>>()
             .iter(app.world())
             .next()
             .is_none(),

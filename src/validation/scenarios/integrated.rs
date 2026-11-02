@@ -49,7 +49,7 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
     cursor.clear(world.resource::<Messages<ShotImpact>>());
     capture(app, &options.image_path(0))?;
     report.push_str(
-        "集成场景：动态玩家真实驾驶；1-60 直行、61-150 驾驶+转车+调炮组合、174 组合后开火、194 近距离遮挡、270 无命中十字、330 边缘箭头、336 装填中调炮、397-398 角度回绕、400 后 Esc 退出重进\n",
+        "集成场景：动态玩家真实驾驶；1-60 直行、61-150 驾驶+转车+调炮组合、174 组合后开火、194 近距离遮挡、270 围墙命中、330 边缘箭头、336 装填中调炮、397-398 角度回绕、400 后 Esc 退出重进\n",
     );
 
     // 跨帧状态：待对照的开火（标签+预测）、阶段样本与回绕采样。
@@ -66,8 +66,20 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
         if frame == 171 {
             // 组合运动停止后按静止炮口布置前后双靶，验证首个碰撞对象选择。
             let (muzzle, direction, rotation) = muzzle_state(app.world_mut())?;
-            let f = spawn_target(app, enemy_collision, &enemy_visual, muzzle + direction * 30., rotation)?;
-            let r = spawn_target(app, enemy_collision, &enemy_visual, muzzle + direction * 38., rotation)?;
+            let f = spawn_target(
+                app,
+                enemy_collision,
+                &enemy_visual,
+                muzzle + direction * 30.,
+                rotation,
+            )?;
+            let r = spawn_target(
+                app,
+                enemy_collision,
+                &enemy_visual,
+                muzzle + direction * 38.,
+                rotation,
+            )?;
             front = Some(f);
             rear = Some(r);
         }
@@ -76,11 +88,17 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
             clear_targets(app, front.take(), rear.take());
             let (muzzle, direction, rotation) = muzzle_state(app.world_mut())?;
             move_obstacle(app.world_mut(), concrete, muzzle + direction * 15.);
-            let f = spawn_target(app, enemy_collision, &enemy_visual, muzzle + direction * 30., rotation)?;
+            let f = spawn_target(
+                app,
+                enemy_collision,
+                &enemy_visual,
+                muzzle + direction * 30.,
+                rotation,
+            )?;
             front = Some(f);
         }
         if frame == 211 {
-            // 无命中/边缘案例：清空全部目标并把墩移回画外。
+            // 围墙/边缘案例：清空靶车并把墩移回画外。
             clear_targets(app, front.take(), rear.take());
             move_obstacle(app.world_mut(), concrete, Vec3::new(100., 0., 100.));
         }
@@ -89,14 +107,13 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
             firing::reset_session(app.world_mut());
         }
         if frame == 397 {
-            // 回绕准备：把偏航直接设定到 359.75°（俯仰保持当前值），本帧不按 KeyA，
-            // 让真实相机先在 359.75° 落位；下一帧按 KeyA 跨越 360° 后比较机位连续性。
+            // 回绕准备：从静止起步的首帧角度小于恒速，需靠近边界才能跨越。
             let world = app.world_mut();
             world
                 .query_filtered::<&mut TankAim, With<Tank>>()
                 .single_mut(world)
                 .map_err(|e| e.to_string())?
-                .yaw = 359.75_f32.to_radians();
+                .yaw = 359.99_f32.to_radians();
         }
         update(app, STEP, Some(frame))?;
 
@@ -162,10 +179,7 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
                 pending = Some((2, predicted));
             }
             if frame == 270 {
-                ensure(
-                    predicted.target.is_none(),
-                    "无命中方向仍预测到目标",
-                )?;
+                ensure(predicted.target.is_some_and(|target| world.get::<crate::terrain::TerrainWall>(target).is_some()), "水平炮口应预测命中围墙")?;
             }
             if frame == 180 {
                 // 前靶已在帧176命中时被销毁：预测必须更新为存活的后靶，不保留旧目标。
@@ -227,14 +241,14 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
             sample60 = Some(body);
         }
         if frame == 150 {
-            // 玩家配置：偏航 30°/s×90 帧=45°、俯仰 9°/s×60 帧=9°（gameplay::player）。
+            // 两轴各自从静止加速 0.15 秒，90/60 帧分别转过 42.75°/8.325°。
             ensure(
-                (aim.yaw.to_degrees() - 45.).abs() < 0.5,
-                &format!("组合阶段偏航未按30°/s×90帧推进：{}", aim.yaw.to_degrees()),
+                (aim.yaw.to_degrees() - 42.75).abs() < 0.01,
+                &format!("组合阶段偏航不符：{}", aim.yaw.to_degrees()),
             )?;
             ensure(
-                (aim.pitch.to_degrees() - 9.).abs() < 0.5,
-                &format!("组合阶段俯仰未按9°/s×60帧推进：{}", aim.pitch.to_degrees()),
+                (aim.pitch.to_degrees() - 8.325).abs() < 0.01,
+                &format!("组合阶段俯仰不符：{}", aim.pitch.to_degrees()),
             )?;
             let start = sample60.ok_or("直行阶段样本缺失")?;
             ensure(
@@ -248,7 +262,7 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
             report.push_str("断言通过：帧150驾驶+转车+调炮同时发生，相机/炮口/准星同帧一致\n");
         }
         if frame == 270 {
-            // 9° 起压 60 帧 × 9°/s = 恰好水平，预测点落在视线上方约 21°（半 FOV 24° 内）。
+            // 与上仰持续时间相同，反向加速后恰好回到水平。
             ensure(
                 aim.pitch.to_degrees().abs() < 0.5,
                 &format!("KeyS 未把俯仰压回水平：{}", aim.pitch.to_degrees()),
@@ -258,11 +272,8 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
                 .query_filtered::<&Node, With<Reticle>>()
                 .single(app.world())
                 .unwrap();
-            ensure(
-                reticle.display != Display::None,
-                "无命中水平方向十字未显示",
-            )?;
-            report.push_str("断言通过：帧270无命中方向显示纯十字（无命中圆），预测目标为空\n");
+            ensure(reticle.display != Display::None, "水平围墙方向十字未显示")?;
+            report.push_str("断言通过：帧270水平炮口预测命中围墙，准星布局与碰撞一致\n");
         }
         if frame == 330 {
             let arrow = app
@@ -290,11 +301,11 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
             report.push_str("断言通过：帧360装填中调炮实时更新准星且未产生第二发\n");
         }
         if frame == 397 {
-            // 相机已在 359.75° 姿态落位，记录偏移供跨越后比较。
+            // 记录回绕前的相机偏移。
             wrap_offset = Some(camera.translation - body.translation);
         }
         if frame == 398 {
-            // 偏航归一化到 [0, 2π) 且 KeyA 使偏航增大：从 359.75° 跨 360° 后应落在
+            // 偏航归一化到 [0, 2π) 且 KeyA 使偏航增大：从 359.99° 跨 360° 后应落在
             // (0, 0.1rad) 区间；若归一化约定改变此断言需同步调整。
             ensure(
                 aim.yaw < 0.1 && aim.yaw > 0.,
@@ -303,9 +314,12 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
             let offset = camera.translation - body.translation;
             ensure(
                 wrap_offset.is_some_and(|prev| (offset - prev).length() < 0.2),
-                &format!("回绕时相机跳变：偏移差{}", (offset - wrap_offset.unwrap_or(offset)).length()),
+                &format!(
+                    "回绕时相机跳变：偏移差{}",
+                    (offset - wrap_offset.unwrap_or(offset)).length()
+                ),
             )?;
-            report.push_str("断言通过：帧398偏航跨越360°回绕（359.75°→0.25°），相机连续无跳变\n");
+            report.push_str("断言通过：帧398偏航跨越360°回绕，相机连续无跳变\n");
         }
 
         if options.scenario.frames().contains(&frame) {
@@ -320,12 +334,11 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
 
     // 退出重进：真实 Esc → 首页残留检查 → ↓+Enter 重进 → 全新准星。
     update(app, STEP, Some(501))?;
-    // 过渡等待上限 1200 帧（1/60s 步长约 20 秒墙钟模拟时间），超时视为过渡卡死。
-    let mut iterations = 0;
+    // GPU 管线异步就绪，以墙钟时间而非设备相关的模拟帧数判断超时。
+    let mut started = std::time::Instant::now();
     loop {
         update(app, STEP, None)?;
-        iterations += 1;
-        ensure(iterations < 1200, "退出过渡未完成")?;
+        ensure(started.elapsed() < std::time::Duration::from_secs(40), "退出过渡未完成")?;
         let fade = app.world().resource::<Fade>();
         if fade.phase == Phase::Idle
             && fade.alpha == 0.0
@@ -367,11 +380,10 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
         "重进前方向键未聚焦菜单项",
     )?;
     update(app, STEP, Some(505))?;
-    iterations = 0;
+    started = std::time::Instant::now();
     loop {
         update(app, STEP, None)?;
-        iterations += 1;
-        ensure(iterations < 1200, "重进过渡未完成")?;
+        ensure(started.elapsed() < std::time::Duration::from_secs(40), "重进过渡未完成")?;
         let fade = app.world().resource::<Fade>();
         if fade.phase == Phase::Idle
             && fade.alpha == 0.0
@@ -382,6 +394,14 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
     }
     wait_render(app, true)?;
     validate_scene(app.world_mut())?;
+    update(app, STEP, Some(506))?;
+    let fresh = *app.world_mut().query_filtered::<&TankAim, With<Tank>>()
+        .single(app.world()).map_err(|e| e.to_string())?;
+    ensure((fresh.yaw.to_degrees() - 0.02778).abs() < 0.001
+        && (fresh.pitch.to_degrees() - 0.008333).abs() < 0.001,
+        "重进后首次双轴输入未从静止起步")?;
+    update(app, STEP, None)?;
+    report.push_str("断言通过：退出重进后双轴首次输入从静止起步\n");
     let world = app.world_mut();
     ensure(
         world
@@ -415,7 +435,13 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
         update(app, STEP, None)?;
     }
     let (muzzle, direction, rotation) = muzzle_state(app.world_mut())?;
-    let target = spawn_target(app, enemy_collision, &enemy_visual, muzzle + direction * 30., rotation)?;
+    let target = spawn_target(
+        app,
+        enemy_collision,
+        &enemy_visual,
+        muzzle + direction * 30.,
+        rotation,
+    )?;
     for _ in 0..3 {
         update(app, STEP, None)?;
     }
@@ -431,8 +457,7 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
             app.world().get::<Transform>(target).map(|t| t.translation)
         ),
     )?;
-    check_layout(app.world_mut(), predicted.point, true)
-        .map_err(|e| format!("重进后：{e}"))?;
+    check_layout(app.world_mut(), predicted.point, true).map_err(|e| format!("重进后：{e}"))?;
     super::wait_render(app, false)?;
     capture(app, &options.output.join("reentry.png"))?;
     report.push_str("断言通过：重进后全新对局预测、HUD 与相机一致；reentry.png\n");
@@ -508,8 +533,7 @@ fn clear_targets(app: &mut App, front: Option<Entity>, rear: Option<Entity>) {
 
 /// 把唯一混凝土墩搬到已知位置。
 fn move_obstacle(world: &mut World, entity: Entity, position: Vec3) {
-    world.entity_mut(entity).insert((
-        Transform::from_translation(position),
-        Position(position),
-    ));
+    world
+        .entity_mut(entity)
+        .insert((Transform::from_translation(position), Position(position)));
 }

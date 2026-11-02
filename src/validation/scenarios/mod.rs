@@ -1,14 +1,14 @@
 //! 场景帧表、输入脚本与公共预热/计帧流程；各场景保留原有断言。
 
-mod articulation;
 mod aiming;
-mod integrated;
+pub(super) mod articulation;
 mod combat;
 mod detail;
 mod drive;
 mod gallery;
 mod hud;
 mod index;
+mod integrated;
 mod pastoral;
 pub(super) mod scene;
 mod wheels;
@@ -59,7 +59,10 @@ impl Scenario {
         match self {
             Self::Scene => &[0],
             Self::Aiming => &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
-            Self::Articulation => &[0, 1, 2, 3, 30, 120, 210, 211, 420, 421, 450, 749, 750, 809, 869, 870, 871],
+            Self::Articulation => &[
+                0, 1, 2, 3, 30, 31, 36, 120, 210, 211, 420, 421, 450, 749, 750, 809, 869, 870, 871,
+                877, 880, 887,
+            ],
             Self::Integrated => &[0, 60, 150, 174, 194, 270, 330, 360, 397, 398],
             // 先直行 1 秒，再持续前进左转；路径不会触及 25 米外的混凝土墩。
             Self::Drive => &[0, 60, 180],
@@ -82,23 +85,37 @@ impl Scenario {
             (Self::Drive, 61..=180) => &[KeyCode::ArrowUp, KeyCode::ArrowLeft],
             (Self::Combat, 1) | (Self::Articulation, 1..=3) => &[KeyCode::Space],
             (Self::Integrated, 1..=60) => &[KeyCode::ArrowUp],
-            // KeyW 只按 60 帧（俯仰 9°/s → 恰好 9°），保证 211..=270 的 60 帧 KeyS 精确压回水平。
-            (Self::Integrated, 61..=120) => &[KeyCode::ArrowUp, KeyCode::ArrowLeft, KeyCode::KeyA, KeyCode::KeyW],
+            // 上下各按 60 帧，经过相同加速后回到水平。
+            (Self::Integrated, 61..=120) => &[
+                KeyCode::ArrowUp,
+                KeyCode::ArrowLeft,
+                KeyCode::KeyA,
+                KeyCode::KeyW,
+            ],
             (Self::Integrated, 121..=150) => &[KeyCode::ArrowUp, KeyCode::ArrowLeft, KeyCode::KeyA],
             (Self::Integrated, 174 | 194 | 336) => &[KeyCode::Space],
             (Self::Integrated, 211..=270) => &[KeyCode::KeyS],
             (Self::Integrated, 271..=330) => &[KeyCode::KeyW],
             (Self::Integrated, 337..=396) => &[KeyCode::KeyA],
             (Self::Integrated, 398) => &[KeyCode::KeyA],
+            (Self::Integrated, 400 | 506) => &[KeyCode::KeyA, KeyCode::KeyW],
             (Self::Integrated, 501) => &[KeyCode::Escape],
             (Self::Integrated, 503) => &[KeyCode::ArrowDown],
             (Self::Integrated, 505) => &[KeyCode::Enter],
             (Self::Articulation, 31..=90) => &[KeyCode::KeyA, KeyCode::KeyW, KeyCode::ArrowLeft],
             (Self::Articulation, 91..=210) => &[KeyCode::KeyA, KeyCode::KeyW],
             (Self::Articulation, 211 | 421) => &[KeyCode::Space],
-            (Self::Articulation, 750..=809) => &[KeyCode::ArrowUp, KeyCode::ArrowLeft, KeyCode::KeyA],
-            (Self::Articulation, 810..=869) => &[KeyCode::ArrowDown, KeyCode::ArrowRight, KeyCode::KeyD],
+            (Self::Articulation, 750..=809) => {
+                &[KeyCode::ArrowUp, KeyCode::ArrowLeft, KeyCode::KeyA]
+            }
+            (Self::Articulation, 810..=869) => {
+                &[KeyCode::ArrowDown, KeyCode::ArrowRight, KeyCode::KeyD]
+            }
             (Self::Articulation, 871) => &[KeyCode::KeyA],
+            (Self::Articulation, 872..=877 | 883..=887) => &[KeyCode::KeyA, KeyCode::KeyW],
+            (Self::Articulation, 879..=880) => &[KeyCode::KeyW],
+            (Self::Articulation, 878 | 881) => &[KeyCode::KeyD, KeyCode::KeyW],
+            (Self::Articulation, 882) => &[KeyCode::KeyA, KeyCode::KeyD, KeyCode::KeyW],
             (Self::Articulation, 451..=749) => &[KeyCode::KeyA],
             (Self::Articulation, 212..=420) => &[KeyCode::KeyD, KeyCode::KeyS],
             (Self::Detail, 100..=279) => &[KeyCode::KeyA, KeyCode::KeyW],
@@ -182,8 +199,12 @@ pub(super) fn run_scenario(
     validate_scene(app.world_mut())?;
     scene::validate_concrete(app.world_mut())?;
     report.push_str("断言通过：唯一混凝土墩静态刚体、VOX 实例与实际网格尺寸、贴地位置\n");
-    if options.scenario == Scenario::Aiming { return aiming::run(app, options, report); }
-    if options.scenario == Scenario::Integrated { return integrated::run(app, options, report); }
+    if options.scenario == Scenario::Aiming {
+        return aiming::run(app, options, report);
+    }
+    if options.scenario == Scenario::Integrated {
+        return integrated::run(app, options, report);
+    }
     let (start, start_tracks) = subject_state(app.world_mut())?;
     report.push_str(&format!(
         "预热：120 帧；断言通过：地形就绪、坦克位置、相机跟随\n起点：{:?}\n",
@@ -261,6 +282,9 @@ pub(super) fn run_scenario(
             report.push_str(&format!("图片：{}\n", options.image_path(frame).display()));
         }
     }
+    if options.scenario == Scenario::Articulation {
+        articulation::check_step_sizes(app, report)?;
+    }
     ensure(failures.is_empty(), &failures.join("；"))?;
     info!(
         "离屏验证通过：{:?}，输出：{}",
@@ -290,7 +314,12 @@ mod tests {
         assert_eq!(Scenario::Integrated.keys(60), &[KeyCode::ArrowUp]);
         assert_eq!(
             Scenario::Integrated.keys(61),
-            &[KeyCode::ArrowUp, KeyCode::ArrowLeft, KeyCode::KeyA, KeyCode::KeyW]
+            &[
+                KeyCode::ArrowUp,
+                KeyCode::ArrowLeft,
+                KeyCode::KeyA,
+                KeyCode::KeyW
+            ]
         );
         assert_eq!(
             Scenario::Integrated.keys(121),
