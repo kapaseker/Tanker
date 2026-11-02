@@ -12,7 +12,7 @@ use bevy::{
 };
 
 /// 从出生点累计计算的最大飞行距离，单位：世界单位。
-const BULLET_RANGE: f32 = 2000.0;
+pub(crate) const BULLET_RANGE: f32 = 2000.0;
 
 /// 玩家实际活动炮管的场景根，世界姿态决定弹丸发射方向。
 #[derive(Component)]
@@ -66,9 +66,6 @@ pub(crate) fn assets_ready(world: &World) -> bool {
 
 /// 新对局从首发可用开始，不继承上一局射击冷却。
 pub(crate) fn reset_session(world: &mut World) {
-    if let Some(mut prediction) = world.get_resource_mut::<ShotPrediction>() {
-        prediction.0 = None;
-    }
     if let Some(mut gun) = world.get_resource_mut::<Gun>() {
         gun.cadence = FireCadence::default();
     }
@@ -80,15 +77,13 @@ pub(crate) struct FiringPlugin;
 impl Plugin for FiringPlugin {
     /// 在变换传播完成后发射，确保读取到坦克本帧的世界位置和方向。
     fn build(&self, app: &mut App) {
-        app.init_resource::<ShotPrediction>()
-            .add_message::<ShotImpact>()
+        app.add_message::<ShotImpact>()
             .add_plugins(crate::tank::articulation::ArticulationPlugin)
             .add_systems(Startup, load_bullet)
             .add_systems(Update, (spawn_barrels, move_bullets, report_bullet))
             .add_systems(
                 PostUpdate,
-                (fire_bullets, predict_shot)
-                    .chain()
+                fire_bullets
                     .after(TransformSystems::Propagate),
             );
     }
@@ -155,19 +150,6 @@ fn muzzle_pose(tank: &GlobalTransform, spec: &AmmunitionSpec) -> (Vec3, Vec3) {
     )
 }
 
-/// 当帧静止目标的扫掠结果；没有有效炮口时为空，不跨对局保留命中。
-#[derive(Resource, Default)]
-pub(crate) struct ShotPrediction(pub(crate) Option<PredictedShot>);
-
-/// 世界空间接触点或有效飞行终点；target 仅表示预测会碰撞。
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct PredictedShot {
-    /// 世界空间米制接触位置；未命中时为有效飞行终点。
-    pub(crate) point: Vec3,
-    /// 预测最近目标，空值表示只有方向。
-    pub(crate) target: Option<Entity>,
-}
-
 /// 实际弹丸首次碰撞的观察事件，接触点与爆炸中心的语义不同。
 #[derive(Message, Clone, Copy)]
 pub(crate) struct ShotImpact {
@@ -177,8 +159,8 @@ pub(crate) struct ShotImpact {
     pub(crate) point: Vec3,
 }
 
-/// 预测和实射共用场景碰撞白名单，排除玩家及装饰。
-fn is_target(
+/// 实射场景碰撞白名单，排除玩家及装饰。
+pub(crate) fn is_target(
     target: Entity,
     enemies: &Query<&GlobalTransform, With<EnemyTank>>,
     environment: &Query<(), Or<(With<crate::gameplay::obstacle::Concrete>, With<crate::terrain::TerrainSurface>, With<crate::terrain::TerrainWall>)>>,
@@ -186,7 +168,7 @@ fn is_target(
     enemies.contains(target) || environment.contains(target)
 }
 
-/// 同一弹体形状、中心偏移与世界旋转用于整段预测和单帧飞行。
+/// 弹体按实际形状、中心偏移与世界旋转执行单帧扫掠。
 fn sweep(
     spatial: &SpatialQuery,
     spec: &AmmunitionSpec,
@@ -213,94 +195,6 @@ fn contact_point(hit: &ShapeHitData, origin: Vec3) -> Vec3 {
         origin
     } else {
         hit.point1
-    }
-}
-
-/// 固定当前帧步长（step，米/帧）预测清理区间，保留出界后下一帧才销毁的语义。
-fn flight_distance(origin: Vec3, direction: Vec3, step: f32) -> Option<f32> {
-    if !origin.is_finite() || !direction.is_finite() || !step.is_finite() || step <= 0.0 {
-        return None;
-    }
-    let half = crate::terrain::FIELD_SIDE / 2.0;
-    let mut position = origin;
-    let mut distance = 0.0;
-    // shortcut: 最多预测一万模拟帧，极小步长未能证明终点时隐藏；需要更长飞行时再评估预算。
-    for _ in 0..10_000 {
-        if position.x.abs() > half || position.z.abs() > half {
-            return Some(distance);
-        }
-        let remaining = (BULLET_RANGE - distance).max(0.0);
-        let travel = step.min(remaining);
-        if step >= remaining {
-            return Some(BULLET_RANGE);
-        }
-        // 必须与 move_bullets 的 f32 运算顺序相同：边界附近解析除法会少算或多算整步。
-        distance += travel;
-        position += direction * travel;
-    }
-    None
-}
-
-/// 变换传播后重算，装填期间也更新；目标删除后不沿用旧结果。
-pub(crate) fn predict_shot(
-    mut last_step: Local<f32>,
-    mut prediction: ResMut<ShotPrediction>,
-    time: Res<Time>,
-    gun: Res<Gun>,
-    spatial: SpatialQuery,
-    assets: Res<AssetServer>,
-    instances: Res<WorldInstanceSpawner>,
-    tanks: Query<(&WorldAssetRoot, &WorldInstance), With<Tank>>,
-    barrels: Query<(&GlobalTransform, &WorldAssetRoot, &WorldInstance), With<PlayerBarrel>>,
-    enemies: Query<&GlobalTransform, With<EnemyTank>>,
-    environment: Query<(), Or<(With<crate::gameplay::obstacle::Concrete>, With<crate::terrain::TerrainSurface>, With<crate::terrain::TerrainWall>)>>,
-) {
-    prediction.0 = None;
-    let (Ok((root, instance)), Ok((barrel, barrel_root, barrel_instance))) =
-        (tanks.single(), barrels.single())
-    else {
-        return;
-    };
-    if !instances.instance_is_ready(**instance)
-        || !instances.instance_is_ready(**barrel_instance)
-        || !assets.is_loaded_with_dependencies(&root.0)
-        || !assets.is_loaded_with_dependencies(&barrel_root.0)
-        || !assets.is_loaded_with_dependencies(&gun.bullet_scene)
-    {
-        return;
-    }
-    if !barrel.affine().is_finite() {
-        return;
-    }
-    let (origin, direction) = muzzle_pose(barrel, &gun.spec);
-    // 截图等待使用零时间更新，沿用最近模拟帧步长，不改变清理区间。
-    if time.delta_secs() > 0.0 {
-        *last_step = gun.spec.muzzle_velocity * time.delta_secs();
-    }
-    let Some(travel) = flight_distance(origin, direction, *last_step) else {
-        return;
-    };
-    // 出生中心已在场外时，真实弹丸会先清理，不能对重叠物体报命中。
-    let hit = (travel > 0.0)
-        .then(|| {
-            sweep(
-                &spatial,
-                &gun.spec,
-                &Transform::from_translation(origin).with_rotation(barrel.rotation()),
-                direction,
-                travel,
-                &|target| is_target(target, &enemies, &environment),
-            )
-        })
-        .flatten();
-    let point = hit.as_ref().map_or(origin + direction * travel, |hit| {
-        contact_point(hit, origin)
-    });
-    if point.is_finite() {
-        prediction.0 = Some(PredictedShot {
-            point,
-            target: hit.map(|hit| hit.entity),
-        });
     }
 }
 
@@ -446,30 +340,10 @@ fn move_bullets(
 
 #[cfg(test)]
 mod tests {
-    /// 预测区间保留先检查边界、再完成整帧位移的真实清理语义。
-    #[test]
-    fn prediction_stops_after_the_first_outside_step() {
-        assert_eq!(
-            flight_distance(Vec3::new(-299.0, 0.0, 0.0), Vec3::NEG_X, 20.0),
-            Some(20.0)
-        );
-        assert_eq!(
-            flight_distance(Vec3::new(-300.0, 0.0, 0.0), Vec3::NEG_X, 20.0),
-            Some(20.0)
-        );
-        assert_eq!(
-            flight_distance(Vec3::new(-301.0, 0.0, 0.0), Vec3::NEG_X, 20.0),
-            Some(0.0)
-        );
-        assert_eq!(flight_distance(Vec3::ZERO, Vec3::Y, 20.0), Some(2000.0));
-        assert_eq!(flight_distance(Vec3::ZERO, Vec3::X, 0.0), None);
-    }
     /// 独立真实弹丸回归：舍入到边界时仍能再飞一步，略微出界时必须立刻清理。
     #[test]
-    fn prediction_boundary_matches_repeated_float_motion() {
-        let step = 1200.0_f32 * (1.0_f32 / 60.0);
+    fn bullet_boundary_matches_repeated_float_motion() {
         let origin = Vec3::new(-280.0, 1.3, 0.0);
-        assert!((flight_distance(origin, Vec3::NEG_X, step).unwrap() - 40.000004).abs() < 1e-5);
         let (mut app, enemies) = hit_test_app(&[(Vec3::new(-310., 1.3, 0.), 0.)]);
         let bullet = test_bullet(&mut app, origin, Vec3::NEG_X, 0.);
         advance_test_bullets(&mut app, 1.0 / 60.0);
@@ -482,7 +356,6 @@ mod tests {
 
         let direction = Quat::from_rotation_y(1.2_f32.to_radians()) * Vec3::NEG_X;
         let origin = Vec3::new(-120.039474, 1.3, 0.);
-        assert!((flight_distance(origin, direction, step).unwrap() - 180.00002).abs() < 1e-5);
         let (mut app, enemies) = hit_test_app(&[(origin + direction * 190., 0.)]);
         let bullet = test_bullet(&mut app, origin, direction, 0.);
         for _ in 0..11 {

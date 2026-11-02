@@ -249,10 +249,12 @@ fn resize_target(
     drop(image);
     // 菜单相机缩放系数 = 窗口缩放 × zoom；只缩不放大，高度不参与。
     let index_scale = scale_factor * crate::ui::zoom(physical.x as f32 / scale_factor);
+    let mut scale_changed = false;
     for mut camera in &mut index_cameras {
         if let RenderTarget::Image(image) = &mut *camera {
             if (image.scale_factor - index_scale).abs() > f32::EPSILON {
                 image.scale_factor = index_scale;
+                scale_changed = true;
             }
         }
     }
@@ -260,8 +262,13 @@ fn resize_target(
         if let RenderTarget::Image(image) = &mut *camera {
             if (image.scale_factor - scale_factor).abs() > f32::EPSILON {
                 image.scale_factor = scale_factor;
+                scale_changed = true;
             }
         }
+    }
+    if scale_changed {
+        // Bevy 0.20 的相机系统只在图像资产变化时刷新图像目标的缓存缩放。
+        let _ = images.get_mut(&target.0).unwrap().into_inner();
     }
 }
 

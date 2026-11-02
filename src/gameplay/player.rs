@@ -8,7 +8,7 @@ use bevy::prelude::*;
 
 /// 标记玩家控制的坦克根实体；驾驶、射击、相机与验证入口以它定位唯一玩家。
 #[derive(Component)]
-#[require(AimInputSpeed)]
+#[require(AimInputSpeed, crate::gameplay::camera::PlayerView)]
 pub(crate) struct Tank;
 
 /// 对局中两轴的主动输入速度，按车型最高速度归一化。
@@ -18,6 +18,8 @@ struct AimInputSpeed {
     yaw: f32,
     /// 俯仰主动速度，按车型最大速度归一化。
     pitch: f32,
+    /// 本帧主动输入前的炮塔角度，用于限制输入与会聚合计速度。
+    previous: TankAim,
 }
 
 /// 从静止线性加速至最高速度所需时间，单位秒；手感尚待玩家确认。
@@ -45,7 +47,7 @@ pub(crate) struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, read_aim_input);
+        app.add_systems(Update, (read_aim_input, converge_aim).chain());
         app.add_systems(
             FixedPostUpdate,
             // 输入写入先于驾驶消费，且两者都不越过物理步进。
@@ -63,13 +65,26 @@ fn read_aim_input(
     time: Res<Time>,
     windows: Query<&Window>,
     fade: Option<Res<Fade>>,
-    mut players: Query<(&mut TankAim, &AimSpec, &mut AimInputSpeed), With<Tank>>,
+    mut players: Query<
+        (
+            &mut TankAim,
+            &mut crate::gameplay::camera::PlayerView,
+            &AimSpec,
+            &mut AimInputSpeed,
+        ),
+        With<Tank>,
+    >,
 ) {
-    if windows.iter().any(|window| !window.focused)
+    if !time.delta_secs().is_finite()
+        || time.delta_secs() < 0.0
+        || windows.iter().any(|window| !window.focused)
         || fade.as_ref().is_some_and(|fade| !fade.accepts_input())
     {
-        for (_, _, mut speed) in &mut players {
-            *speed = AimInputSpeed::default();
+        for (aim, _, _, mut speed) in &mut players {
+            *speed = AimInputSpeed {
+                previous: *aim,
+                ..default()
+            };
         }
         return;
     }
@@ -77,11 +92,142 @@ fn read_aim_input(
         (i32::from(keys.pressed(KeyCode::KeyA)) - i32::from(keys.pressed(KeyCode::KeyD))) as f32;
     let pitch =
         (i32::from(keys.pressed(KeyCode::KeyW)) - i32::from(keys.pressed(KeyCode::KeyS))) as f32;
-    for (mut aim, spec, mut speed) in &mut players {
+    for (mut aim, mut view, spec, mut speed) in &mut players {
+        speed.previous = *aim;
+        if !aim.yaw.is_finite()
+            || !aim.pitch.is_finite()
+            || !view.0.yaw.is_finite()
+            || !view.0.pitch.is_finite()
+        {
+            speed.yaw = 0.0;
+            speed.pitch = 0.0;
+            continue;
+        }
         let yaw_step = aim_input_step(&mut speed.yaw, yaw, time.delta_secs());
         let pitch_step = aim_input_step(&mut speed.pitch, pitch, time.delta_secs());
-        // 等效全速秒数已包含时间，避免再次乘以帧时长。
-        spec.advance(&mut aim, yaw_step, pitch_step, 1.0);
+        // 两个状态只推进共同可执行的输入，触限时不产生待执行视角。
+        let requested = pitch_step * spec.elevation_speed_deg_s.to_radians();
+        let lower = spec.min_elevation_deg.to_radians();
+        let upper = spec.max_elevation_deg.to_radians();
+        let delta = if requested >= 0.0 {
+            requested
+                .min((upper - aim.pitch).max(0.0))
+                .min((upper - view.0.pitch).max(0.0))
+        } else {
+            requested
+                .max((lower - aim.pitch).min(0.0))
+                .max((lower - view.0.pitch).min(0.0))
+        };
+        spec.advance(&mut aim, yaw_step, 0.0, 1.0);
+        spec.advance(&mut view.0, yaw_step, 0.0, 1.0);
+        aim.pitch += delta;
+        view.0.pitch += delta;
+    }
+}
+
+/// 当前中心视线最近场景交点驱动炮口；全部角位移共享车型速度上限。
+fn converge_aim(
+    time: Res<Time>,
+    spatial: avian3d::prelude::SpatialQuery,
+    enemies: Query<&GlobalTransform, With<crate::gameplay::enemy::EnemyTank>>,
+    environment: Query<
+        (),
+        Or<(
+            With<crate::gameplay::obstacle::Concrete>,
+            With<crate::terrain::TerrainSurface>,
+            With<crate::terrain::TerrainWall>,
+        )>,
+    >,
+    mut players: Query<
+        (
+            &Transform,
+            &mut TankAim,
+            &crate::gameplay::camera::PlayerView,
+            &AimSpec,
+            &AimInputSpeed,
+        ),
+        With<Tank>,
+    >,
+) {
+    use avian3d::prelude::SpatialQueryFilter;
+    for (body, mut aim, view, spec, speed) in &mut players {
+        let dt = time.delta_secs();
+        if !dt.is_finite()
+            || dt <= 0.0
+            || !body.translation.is_finite()
+            || !body.rotation.is_finite()
+            || !aim.yaw.is_finite()
+            || !aim.pitch.is_finite()
+            || !view.0.yaw.is_finite()
+            || !view.0.pitch.is_finite()
+        {
+            continue;
+        }
+        let camera = crate::gameplay::camera::camera_transform(body, view.0.yaw, view.0.pitch);
+        let direction = camera.forward();
+        // 2000 米与弹丸最大射程一致；有交点时始终使用最近表面。
+        let distance = spatial
+            .cast_ray_predicate(
+                camera.translation,
+                direction,
+                crate::gameplay::combat::firing::BULLET_RANGE,
+                true,
+                &SpatialQueryFilter::default(),
+                &|entity| {
+                    crate::gameplay::combat::firing::is_target(entity, &enemies, &environment)
+                },
+            )
+            .map_or(crate::gameplay::combat::firing::BULLET_RANGE, |hit| {
+                hit.distance
+            });
+        let target = camera.translation + direction.as_vec3() * distance;
+        let turret = Vec3::from_array(crate::tank::model::astra::TURRET_POSITION);
+        let barrel = Vec3::from_array(crate::tank::model::astra::BARREL_POSITION);
+        let muzzle = Vec3::from_array(crate::tank::model::astra::MUZZLE_POSITION);
+        let yaw_rotation = Quat::from_rotation_y(aim.yaw);
+        let local_muzzle =
+            turret + yaw_rotation * (barrel + Quat::from_rotation_z(-aim.pitch) * muzzle);
+        let world_muzzle = body.transform_point(local_muzzle);
+        let local = body.rotation.inverse() * (target - world_muzzle);
+        if !local.is_finite() || local.length_squared() < 0.01 {
+            continue;
+        }
+        let desired_yaw = local.z.atan2(-local.x);
+        let desired_pitch = local.y.atan2(local.xz().length());
+        let wrap = |angle: f32| {
+            (angle + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI
+        };
+        // 主动角位移优先，修正只能使用剩余预算且不能抵消当帧玩家输入。
+        let correction = |wanted: f32, active: f32, intent: f32, limit: f32| {
+            let remaining = (limit - active.abs()).max(0.0);
+            let correction = wanted.clamp(-remaining, remaining);
+            if intent > 0.0 {
+                correction.max(0.0)
+            } else if intent < 0.0 {
+                correction.min(0.0)
+            } else {
+                correction
+            }
+        };
+        let active_yaw = wrap(aim.yaw - speed.previous.yaw);
+        let active_pitch = aim.pitch - speed.previous.pitch;
+        let yaw_correction = correction(
+            wrap(desired_yaw - aim.yaw),
+            active_yaw,
+            speed.yaw,
+            spec.traverse_speed_deg_s.to_radians() * dt,
+        );
+        let pitch_correction = correction(
+            desired_pitch - aim.pitch,
+            active_pitch,
+            speed.pitch,
+            spec.elevation_speed_deg_s.to_radians() * dt,
+        );
+        aim.yaw = (aim.yaw + yaw_correction).rem_euclid(std::f32::consts::TAU);
+        aim.pitch = (aim.pitch + pitch_correction).clamp(
+            spec.min_elevation_deg.to_radians(),
+            spec.max_elevation_deg.to_radians(),
+        );
     }
 }
 
@@ -186,6 +332,133 @@ mod tests {
             .begin(crate::app::state::GameState::Index, false);
         app.update();
         assert_eq!(app.world().get::<TankAim>(player).unwrap().pitch, aim.pitch);
+    }
+
+    /// 机械上限处按住抬炮不会积累视角，反向则可立即离开限位。
+    #[test]
+    fn elevation_limit_does_not_queue_view_input() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .init_resource::<ButtonInput<KeyCode>>()
+            .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
+                100,
+            )))
+            .add_systems(Update, read_aim_input);
+        let spec = AimSpec {
+            traverse_range_deg: 360.,
+            traverse_speed_deg_s: 30.,
+            elevation_speed_deg_s: 9.,
+            min_elevation_deg: -9.,
+            max_elevation_deg: 20.,
+        };
+        let player = app
+            .world_mut()
+            .spawn((
+                Tank,
+                TankAim {
+                    yaw: 0.,
+                    pitch: 20_f32.to_radians(),
+                },
+                spec,
+            ))
+            .id();
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyW);
+        for _ in 0..10 {
+            app.update();
+        }
+        assert_eq!(
+            app.world()
+                .get::<crate::gameplay::camera::PlayerView>(player)
+                .unwrap()
+                .0
+                .pitch,
+            0.
+        );
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        app.update();
+        assert_eq!(
+            app.world()
+                .get::<crate::gameplay::camera::PlayerView>(player)
+                .unwrap()
+                .0
+                .pitch,
+            0.
+        );
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyS);
+        app.update();
+        assert!(app.world().get::<TankAim>(player).unwrap().pitch < 20_f32.to_radians());
+        assert!(
+            app.world()
+                .get::<crate::gameplay::camera::PlayerView>(player)
+                .unwrap()
+                .0
+                .pitch
+                < 0.
+        );
+        app.world_mut().get_mut::<TankAim>(player).unwrap().pitch = 0.;
+        app.world_mut()
+            .get_mut::<crate::gameplay::camera::PlayerView>(player)
+            .unwrap()
+            .0
+            .pitch = 20_f32.to_radians();
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyW);
+        app.update();
+        assert_eq!(app.world().get::<TankAim>(player).unwrap().pitch, 0.);
+    }
+
+    /// 玩家反向时，未完成的视差修正不能抵消或逆转主动调炮。
+    #[test]
+    fn active_input_wins_over_opposing_convergence() {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            TransformPlugin,
+            avian3d::prelude::PhysicsPlugins::default(),
+            PlayerPlugin,
+        ))
+        .init_resource::<ButtonInput<KeyCode>>()
+        .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
+            100,
+        )));
+        app.finish();
+        app.cleanup();
+        let spec = AimSpec {
+            traverse_range_deg: 360.,
+            traverse_speed_deg_s: 30.,
+            elevation_speed_deg_s: 9.,
+            min_elevation_deg: -9.,
+            max_elevation_deg: 20.,
+        };
+        let player = app
+            .world_mut()
+            .spawn((Tank, TankAim::default(), spec, Transform::default()))
+            .id();
+        app.update();
+        app.world_mut()
+            .get_mut::<crate::gameplay::camera::PlayerView>(player)
+            .unwrap()
+            .0
+            .yaw = 1.0;
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyD);
+        let before = app.world().get::<TankAim>(player).unwrap().yaw;
+        app.update();
+        let after = app.world().get::<TankAim>(player).unwrap().yaw;
+        let delta = (after - before + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU)
+            - std::f32::consts::PI;
+        assert!(delta < 0., "反向会聚不能覆盖玩家输入：{delta}");
     }
 
     /// 方向键映射：前后为油门、左右为转向，方向相反的按键互相抵消。

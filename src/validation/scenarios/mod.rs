@@ -199,6 +199,13 @@ pub(super) fn run_scenario(
     validate_scene(app.world_mut())?;
     scene::validate_concrete(app.world_mut())?;
     report.push_str("断言通过：唯一混凝土墩静态刚体、VOX 实例与实际网格尺寸、贴地位置\n");
+    if options.scenario == Scenario::Combat {
+        let world = app.world_mut();
+        let obstacles: Vec<_> = world.query_filtered::<Entity, With<crate::gameplay::obstacle::Concrete>>().iter(world).collect();
+        for obstacle in obstacles { world.despawn(obstacle); }
+        // 视线目标变化后给真实炮管受限会聚时间，不在开火帧瞬间转炮。
+        for _ in 0..120 { update(app, STEP, None)?; }
+    }
     if options.scenario == Scenario::Aiming {
         return aiming::run(app, options, report);
     }

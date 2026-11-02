@@ -4,6 +4,10 @@ use super::*;
 
 /// 将真实敌人调整为战斗测试布局；仍保留原有动态刚体、碰撞体和资源层级。
 pub(super) fn arrange_combat(world: &mut World) {
+    // 相机默认水平，向下瞄准平地靶车后再等待炮口实际会聚。
+    if let Ok(mut view) = world.query_filtered::<&mut crate::gameplay::camera::PlayerView, With<crate::gameplay::player::Tank>>().single_mut(world) {
+        view.0.pitch = -5_f32.to_radians();
+    }
     // 新敌人与玩家同高，在真实平地直接验证水平命中。
     let mut query = world.query_filtered::<Entity, With<crate::gameplay::enemy::EnemyTank>>();
     let mut enemies: Vec<_> = query.iter(world).collect();
@@ -32,19 +36,6 @@ pub(super) fn check(
     report: &mut String,
     failures: &mut Vec<String>,
 ) -> Result<(), String> {
-    if frame == 1 {
-        // 首帧移除出生点正前方 25 米的混凝土墩：它挡在玩家与 40 米靶车之间的
-        // 直射弹道上，1200 米/秒的子弹会在靶车之前撞墩自毁。通用墩断言已在
-        // 预热后执行完毕，此处移除不影响其它场景。
-        let concrete = app
-            .world_mut()
-            .query_filtered::<Entity, With<crate::gameplay::obstacle::Concrete>>()
-            .iter(app.world())
-            .collect::<Vec<_>>();
-        for entity in concrete {
-            app.world_mut().despawn(entity);
-        }
-    }
     if frame == 24 {
         let evidence = app.world().resource::<Evidence>();
         record_check(

@@ -1,26 +1,19 @@
-//! 已知几何布靶，观察完整预测→HUD→真实开火，不用预测生成预期接触位置。
-
+//! 对局相机、场景表面、实际炮口与固定十字的离屏验收。
 use super::*;
-use crate::gameplay::session::SessionEntity;
 use crate::gameplay::{
-    combat::firing::{self, Bullet, PlayerBarrel, ShotImpact, ShotPrediction},
+    camera::FollowCamera,
+    combat::firing::{self, PlayerBarrel, ShotImpact},
     enemy::EnemyTank,
-    hud::reticle::{EdgeArrow, HitRing, Reticle, ARROW_SIZE, EDGE_MARGIN},
+    hud::reticle::Reticle,
     obstacle::Concrete,
     player::Tank,
 };
 use crate::tank::articulation::TankAim;
-use avian3d::prelude::RigidBody;
-use avian3d::prelude::{SpatialQuery, SpatialQueryFilter};
 use bevy::ecs::{message::MessageCursor, system::RunSystemOnce};
 
-/// 保留真实玩家视角与模型，把目标固定到已知平面；每例通过空格实际发射。
+/// 布置远近不同的混凝土迎弹面，以独立平面几何验证最终炮口方向及真实首碰。
 pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Result<(), String> {
     let world = app.world_mut();
-    let player = world
-        .query_filtered::<Entity, With<Tank>>()
-        .single(world)
-        .map_err(|e| e.to_string())?;
     let enemies: Vec<_> = world
         .query_filtered::<Entity, With<EnemyTank>>()
         .iter(world)
@@ -32,413 +25,622 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
         .query_filtered::<Entity, With<Concrete>>()
         .single(world)
         .map_err(|e| e.to_string())?;
-    world.entity_mut(player).insert((
-        RigidBody::Static,
-        Transform::from_xyz(0., 4., 10.),
-        Position(Vec3::new(0., 4., 10.)),
-        Rotation::default(),
-        LinearVelocity::ZERO,
-    ));
-    let enemy_collision = world
-        .resource::<crate::tank::driving::TankConfigs>()
-        .enemy
-        .collision;
-    let enemy_visual = world
-        .resource::<AssetServer>()
-        .load("tank/enemy/carapace/body.vox");
-    // 距离、俯仰、偏航、遮挡、擦边及无命中；使用实际敌车圆角碰撞配置。
-    for (index, (distance, yaw, pitch, blocked, lateral, hit)) in [
-        (14., 0., 0., false, 0., true),
-        (40., 0., 20., false, 0., true),
-        (40., 0., -9., false, 0., true),
-        (40., 90., 0., false, 0., true),
-        (60., 0., 0., true, 0., true),
-        (
-            40.,
-            0.,
-            0.,
-            false,
-            enemy_collision.size[2] / 2. + 0.01,
-            true,
-        ),
-        (0., 0., 0., false, 0., true),
-        (2100., 0., 0., false, 0., false),
-        (350., 0., 0., false, 0., false),
-        (40., 0., 0., false, 5., false),
-        (40., 180., 0., false, 0., true),
-        (300., 0., 0., false, 0., true),
-        (325., 0., 0., false, 0., false),
-        // 抬炮远端无命中：方向终点投到画面上方之外，应出现边缘箭头。
-        (260., 0., 20., false, 5., false),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        let world = app.world_mut();
-        let old: Vec<_> = world
-            .query_filtered::<Entity, Or<(With<EnemyTank>, With<Bullet>)>>()
-            .iter(world)
-            .collect();
-        for entity in old {
-            world.despawn(entity);
-        }
-        *world.get_mut::<TankAim>(player).unwrap() = TankAim {
-            yaw: f32::to_radians(yaw),
-            pitch: f32::to_radians(pitch),
+    let player = world
+        .query_filtered::<Entity, With<Tank>>()
+        .single(world)
+        .map_err(|e| e.to_string())?;
+    let body = *world.get::<Transform>(player).ok_or("缺少玩家")?;
+    world
+        .get_mut::<crate::gameplay::camera::PlayerView>(player)
+        .ok_or("缺少视角")?
+        .0
+        .pitch = 0_f32.to_radians();
+    update(app, STEP, None)?;
+    // 使用真实 UI 布局结果检查窄屏、超宽屏和非 1 UI 缩放。
+    for (width, height, scale) in [(640, 720, 0.5), (1920, 720, 1.0), (1280, 720, 1.0)] {
+        let extent = bevy::render::render_resource::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
         };
+        for handle in [
+            app.world().resource::<Target>().0.clone(),
+            app.world()
+                .resource::<crate::app::transition::SceneTarget>()
+                .0
+                .clone(),
+        ] {
+            app.world_mut()
+                .resource_mut::<Assets<Image>>()
+                .get_mut(&handle)
+                .ok_or("缺少渲染目标")?
+                .resize(extent);
+        }
+        app.world_mut().resource_mut::<UiScale>().0 = scale;
+        for _ in 0..3 {
+            update(app, STEP, None)?;
+        }
+        check_layout(app.world_mut())?;
+        let world = app.world_mut();
+        let (node, transform) = world
+            .query_filtered::<(&ComputedNode, &UiTransform), With<Reticle>>()
+            .single(world)
+            .map_err(|e| e.to_string())?;
+        ensure(
+            (node.size * transform.scale).distance(Vec2::splat(28.)) < 0.1,
+            "缩放后的十字尺寸异常",
+        )?;
+        capture(
+            app,
+            &options
+                .output
+                .join(format!("reticle-layout-{width}x{height}.png")),
+        )?;
+    }
+    // 无 Winit 的窗口组件只提供显示缩放信息，不创建系统窗口。
+    let simulated_window = app
+        .world_mut()
+        .spawn((
+            Window {
+                focused: true,
+                resolution: bevy::window::WindowResolution::new(1280, 720)
+                    .with_scale_factor_override(1.5),
+                ..default()
+            },
+            super::articulation::SimulatedFocus,
+        ))
+        .id();
+    for _ in 0..3 {
         update(app, STEP, None)?;
+    }
+    let world = app.world_mut();
+    let target_state = format!("{:?}", world.query_filtered::<&bevy::camera::RenderTarget, With<FollowCamera>>().single(world).map_err(|e| e.to_string())?);
+    let window_scale = world.query::<&Window>().single(world).map_err(|e| e.to_string())?.resolution.scale_factor();
+    let viewport = world
+        .query_filtered::<&Camera, With<FollowCamera>>()
+        .single(world)
+        .map_err(|e| e.to_string())?
+        .logical_viewport_rect()
+        .ok_or("缩放后视口未就绪")?;
+    let (node, center, transform) = world
+        .query_filtered::<(&ComputedNode, &UiGlobalTransform, &UiTransform), With<Reticle>>()
+        .single(world)
+        .map_err(|e| e.to_string())?;
+    ensure(
+        (center.translation / 1.5).distance(viewport.center()) <= 2.0
+            && (node.size * transform.scale / 1.5).distance(Vec2::splat(28.)) < 0.1,
+        &format!("1.5 显示缩放下实际十字中心或尺寸错误：center={:?} viewport={:?} size={:?} transform={:?} window={} target={}", center.translation, viewport, node.size, transform.scale, window_scale, target_state),
+    )?;
+    capture(app, &options.output.join("reticle-display-scale-1.5.png"))?;
+    app.world_mut().despawn(simulated_window);
+    for _ in 0..3 {
+        update(app, STEP, None)?;
+    }
+    report.push_str("实际 UI 布局：640×720、1920×720、1280×720、0.5 UI 缩放及 1.5 显示缩放居中，尺寸 28 逻辑像素\n");
+    for (index, distance) in [80.0, 50.0, 26.0, 110.0].into_iter().enumerate() {
+        let camera = *app
+            .world_mut()
+            .query_filtered::<&Transform, With<FollowCamera>>()
+            .single(app.world())
+            .map_err(|e| e.to_string())?;
+        let center = camera.translation + camera.forward().as_vec3() * distance;
+        app.world_mut().entity_mut(concrete).insert((
+            Transform::from_translation(center).with_rotation(body.rotation),
+            Position(center),
+            Rotation(body.rotation),
+        ));
+        let rear_enemy = if index == 1 {
+            let position = camera.translation + camera.forward().as_vec3() * 110.;
+            Some(
+                app.world_mut()
+                    .spawn((
+                        EnemyTank,
+                        crate::gameplay::session::SessionEntity,
+                        avian3d::prelude::RigidBody::Static,
+                        avian3d::prelude::Collider::cuboid(6., 4., 4.),
+                        Transform::from_translation(position),
+                        Position(position),
+                        Rotation::default(),
+                    ))
+                    .id(),
+            )
+        } else {
+            None
+        };
+        let mut previous = *app.world().get::<TankAim>(player).ok_or("缺少炮塔状态")?;
+        for _ in 0..360 {
+            update(app, STEP, None)?;
+            let aim = *app.world().get::<TankAim>(player).ok_or("缺少炮塔状态")?;
+            let yaw = (aim.yaw - previous.yaw + std::f32::consts::PI)
+                .rem_euclid(std::f32::consts::TAU)
+                - std::f32::consts::PI;
+            ensure(
+                yaw.abs() <= 30_f32.to_radians() / 60.0 + 1e-5
+                    && (aim.pitch - previous.pitch).abs() <= 9_f32.to_radians() / 60.0 + 1e-5,
+                "会聚超过角速度上限",
+            )?;
+            previous = aim;
+        }
         let world = app.world_mut();
         let barrel = *world
             .query_filtered::<&GlobalTransform, With<PlayerBarrel>>()
             .single(world)
             .map_err(|e| e.to_string())?;
-        let direction = barrel.rotation() * Vec3::NEG_X;
-        let side = barrel.rotation() * Vec3::Z;
         let muzzle =
             barrel.transform_point(Vec3::from_array(crate::tank::model::astra::MUZZLE_POSITION));
-        let position = muzzle + direction * distance + side * lateral;
-        let rotation = barrel.rotation();
-        let enemy = world
-            .spawn((
-                EnemyTank,
-                SessionEntity,
-                crate::tank::driving::body_for_collision(enemy_collision),
-                WorldAssetRoot(enemy_visual.clone()),
-                Transform::from_translation(position).with_rotation(rotation),
-                Position(position),
-                Rotation(rotation),
-            ))
-            .id();
-        world.entity_mut(enemy).insert(RigidBody::Static);
-        // 后靶确保首个碰撞对象不会错误选择远处目标。
-        let rear = position + direction * 8.;
-        let rear_enemy = world
-            .spawn((
-                EnemyTank,
-                SessionEntity,
-                crate::tank::driving::body_for_collision(enemy_collision),
-                WorldAssetRoot(enemy_visual.clone()),
-                Transform::from_translation(rear).with_rotation(rotation),
-                Position(rear),
-                Rotation(rotation),
-            ))
-            .id();
-        world.entity_mut(rear_enemy).insert(RigidBody::Static);
-        let obstacle_position = if blocked {
-            muzzle + direction * 20.
-        } else {
-            Vec3::new(100., 0., 100.)
-        };
-        world.entity_mut(concrete).insert((
-            Transform::from_translation(obstacle_position).with_rotation(rotation),
-            Position(obstacle_position),
-            Rotation(rotation),
-        ));
-        for _ in 0..3 {
-            update(app, STEP, None)?;
-        }
-        let world = app.world_mut();
-        let predicted = world.resource::<ShotPrediction>().0.ok_or("预测未就绪")?;
-        // 依据已知地面坐标和围墙位置确定首碰，不从预测结果推导预期。
-        let ground: Vec<_> = world.query_filtered::<Entity, With<crate::terrain::TerrainSurface>>().iter(world).collect();
-        let expected_target = match index {
-            2 => world.run_system_once(move |spatial: SpatialQuery| {
-                spatial.cast_ray_predicate(
-                    Vec3::new(-31.5, 2., 9.98), Dir3::NEG_Y, 4., true,
-                    &SpatialQueryFilter::default(), &|entity| ground.contains(&entity),
-                ).map(|hit| hit.entity)
-            }).map_err(|e| e.to_string())?,
-            7 | 8 | 9 | 11 | 12 => world
-                .query_filtered::<(Entity, &Transform), With<crate::terrain::TerrainWall>>()
-                .iter(world).find(|(_, transform)| transform.translation.x < -300.)
-                .map(|(entity, _)| entity),
-            _ => hit.then_some(if blocked { concrete } else { enemy }),
-        };
-        ensure(!matches!(index, 2 | 7 | 8 | 9 | 11 | 12) || expected_target.is_some(), "已知地面或围墙未找到")?;
-        ensure(
-            predicted.target == expected_target,
-            &format!("案例 {index} 最近目标错误：{predicted:?}"),
-        )?;
-        if expected_target == Some(enemy) && distance > 0. && lateral == 0. && !blocked {
-            let face = muzzle + direction * (distance - enemy_collision.size[0] / 2.);
-            // 接触面上两个切向坐标不是唯一值，只检查独立已知迎弹平面的法向距离。
+        let direction = barrel.rotation() * Vec3::NEG_X;
+        // 靶面为车体局部 X 方向上的已知平面；视线与炮口分别交该平面。
+        let normal = body.rotation * Vec3::X;
+        let plane = center + normal * 0.7;
+        let camera = *world
+            .query_filtered::<&Transform, With<FollowCamera>>()
+            .single(world)
+            .map_err(|e| e.to_string())?;
+        let ray = camera.forward().as_vec3();
+        let view_point =
+            camera.translation + ray * ((plane - camera.translation).dot(normal) / ray.dot(normal));
+        let gun_point = muzzle + direction * ((plane - muzzle).dot(normal) / direction.dot(normal));
+        if distance == 26.0 {
             ensure(
-                (predicted.point - face).dot(direction).abs() <= 0.01,
-                "预测接触点不在已知迎弹面",
+                previous.pitch.to_degrees() > 19.9 && view_point.distance(gun_point) > 1.0,
+                &format!(
+                    "不可达近目标未保持俯仰上限：角度 {}°，平面误差 {} 米",
+                    previous.pitch.to_degrees(),
+                    view_point.distance(gun_point)
+                ),
+            )?;
+        } else {
+            ensure(
+                view_point.distance(gun_point) < 0.15,
+                &format!("静态迎弹面未会聚：{} 米", view_point.distance(gun_point)),
             )?;
         }
-        if lateral > 0. && hit {
-            let ray_hit = world
-                .run_system_once(move |spatial: SpatialQuery| {
-                    spatial.cast_ray_predicate(
-                        muzzle,
-                        Dir3::new(direction).unwrap(),
-                        100.,
-                        true,
-                        &SpatialQueryFilter::default(),
-                        &|target| target == enemy,
-                    )
-                })
-                .map_err(|e| e.to_string())?;
-            ensure(ray_hit.is_none(), "擦边用例的中心射线意外命中")?;
-        }
-        ensure(predicted.point.is_finite(), "起始重叠产生无效点")?;
-        check_layout(world, predicted.point, expected_target.is_some())?;
-        super::wait_render(app, false)?;
+        check_layout(world)?;
+        wait_render(app, false)?;
         capture(app, &options.image_path(index as u32))?;
+        if distance == 26.0 {
+            let initial_view = app
+                .world()
+                .get::<crate::gameplay::camera::PlayerView>(player)
+                .ok_or("缺少视角")?
+                .0
+                .pitch;
+            for _ in 0..30 {
+                update(app, STEP, Some(2))?;
+            }
+            let held_view = app
+                .world()
+                .get::<crate::gameplay::camera::PlayerView>(player)
+                .ok_or("缺少视角")?
+                .0
+                .pitch;
+            ensure(
+                (held_view - initial_view).abs() < 1e-6,
+                "炮管触限后仍积累视角输入",
+            )?;
+            update(app, STEP, None)?;
+            ensure(
+                (app.world()
+                    .get::<crate::gameplay::camera::PlayerView>(player)
+                    .ok_or("缺少视角")?
+                    .0
+                    .pitch
+                    - held_view)
+                    .abs()
+                    < 1e-6,
+                "松键后视角执行了积压输入",
+            )?;
+            report.push_str("26 米：不可达时保持俯仰上限与中心十字，持续抬炮不积压视角\n");
+            continue;
+        }
+        firing::reset_session(app.world_mut());
         let mut cursor = MessageCursor::<ShotImpact>::default();
         cursor.clear(app.world().resource::<Messages<ShotImpact>>());
-        firing::reset_session(app.world_mut());
         update(app, STEP, Some(1))?;
-        let fired_direction = app.world_mut().query::<&Bullet>().single(app.world())
-            .map_err(|e| format!("案例 {index} 未生成弹丸：{e}"))?.direction;
-        ensure(fired_direction.abs_diff_eq(direction, 1e-5), "弹丸初始方向与炮管世界方向不一致")?;
-        let mut actual = None;
-        for _ in 0..110 {
+        let mut impact = None;
+        for _ in 0..60 {
             update(app, STEP, None)?;
-            actual = cursor
+            impact = cursor
                 .read(app.world().resource::<Messages<ShotImpact>>())
                 .next()
                 .copied();
-            if actual.is_some() {
+            if impact.is_some() {
                 break;
             }
         }
         ensure(
-            actual.map(|impact| impact.target) == expected_target,
-            &format!("案例 {index} 真实首碰 {:?}，预期 {:?}", actual.map(|impact| impact.target), expected_target),
+            impact.is_some_and(|hit| hit.target == concrete && hit.point.is_finite()),
+            "实际弹丸未首先命中混凝土",
         )?;
-        if let Some(actual) = actual {
-            if actual.target != enemy {
-                ensure(app.world().get_entity(enemy).is_ok(), "前方障碍未保护靶车")?;
-                ensure(app.world().get_entity(actual.target).is_ok(), "环境命中后被销毁")?;
-            }
-            ensure(app.world().get_entity(rear_enemy).is_ok(), "远处靶车不应被首碰击毁")?;
-            if actual.target == enemy {
-                ensure(
-                    app.world()
-                        .resource::<ShotPrediction>()
-                        .0
-                        .is_none_or(|shot| shot.target != Some(enemy)),
-                    "敌人销毁后仍保留旧命中",
-                )?;
-            }
+        if let Some(enemy) = rear_enemy {
             ensure(
-                actual.point.distance(predicted.point) <= 0.01,
-                &format!(
-                    "真实接触点与预测偏差：{:?} / {:?}",
-                    actual.point, predicted.point
-                ),
+                app.world().get_entity(enemy).is_ok(),
+                "近混凝土未保护后方敌人",
             )?;
+            app.world_mut().despawn(enemy);
+            report.push_str("近混凝土与远敌车同在视线：取近表面、实射首碰混凝土且远敌存活\n");
         }
-        if index == 0 {
-            update(app, STEP, Some(2))?;
-            let current = app
-                .world()
-                .resource::<ShotPrediction>()
-                .0
-                .ok_or("装填中未更新准星")?;
-            ensure(
-                app.world().resource::<firing::Gun>().reload_progress() < 1.,
-                "装填状态异常",
-            )?;
-            ensure(
-                current.point.distance(predicted.point) > 0.01,
-                "真实调炮后仍保留旧位置",
-            )?;
-            check_layout(app.world_mut(), current.point, current.target.is_some())?;
-        }
-        report.push_str(&format!("案例 {index} 通过：距离={distance} 俯仰={pitch} 偏航={yaw} 遮挡={blocked} 擦边={lateral}；预测={predicted:?}；真实首碰及接触误差≤0.01m；HUD≤2px\n"));
+        report.push_str(&format!(
+            "距离 {distance} 米：中心十字、逐帧限速、独立迎弹面会聚与混凝土实射通过\n"
+        ));
     }
-    // 缺失活动炮管/相机和非有限预测须在同帧隐藏，不能遗留旧准星。
-    let barrel = app
+    // 近敌车与远混凝土同处视线，必须按距离取点并实射先击毁近靶。
+    let camera = *app
         .world_mut()
-        .query_filtered::<Entity, With<PlayerBarrel>>()
+        .query_filtered::<&Transform, With<FollowCamera>>()
         .single(app.world())
         .map_err(|e| e.to_string())?;
-    app.world_mut().entity_mut(barrel).remove::<PlayerBarrel>();
+    let ray = camera.forward().as_vec3();
+    let near_position = camera.translation + ray * 50.;
+    let far_position = camera.translation + ray * 80.;
+    app.world_mut().entity_mut(concrete).insert((
+        Transform::from_translation(far_position),
+        Position(far_position),
+        Rotation::default(),
+    ));
+    let enemy = app
+        .world_mut()
+        .spawn((
+            EnemyTank,
+            crate::gameplay::session::SessionEntity,
+            avian3d::prelude::RigidBody::Static,
+            avian3d::prelude::Collider::cuboid(6., 4., 4.),
+            Transform::from_translation(near_position),
+            Position(near_position),
+            Rotation::default(),
+        ))
+        .id();
+    for _ in 0..360 {
+        update(app, STEP, None)?;
+    }
+    let barrel = *app
+        .world_mut()
+        .query_filtered::<&GlobalTransform, With<PlayerBarrel>>()
+        .single(app.world())
+        .map_err(|e| e.to_string())?;
+    let muzzle =
+        barrel.transform_point(Vec3::from_array(crate::tank::model::astra::MUZZLE_POSITION));
+    let direction = barrel.rotation() * Vec3::NEG_X;
+    let normal = body.rotation * Vec3::X;
+    let face = near_position + normal * 3.;
+    let view_point =
+        camera.translation + ray * ((face - camera.translation).dot(normal) / ray.dot(normal));
+    let gun_point = muzzle + direction * ((face - muzzle).dot(normal) / direction.dot(normal));
+    ensure(
+        view_point.distance(gun_point) < 0.15,
+        "近敌车与远混凝土同时在视线时未会聚到近敌车",
+    )?;
+    firing::reset_session(app.world_mut());
+    let mut cursor = MessageCursor::<ShotImpact>::default();
+    cursor.clear(app.world().resource::<Messages<ShotImpact>>());
+    update(app, STEP, Some(1))?;
+    let mut impact = None;
+    for _ in 0..30 {
+        update(app, STEP, None)?;
+        impact = cursor
+            .read(app.world().resource::<Messages<ShotImpact>>())
+            .next()
+            .copied();
+        if impact.is_some() {
+            break;
+        }
+    }
+    ensure(
+        impact.is_some_and(|hit| hit.target == enemy) && app.world().get_entity(concrete).is_ok(),
+        "近敌车未首先截获实际弹丸",
+    )?;
+    for _ in 0..360 {
+        update(app, STEP, None)?;
+    }
+    let barrel = *app
+        .world_mut()
+        .query_filtered::<&GlobalTransform, With<PlayerBarrel>>()
+        .single(app.world())
+        .map_err(|e| e.to_string())?;
+    let muzzle =
+        barrel.transform_point(Vec3::from_array(crate::tank::model::astra::MUZZLE_POSITION));
+    let direction = barrel.rotation() * Vec3::NEG_X;
+    let face = far_position + normal * 0.7;
+    let view_point =
+        camera.translation + ray * ((face - camera.translation).dot(normal) / ray.dot(normal));
+    let gun_point = muzzle + direction * ((face - muzzle).dot(normal) / direction.dot(normal));
+    ensure(
+        view_point.distance(gun_point) < 0.15,
+        "近敌车删除后未重新会聚后方混凝土",
+    )?;
+    report.push_str("近敌车与远混凝土同在视线：独立迎弹面会聚及实射首碰近敌车通过；目标删除后重新会聚后方表面\n");
+
+    // 水平视线在场地内壁 x=-300 米命中围墙；用独立已知平面验证会聚。
+    app.world_mut().entity_mut(concrete).insert((
+        Transform::from_xyz(100., 0., 100.),
+        Position(Vec3::new(100., 0., 100.)),
+    ));
+    for _ in 0..360 {
+        update(app, STEP, None)?;
+    }
+    let world = app.world_mut();
+    let camera = *world
+        .query_filtered::<&Transform, With<FollowCamera>>()
+        .single(world)
+        .map_err(|e| e.to_string())?;
+    let barrel = *world
+        .query_filtered::<&GlobalTransform, With<PlayerBarrel>>()
+        .single(world)
+        .map_err(|e| e.to_string())?;
+    let muzzle =
+        barrel.transform_point(Vec3::from_array(crate::tank::model::astra::MUZZLE_POSITION));
+    let ray = camera.forward().as_vec3();
+    let gun = barrel.rotation() * Vec3::NEG_X;
+    let view_point = camera.translation + ray * ((-300. - camera.translation.x) / ray.x);
+    let gun_point = muzzle + gun * ((-300. - muzzle.x) / gun.x);
+    ensure(
+        view_point.distance(gun_point) < 0.2,
+        "炮口未会聚到竞技场围墙内壁",
+    )?;
+    wait_render(app, false)?;
+    capture(app, &options.output.join("wall-convergence.png"))?;
+    report.push_str("围墙：以已知 x=-300 米内壁独立几何验证最近表面会聚\n");
+
+    // 天空无场景交点时，用与弹丸射程一致的有限远点检查炮口方向。
+    app.world_mut()
+        .get_mut::<crate::gameplay::camera::PlayerView>(player)
+        .ok_or("缺少视角")?
+        .0
+        .pitch = 5_f32.to_radians();
+    app.world_mut().entity_mut(concrete).insert((
+        Transform::from_xyz(100., 0., 100.),
+        Position(Vec3::new(100., 0., 100.)),
+    ));
+    for _ in 0..360 {
+        update(app, STEP, None)?;
+    }
+    let world = app.world_mut();
+    let camera = *world
+        .query_filtered::<&Transform, With<FollowCamera>>()
+        .single(world)
+        .map_err(|e| e.to_string())?;
+    let barrel = *world
+        .query_filtered::<&GlobalTransform, With<PlayerBarrel>>()
+        .single(world)
+        .map_err(|e| e.to_string())?;
+    let muzzle =
+        barrel.transform_point(Vec3::from_array(crate::tank::model::astra::MUZZLE_POSITION));
+    let gun = barrel.rotation() * Vec3::NEG_X;
+    let fallback = camera.translation + camera.forward().as_vec3() * 2000.;
+    ensure(
+        (fallback - muzzle).cross(gun).length() < 0.15,
+        "天空有限远参照未会聚",
+    )?;
+    wait_render(app, false)?;
+    capture(app, &options.output.join("sky-fallback.png"))?;
+    report.push_str("天空：无交点时炮口会聚至 2000 米有限参照\n");
+
+    // 从天空持续抬炮，验证实际炮管可达到车型 +20° 而不是被相机俯角截断。
+    for _ in 0..180 {
+        update(app, STEP, Some(2))?;
+    }
+    let aim = *app.world().get::<TankAim>(player).ok_or("缺少炮塔")?;
+    ensure(
+        (aim.pitch.to_degrees() - 20.).abs() < 0.1,
+        &format!("天空持续抬炮未达到实际 +20°：{}", aim.pitch.to_degrees()),
+    )?;
+    let before = app
+        .world()
+        .get::<crate::gameplay::camera::PlayerView>(player)
+        .ok_or("缺少视角")?
+        .0
+        .pitch;
+    for _ in 0..20 {
+        update(app, STEP, None)?;
+    }
+    let after = app
+        .world()
+        .get::<crate::gameplay::camera::PlayerView>(player)
+        .ok_or("缺少视角")?
+        .0
+        .pitch;
+    ensure((after - before).abs() < 1e-6, "松键后视角继续运动")?;
+    wait_render(app, false)?;
+    capture(app, &options.output.join("sky-elevation-limit.png"))?;
+    report.push_str("天空持续输入：实际炮管达到 +20°，松键视角立即停止\n");
+    app.world_mut()
+        .get_mut::<crate::gameplay::camera::PlayerView>(player)
+        .ok_or("缺少视角")?
+        .0
+        .pitch = 0_f32.to_radians();
+    for _ in 0..240 {
+        update(app, STEP, None)?;
+    }
+
+    // 相机位于障碍内时没有可靠的远侧表面；只要求姿态有限且限速。
+    let camera = *app
+        .world_mut()
+        .query_filtered::<&Transform, With<FollowCamera>>()
+        .single(app.world())
+        .map_err(|e| e.to_string())?;
+    app.world_mut().entity_mut(concrete).insert((
+        Transform::from_translation(camera.translation),
+        Position(camera.translation),
+    ));
+    let mut previous = *app.world().get::<TankAim>(player).ok_or("缺少炮塔")?;
+    for _ in 0..60 {
+        update(app, STEP, None)?;
+        let aim = *app.world().get::<TankAim>(player).ok_or("缺少炮塔")?;
+        let yaw = (aim.yaw - previous.yaw + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU)
+            - std::f32::consts::PI;
+        ensure(
+            aim.yaw.is_finite()
+                && aim.pitch.is_finite()
+                && yaw.abs() <= 30_f32.to_radians() / 60. + 1e-5
+                && (aim.pitch - previous.pitch).abs() <= 9_f32.to_radians() / 60. + 1e-5,
+            "相机与障碍重叠时姿态非法或超速",
+        )?;
+        previous = aim;
+    }
+    check_layout(app.world_mut())?;
+    // 移开障碍，以已知 y=0 地平面独立验证会聚；不使用业务射线结果作预期。
+    app.world_mut().entity_mut(concrete).insert((
+        Transform::from_xyz(100., 0., 100.),
+        Position(Vec3::new(100., 0., 100.)),
+    ));
+    app.world_mut()
+        .get_mut::<crate::gameplay::camera::PlayerView>(player)
+        .ok_or("缺少视角")?
+        .0
+        .pitch = -5_f32.to_radians();
+    for _ in 0..360 {
+        update(app, STEP, None)?;
+    }
+    let world = app.world_mut();
+    let camera = *world
+        .query_filtered::<&Transform, With<FollowCamera>>()
+        .single(world)
+        .map_err(|e| e.to_string())?;
+    let barrel = *world
+        .query_filtered::<&GlobalTransform, With<PlayerBarrel>>()
+        .single(world)
+        .map_err(|e| e.to_string())?;
+    let muzzle =
+        barrel.transform_point(Vec3::from_array(crate::tank::model::astra::MUZZLE_POSITION));
+    let gun = barrel.rotation() * Vec3::NEG_X;
+    let view = camera.forward().as_vec3();
+    let ground_view = camera.translation - view * (camera.translation.y / view.y);
+    let ground_gun = muzzle - gun * (muzzle.y / gun.y);
+    ensure(
+        ground_view.distance(ground_gun) < 0.2,
+        "未对准已知地平面交点",
+    )?;
+    wait_render(app, false)?;
+    capture(app, &options.output.join("ground-convergence.png"))?;
+    report.push_str("相机与障碍重叠：姿态有限且限速；地面独立几何会聚通过\n");
+    app.world_mut()
+        .get_mut::<crate::gameplay::camera::PlayerView>(player)
+        .ok_or("缺少视角")?
+        .0
+        .pitch = 0_f32.to_radians();
     update(app, STEP, None)?;
+
+    // 相机看见远靶，但近障碍只挡实际炮口，真实弹丸必须先命中障碍。
+    let world = app.world_mut();
+    world.entity_mut(concrete).insert((
+        Transform::from_xyz(100., 0., 100.),
+        Position(Vec3::new(100., 0., 100.)),
+    ));
+    let camera = *world
+        .query_filtered::<&Transform, With<FollowCamera>>()
+        .single(world)
+        .map_err(|e| e.to_string())?;
+    let target_position = camera.translation + camera.forward().as_vec3() * 80.;
+    let visual = world
+        .resource::<AssetServer>()
+        .load("tank/enemy/carapace/body.vox");
+    let enemy = world
+        .spawn((
+            EnemyTank,
+            crate::gameplay::session::SessionEntity,
+            WorldAssetRoot(visual),
+            avian3d::prelude::RigidBody::Static,
+            avian3d::prelude::Collider::cuboid(6., 4., 4.),
+            Transform::from_translation(target_position),
+            Position(target_position),
+            Rotation::default(),
+        ))
+        .id();
+    for _ in 0..360 {
+        update(app, STEP, None)?;
+    }
+    let barrel = *app
+        .world_mut()
+        .query_filtered::<&GlobalTransform, With<PlayerBarrel>>()
+        .single(app.world())
+        .map_err(|e| e.to_string())?;
+    let muzzle =
+        barrel.transform_point(Vec3::from_array(crate::tank::model::astra::MUZZLE_POSITION));
+    let direction = barrel.rotation() * Vec3::NEG_X;
+    let obstacle = muzzle + direction * 8. - Vec3::Y * 1.5;
+    app.world_mut().entity_mut(concrete).insert((
+        Transform::from_translation(obstacle),
+        Position(obstacle),
+        Rotation::default(),
+    ));
+    for _ in 0..3 {
+        update(app, STEP, None)?;
+    }
+    let camera = *app
+        .world_mut()
+        .query_filtered::<&Transform, With<FollowCamera>>()
+        .single(app.world())
+        .map_err(|e| e.to_string())?;
+    let ray_hit = app
+        .world_mut()
+        .run_system_once(move |spatial: avian3d::prelude::SpatialQuery| {
+            spatial.cast_ray_predicate(
+                camera.translation,
+                camera.forward(),
+                2000.,
+                true,
+                &avian3d::prelude::SpatialQueryFilter::default(),
+                &|entity| entity == concrete || entity == enemy,
+            )
+        })
+        .map_err(|e| e.to_string())?;
     ensure(
-        app.world().resource::<ShotPrediction>().0.is_none(),
-        "炮管缺失后仍保留预测",
+        ray_hit.is_some_and(|hit| hit.entity == enemy),
+        "近障碍遮住了相机视线，无法验证视差遮挡",
     )?;
+    wait_render(app, false)?;
+    capture(
+        app,
+        &options.output.join("camera-visible-muzzle-blocked.png"),
+    )?;
+    firing::reset_session(app.world_mut());
+    let mut cursor = MessageCursor::<ShotImpact>::default();
+    cursor.clear(app.world().resource::<Messages<ShotImpact>>());
+    update(app, STEP, Some(1))?;
+    let mut impact = None;
+    for _ in 0..30 {
+        update(app, STEP, None)?;
+        impact = cursor
+            .read(app.world().resource::<Messages<ShotImpact>>())
+            .next()
+            .copied();
+        if impact.is_some() {
+            break;
+        }
+    }
     ensure(
-        app.world_mut()
-            .query_filtered::<&Node, With<Reticle>>()
-            .single(app.world())
-            .unwrap()
-            .display
-            == Display::None,
-        "炮管缺失后准星未隐藏",
+        impact.is_some_and(|hit| hit.target == concrete) && app.world().get_entity(enemy).is_ok(),
+        "炮口近障碍未保护相机可见的远靶",
     )?;
-    ensure(
-        app.world_mut()
-            .query_filtered::<&Node, With<EdgeArrow>>()
-            .single(app.world())
-            .unwrap()
-            .display
-            == Display::None,
-        "炮管缺失后边缘箭头未隐藏",
-    )?;
-    crate::gameplay::session::cleanup(app.world_mut());
-    ensure(
-        app.world_mut()
-            .query_filtered::<Entity, Or<(With<Reticle>, With<EdgeArrow>)>>()
-            .iter(app.world())
-            .count()
-            == 0
-            && app.world().resource::<ShotPrediction>().0.is_none(),
-        "退出对局残留准星、边缘箭头或预测",
-    )?;
+    app.world_mut().despawn(enemy);
+    for _ in 0..3 {
+        update(app, STEP, None)?;
+    }
+    check_layout(app.world_mut())?;
     report.push_str(
-        "缺失炮管即时隐藏、已毁目标刷新、对局统一清理通过；抬炮画面外显示钳制边缘箭头，十字与命中圆不叠加。\n",
+        "远靶在相机视线上、炮口被近障碍遮挡：真实首碰混凝土，远靶存活；删除远靶后十字仍居中\n",
     );
     Ok(())
 }
 
-/// 布局校验的独立三态分类；Hidden 表示相机后方、近面或无效投影。
-enum Placement {
-    Inside(Vec2),
-    Edge(Vec2, f32),
-    Hidden,
-}
-
-/// 最终布局对比相机投影与边缘钳制规则，读取布局结果而非 Node 输入值。
-///
-/// 独立复算三态：画面内显示十字（命中加圆），画面外显示钳制后的边缘箭头
-///（不显示命中圆），后方/近面/无效全部隐藏；期望值来自相机 API 与规格常量。
-pub(super) fn check_layout(world: &mut World, point: Vec3, hit: bool) -> Result<(), String> {
-    let (camera, transform) = world
-        .query_filtered::<(&Camera, &GlobalTransform), With<crate::gameplay::camera::FollowCamera>>(
-        )
+/// 比较实际布局结果与游戏相机逻辑视口中心。
+pub(super) fn check_layout(world: &mut World) -> Result<(), String> {
+    let viewport = world
+        .query_filtered::<&Camera, With<FollowCamera>>()
         .single(world)
-        .map_err(|e| e.to_string())?;
-    let viewport = camera.logical_viewport_rect().ok_or("相机无视口")?;
-    let projected = camera
-        .world_to_viewport(transform, point)
-        .ok()
-        .filter(|position| {
-            let ndc_ok = camera
-                .world_to_ndc(transform, point)
-                .is_some_and(|ndc| ndc.is_finite() && ndc.z > 0. && ndc.z < 1.);
-            ndc_ok && position.is_finite()
-        })
-        .map(|position| position - viewport.min);
-    let inset = EDGE_MARGIN + ARROW_SIZE / 2.;
-    let placement = projected.map(|local| {
-        if local.cmpge(Vec2::ZERO).all() && local.cmple(viewport.size()).all() {
-            Placement::Inside(local)
-        } else if viewport.size().cmplt(Vec2::splat(inset * 2.)).any() {
-            Placement::Hidden
-        } else {
-            Placement::Edge(
-                local.clamp(Vec2::splat(inset), viewport.size() - Vec2::splat(inset)),
-                (local - viewport.size() / 2.).y.atan2((local - viewport.size() / 2.).x),
-            )
-        }
-    });
-    // 先拷出 Copy 状态再继续查询，避免不可变借用与后续 world 查询冲突。
-    let reticle = world
+        .map_err(|e| e.to_string())?
+        .logical_viewport_rect()
+        .ok_or("视口尚未就绪")?;
+    let (node, computed, transform) = world
         .query_filtered::<(&Node, &ComputedNode, &UiGlobalTransform), With<Reticle>>()
         .single(world)
         .map_err(|e| e.to_string())?;
-    let (reticle_display, reticle_size, reticle_center) =
-        (reticle.0.display, reticle.1.size, reticle.2.translation);
-    let arrow = world
-        .query_filtered::<(&Node, &ComputedNode, &UiGlobalTransform, &UiTransform), With<EdgeArrow>>()
-        .single(world)
-        .map_err(|e| e.to_string())?;
-    let (arrow_display, arrow_size, arrow_center, arrow_rotation) =
-        (arrow.0.display, arrow.1.size, arrow.2.translation, arrow.3.rotation);
-    let ring_display = world
-        .query_filtered::<&Node, With<HitRing>>()
-        .single(world)
-        .map_err(|e| e.to_string())?
-        .display;
-    match placement {
-        Some(Placement::Inside(center)) => {
-            ensure(
-                reticle_display != Display::None && reticle_size == Vec2::splat(28.),
-                "准星没有完成当帧28px布局",
-            )?;
-            ensure(
-                reticle_center.distance(center) <= 2.,
-                "最终准星中心与投影偏差超过2px",
-            )?;
-            ensure(
-                arrow_display == Display::None,
-                "画面内不应显示边缘箭头",
-            )?;
-            let gap = Rect::from_center_size(reticle_center, Vec2::splat(4.));
-            let root = world
-                .query_filtered::<Entity, With<Reticle>>()
-                .single(world)
-                .unwrap();
-            let mut bars = world.query::<(
-                &BackgroundColor,
-                &ComputedNode,
-                &UiGlobalTransform,
-                &ChildOf,
-            )>();
-            for (color, computed, transform, parent) in bars.iter(world) {
-                let belongs = parent.parent() == root
-                    || world
-                        .get::<ChildOf>(parent.parent())
-                        .is_some_and(|parent| parent.parent() == root);
-                if belongs && color.0 != Color::NONE {
-                    let occupied = Rect::from_center_size(transform.translation, computed.size);
-                    let overlap = occupied.intersect(gap);
-                    ensure(
-                        overlap.width() <= 0. || overlap.height() <= 0.,
-                        "十字或描边侵入4×4透明空隙",
-                    )?;
-                }
-            }
-            ensure(
-                (ring_display != Display::None) == hit,
-                "命中圆语义错误",
-            )?;
-        }
-        Some(Placement::Edge(anchor, angle)) => {
-            // 边缘箭头只表示方向：中心钳制在距边缘至少 inset（框边 ≥24 逻辑
-            // 像素）、旋转角与复算方向一致，十字与命中圆都不显示。
-            ensure(
-                arrow_display != Display::None,
-                "画面外未显示边缘箭头",
-            )?;
-            ensure(
-                anchor.is_finite() && angle.is_finite(),
-                "边缘箭头坐标或角度非有限",
-            )?;
-            let min = viewport.min + Vec2::splat(inset);
-            let max = viewport.max - Vec2::splat(inset);
-            ensure(
-                arrow_center.cmpge(min).all() && arrow_center.cmple(max).all(),
-                &format!("边缘箭头越界：{arrow_center:?} 不在 [{min:?}, {max:?}]"),
-            )?;
-            // Rot2 用 sin/cos 反解角度，避免直接依赖 to_radians 的 API 差异。
-            let actual_angle = arrow_rotation.sin.atan2(arrow_rotation.cos);
-            ensure(
-                (actual_angle - angle).abs() < 1e-3,
-                &format!("边缘箭头指向 {actual_angle} 与复算方向 {angle} 不符"),
-            )?;
-            ensure(
-                arrow_size == Vec2::splat(ARROW_SIZE),
-                "边缘箭头尺寸错误",
-            )?;
-            ensure(
-                reticle_display == Display::None && ring_display == Display::None,
-                "画面外仍显示十字或命中圆",
-            )?;
-        }
-        _ => {
-            ensure(
-                reticle_display == Display::None
-                    && arrow_display == Display::None
-                    && ring_display == Display::None,
-                "无效投影未隐藏全部标记",
-            )?;
-        }
-    }
-    Ok(())
+    ensure(
+        node.display != Display::None && computed.size.x > 0.0,
+        "中心十字未显示",
+    )?;
+    ensure(
+        transform.translation.distance(viewport.center()) <= 2.0,
+        "十字偏离视口中心超过 2 像素",
+    )
 }

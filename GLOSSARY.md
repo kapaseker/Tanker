@@ -34,7 +34,7 @@
 - 敌人生成器 `scripts/generate_enemy.py` 读取 `src/tank/model/enemy.rs`，生成暗红车身、独立炮管和履带轮组三包；每侧4个直径1 m负重轮、2个直径0.6 m端轮，轮宽0.4 m，轮轴高0.65/0.7 m。履带主体/顶齿高1.3/1.4 m，闭环150格，侧裙高1.5～1.7 m。`TrackSpec` 以车型轮规格切片和画布安装轮组；敌人击毁时20个场景实例全部注销。
 
 - 当前玩家 astraH 按整车组织：车体、炮塔、炮管及左右行走机构以运动关系装配，不表示可换装部件。炮塔附件跟随炮塔偏航，炮管与防盾相对炮塔俯仰；默认朝前水平；W/S 控制炮管俯仰、A/D 控制炮塔水平旋转，炮塔保持相对车体角度并随车转向。豹 2A6 详情独立复位，不把预览角度带入对局。轮位与米制安装轴心见 `src/tank/model/astra.rs`，左右每侧三相位按约 0.14 米板距循环，停车保持轮角和相位。
-- 对局两轴主动输入各自从静止线性加速，0.15 秒达到车型配置的最大角速度；松键、相反键抵消、反向、失焦或输入锁定时清除相应旧速度。详情页保留直接调炮。此参数为当前调校值，尚待用户确认手感；中心十字与会聚属于后续工作。
+- 对局两轴主动输入各自从静止线性加速，0.15 秒达到车型配置的最大角速度；松键、相反键抵消、反向、失焦或输入锁定时清除相应旧速度。详情页保留直接调炮。此参数为当前调校值，尚待用户确认手感。玩家视角相对车体保存，独立于实际炮塔的视差修正；中心视线每帧取最近有效场景表面，实际炮管受车型角速度和俯仰限制会聚。
 - 炮口世界姿态决定弹丸出生与飞行方向；弹丸是独立对象，离开发射器后不跟随炮塔，可以同时存在多发。
 
 ## 场地与竞技场
@@ -66,8 +66,8 @@
 | 玩家坦克出生中心 Y | 1.34（= 车型配置碰撞高度 / 2） | `src/gameplay/session.rs` `setup` |
 | 敌人坦克出生中心 Y | 3.0（落地后平地中心约 1.3） | `SPAWN_DROP_Y`（`src/gameplay/enemy.rs`） |
 | 炮口端面局部坐标（炮轴节点下，车头为 −X） | (−5.42, 0, 0) | `MUZZLE_POSITION`（`src/tank/model/astra.rs`）；发射时转换到世界坐标 |
-| 相机水平后退距离 / 竖直高度 | 16 / 9 | `CAMERA_DISTANCE` / `CAMERA_HEIGHT`（`src/gameplay/camera.rs`） |
-| 相机视线相对车身的上抬角 | 8° | `CAMERA_PITCH_UP_DEGREES`（`src/gameplay/camera.rs`） |
+| 相机水平后退距离 / 竖直高度 | 16 / 5 | `CAMERA_DISTANCE` / `CAMERA_HEIGHT`（`src/gameplay/camera.rs`） |
+| 相机默认视线 | 水平 | `camera_transform()`（`src/gameplay/camera.rs`） |
 | 敌人数量 / 出生中心半径、与玩家及彼此最小中心距 | 10 / ±120 / 约8.87 / 约8.42 | `ENEMY_COUNT` / `SPAWN_LIMIT` / `spawn_clearance`（双方水平外接半径之和+`SPAWN_GAP` 1 m，`src/gameplay/enemy.rs`） |
 | 场地面积、子弹射程 | 360000 m² / 2000 m | `AREA`（`src/terrain/mod.rs`）/ `BULLET_RANGE`（`src/gameplay/combat/firing.rs`） |
 

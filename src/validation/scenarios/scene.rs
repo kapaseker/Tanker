@@ -43,7 +43,7 @@ fn validate_scene_state(
         )>,
     >,
     players: Query<
-        (&Transform, &crate::tank::articulation::TankAim),
+        (&Transform, &crate::gameplay::camera::PlayerView),
         With<crate::gameplay::player::Tank>,
     >,
     cameras: Query<&Transform, With<crate::gameplay::camera::FollowCamera>>,
@@ -76,7 +76,7 @@ fn validate_scene_state(
         )?;
     }
     let camera = cameras.single().map_err(|e| format!("跟随相机异常：{e}"))?;
-    let expected = crate::gameplay::camera::camera_transform(player, aim.yaw);
+    let expected = crate::gameplay::camera::camera_transform(player, aim.0.yaw, aim.0.pitch);
     // 直接比较分量，避免 acos 将同一姿态的归一化舍入误差放大成角度误差。
     ensure(
         camera.translation.distance(expected.translation) < 0.01
