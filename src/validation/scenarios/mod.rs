@@ -55,7 +55,7 @@ impl Scenario {
     pub(super) fn frames(self) -> &'static [u32] {
         match self {
             Self::Scene => &[0],
-            Self::Aiming => &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+            Self::Aiming => &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
             Self::Articulation => &[0, 1, 2, 3, 30, 120, 210, 211, 420, 421, 450, 749, 750, 809, 869, 870, 871],
             // 先直行 1 秒，再持续前进左转；路径不会触及 25 米外的混凝土墩。
             Self::Drive => &[0, 60, 180],

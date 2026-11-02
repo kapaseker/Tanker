@@ -5,7 +5,7 @@ use crate::gameplay::session::SessionEntity;
 use crate::gameplay::{
     combat::firing::{self, Bullet, PlayerBarrel, ShotImpact, ShotPrediction},
     enemy::EnemyTank,
-    hud::reticle::{HitRing, Reticle},
+    hud::reticle::{EdgeArrow, HitRing, Reticle, ARROW_SIZE, EDGE_MARGIN},
     obstacle::Concrete,
     player::Tank,
 };
@@ -68,6 +68,8 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
         (40., 180., 0., false, 0., true),
         (300., 0., 0., false, 0., true),
         (325., 0., 0., false, 0., false),
+        // 抬炮远端无命中：方向终点投到画面上方之外，应出现边缘箭头。
+        (260., 0., 20., false, 5., false),
     ]
     .into_iter()
     .enumerate()
@@ -246,81 +248,174 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
             == Display::None,
         "炮管缺失后准星未隐藏",
     )?;
+    ensure(
+        app.world_mut()
+            .query_filtered::<&Node, With<EdgeArrow>>()
+            .single(app.world())
+            .unwrap()
+            .display
+            == Display::None,
+        "炮管缺失后边缘箭头未隐藏",
+    )?;
     crate::gameplay::session::cleanup(app.world_mut());
     ensure(
         app.world_mut()
-            .query_filtered::<Entity, With<Reticle>>()
+            .query_filtered::<Entity, Or<(With<Reticle>, With<EdgeArrow>)>>()
             .iter(app.world())
             .count()
             == 0
             && app.world().resource::<ShotPrediction>().0.is_none(),
-        "退出对局残留准星或预测",
+        "退出对局残留准星、边缘箭头或预测",
     )?;
     report.push_str(
-        "缺失炮管即时隐藏、已毁目标刷新、对局统一清理通过；画面外暂隐藏，边缘提示留待03。\n",
+        "缺失炮管即时隐藏、已毁目标刷新、对局统一清理通过；抬炮画面外显示钳制边缘箭头，十字与命中圆不叠加。\n",
     );
     Ok(())
 }
 
-/// 最终布局中心对比相机投影，读取布局结果而非 Node 输入值。
+/// 布局校验的独立三态分类；Hidden 表示相机后方、近面或无效投影。
+enum Placement {
+    Inside(Vec2),
+    Edge(Vec2, f32),
+    Hidden,
+}
+
+/// 最终布局对比相机投影与边缘钳制规则，读取布局结果而非 Node 输入值。
+///
+/// 独立复算三态：画面内显示十字（命中加圆），画面外显示钳制后的边缘箭头
+///（不显示命中圆），后方/近面/无效全部隐藏；期望值来自相机 API 与规格常量。
 fn check_layout(world: &mut World, point: Vec3, hit: bool) -> Result<(), String> {
     let (camera, transform) = world
         .query_filtered::<(&Camera, &GlobalTransform), With<crate::gameplay::camera::FollowCamera>>(
         )
         .single(world)
         .map_err(|e| e.to_string())?;
-    let projected = camera.world_to_viewport(transform, point).ok();
     let viewport = camera.logical_viewport_rect().ok_or("相机无视口")?;
-    let expected = projected.filter(|position| {
-        position.is_finite()
-            && position.cmpge(viewport.min + Vec2::splat(14.)).all()
-            && position.cmple(viewport.max - Vec2::splat(14.)).all()
+    let projected = camera
+        .world_to_viewport(transform, point)
+        .ok()
+        .filter(|position| {
+            let ndc_ok = camera
+                .world_to_ndc(transform, point)
+                .is_some_and(|ndc| ndc.is_finite() && ndc.z > 0. && ndc.z < 1.);
+            ndc_ok && position.is_finite()
+        })
+        .map(|position| position - viewport.min);
+    let inset = EDGE_MARGIN + ARROW_SIZE / 2.;
+    let placement = projected.map(|local| {
+        if local.cmpge(Vec2::ZERO).all() && local.cmple(viewport.size()).all() {
+            Placement::Inside(local)
+        } else if viewport.size().cmplt(Vec2::splat(inset * 2.)).any() {
+            Placement::Hidden
+        } else {
+            Placement::Edge(
+                local.clamp(Vec2::splat(inset), viewport.size() - Vec2::splat(inset)),
+                (local - viewport.size() / 2.).y.atan2((local - viewport.size() / 2.).x),
+            )
+        }
     });
-    let (node, layout, transform) = world
+    // 先拷出 Copy 状态再继续查询，避免不可变借用与后续 world 查询冲突。
+    let reticle = world
         .query_filtered::<(&Node, &ComputedNode, &UiGlobalTransform), With<Reticle>>()
         .single(world)
         .map_err(|e| e.to_string())?;
-    if expected.is_some() {
-        ensure(
-            node.display != Display::None && layout.size == Vec2::splat(28.),
-            "准星没有完成当帧28px布局",
-        )?;
-        ensure(
-            transform.translation.distance(projected.unwrap()) <= 2.,
-            "最终准星中心与投影偏差超过2px",
-        )?;
-        let gap = Rect::from_center_size(transform.translation, Vec2::splat(4.));
-        let root = world
-            .query_filtered::<Entity, With<Reticle>>()
-            .single(world)
-            .unwrap();
-        let mut bars = world.query::<(
-            &BackgroundColor,
-            &ComputedNode,
-            &UiGlobalTransform,
-            &ChildOf,
-        )>();
-        for (color, computed, transform, parent) in bars.iter(world) {
-            let belongs = parent.parent() == root
-                || world
-                    .get::<ChildOf>(parent.parent())
-                    .is_some_and(|parent| parent.parent() == root);
-            if belongs && color.0 != Color::NONE {
-                let occupied = Rect::from_center_size(transform.translation, computed.size);
-                let overlap = occupied.intersect(gap);
-                ensure(
-                    overlap.width() <= 0. || overlap.height() <= 0.,
-                    "十字或描边侵入4×4透明空隙",
-                )?;
+    let (reticle_display, reticle_size, reticle_center) =
+        (reticle.0.display, reticle.1.size, reticle.2.translation);
+    let arrow = world
+        .query_filtered::<(&Node, &ComputedNode, &UiGlobalTransform, &UiTransform), With<EdgeArrow>>()
+        .single(world)
+        .map_err(|e| e.to_string())?;
+    let (arrow_display, arrow_size, arrow_center, arrow_rotation) =
+        (arrow.0.display, arrow.1.size, arrow.2.translation, arrow.3.rotation);
+    let ring_display = world
+        .query_filtered::<&Node, With<HitRing>>()
+        .single(world)
+        .map_err(|e| e.to_string())?
+        .display;
+    match placement {
+        Some(Placement::Inside(center)) => {
+            ensure(
+                reticle_display != Display::None && reticle_size == Vec2::splat(28.),
+                "准星没有完成当帧28px布局",
+            )?;
+            ensure(
+                reticle_center.distance(center) <= 2.,
+                "最终准星中心与投影偏差超过2px",
+            )?;
+            ensure(
+                arrow_display == Display::None,
+                "画面内不应显示边缘箭头",
+            )?;
+            let gap = Rect::from_center_size(reticle_center, Vec2::splat(4.));
+            let root = world
+                .query_filtered::<Entity, With<Reticle>>()
+                .single(world)
+                .unwrap();
+            let mut bars = world.query::<(
+                &BackgroundColor,
+                &ComputedNode,
+                &UiGlobalTransform,
+                &ChildOf,
+            )>();
+            for (color, computed, transform, parent) in bars.iter(world) {
+                let belongs = parent.parent() == root
+                    || world
+                        .get::<ChildOf>(parent.parent())
+                        .is_some_and(|parent| parent.parent() == root);
+                if belongs && color.0 != Color::NONE {
+                    let occupied = Rect::from_center_size(transform.translation, computed.size);
+                    let overlap = occupied.intersect(gap);
+                    ensure(
+                        overlap.width() <= 0. || overlap.height() <= 0.,
+                        "十字或描边侵入4×4透明空隙",
+                    )?;
+                }
             }
+            ensure(
+                (ring_display != Display::None) == hit,
+                "命中圆语义错误",
+            )?;
         }
-        let ring = world
-            .query_filtered::<&Node, With<HitRing>>()
-            .single(world)
-            .map_err(|e| e.to_string())?;
-        ensure((ring.display != Display::None) == hit, "命中圆语义错误")?;
-    } else {
-        ensure(node.display == Display::None, "画面外或无效投影未隐藏")?;
+        Some(Placement::Edge(anchor, angle)) => {
+            // 边缘箭头只表示方向：中心钳制在距边缘至少 inset（框边 ≥24 逻辑
+            // 像素）、旋转角与复算方向一致，十字与命中圆都不显示。
+            ensure(
+                arrow_display != Display::None,
+                "画面外未显示边缘箭头",
+            )?;
+            ensure(
+                anchor.is_finite() && angle.is_finite(),
+                "边缘箭头坐标或角度非有限",
+            )?;
+            let min = viewport.min + Vec2::splat(inset);
+            let max = viewport.max - Vec2::splat(inset);
+            ensure(
+                arrow_center.cmpge(min).all() && arrow_center.cmple(max).all(),
+                &format!("边缘箭头越界：{arrow_center:?} 不在 [{min:?}, {max:?}]"),
+            )?;
+            // Rot2 用 sin/cos 反解角度，避免直接依赖 to_radians 的 API 差异。
+            let actual_angle = arrow_rotation.sin.atan2(arrow_rotation.cos);
+            ensure(
+                (actual_angle - angle).abs() < 1e-3,
+                &format!("边缘箭头指向 {actual_angle} 与复算方向 {angle} 不符"),
+            )?;
+            ensure(
+                arrow_size == Vec2::splat(ARROW_SIZE),
+                "边缘箭头尺寸错误",
+            )?;
+            ensure(
+                reticle_display == Display::None && ring_display == Display::None,
+                "画面外仍显示十字或命中圆",
+            )?;
+        }
+        _ => {
+            ensure(
+                reticle_display == Display::None
+                    && arrow_display == Display::None
+                    && ring_display == Display::None,
+                "无效投影未隐藏全部标记",
+            )?;
+        }
     }
     Ok(())
 }
