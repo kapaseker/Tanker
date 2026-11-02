@@ -2,6 +2,7 @@
 
 mod articulation;
 mod aiming;
+mod integrated;
 mod combat;
 mod detail;
 mod drive;
@@ -34,6 +35,8 @@ pub(super) enum Scenario {
     Aiming,
     /// 玩家炮塔、炮管与多发弹丸的世界姿态验证。
     Articulation,
+    /// 驾驶、调炮、开火与退出重进的完整瞄准集成验收。
+    Integrated,
     /// 田园视觉样板、自由相机与首页往返。
     Pastoral,
     Drive,
@@ -57,6 +60,7 @@ impl Scenario {
             Self::Scene => &[0],
             Self::Aiming => &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
             Self::Articulation => &[0, 1, 2, 3, 30, 120, 210, 211, 420, 421, 450, 749, 750, 809, 869, 870, 871],
+            Self::Integrated => &[0, 60, 150, 174, 194, 270, 330, 360, 397, 398],
             // 先直行 1 秒，再持续前进左转；路径不会触及 25 米外的混凝土墩。
             Self::Drive => &[0, 60, 180],
             Self::Combat => &[0, 1, 6, 24, 48, 60, 120],
@@ -77,6 +81,18 @@ impl Scenario {
             (Self::Drive, 1..=60) => &[KeyCode::ArrowUp],
             (Self::Drive, 61..=180) => &[KeyCode::ArrowUp, KeyCode::ArrowLeft],
             (Self::Combat, 1) | (Self::Articulation, 1..=3) => &[KeyCode::Space],
+            (Self::Integrated, 1..=60) => &[KeyCode::ArrowUp],
+            // KeyW 只按 60 帧（俯仰 9°/s → 恰好 9°），保证 211..=270 的 60 帧 KeyS 精确压回水平。
+            (Self::Integrated, 61..=120) => &[KeyCode::ArrowUp, KeyCode::ArrowLeft, KeyCode::KeyA, KeyCode::KeyW],
+            (Self::Integrated, 121..=150) => &[KeyCode::ArrowUp, KeyCode::ArrowLeft, KeyCode::KeyA],
+            (Self::Integrated, 174 | 194 | 336) => &[KeyCode::Space],
+            (Self::Integrated, 211..=270) => &[KeyCode::KeyS],
+            (Self::Integrated, 271..=330) => &[KeyCode::KeyW],
+            (Self::Integrated, 337..=396) => &[KeyCode::KeyA],
+            (Self::Integrated, 398) => &[KeyCode::KeyA],
+            (Self::Integrated, 501) => &[KeyCode::Escape],
+            (Self::Integrated, 503) => &[KeyCode::ArrowDown],
+            (Self::Integrated, 505) => &[KeyCode::Enter],
             (Self::Articulation, 31..=90) => &[KeyCode::KeyA, KeyCode::KeyW, KeyCode::ArrowLeft],
             (Self::Articulation, 91..=210) => &[KeyCode::KeyA, KeyCode::KeyW],
             (Self::Articulation, 211 | 421) => &[KeyCode::Space],
@@ -167,6 +183,7 @@ pub(super) fn run_scenario(
     scene::validate_concrete(app.world_mut())?;
     report.push_str("断言通过：唯一混凝土墩静态刚体、VOX 实例与实际网格尺寸、贴地位置\n");
     if options.scenario == Scenario::Aiming { return aiming::run(app, options, report); }
+    if options.scenario == Scenario::Integrated { return integrated::run(app, options, report); }
     let (start, start_tracks) = subject_state(app.world_mut())?;
     report.push_str(&format!(
         "预热：120 帧；断言通过：地形就绪、坦克位置、相机跟随\n起点：{:?}\n",
@@ -270,6 +287,21 @@ mod tests {
         assert!(Scenario::Combat.keys(2).is_empty());
         assert!(Scenario::Combat.keys(120).is_empty());
         assert!(Scenario::Scene.keys(1).is_empty());
+        assert_eq!(Scenario::Integrated.keys(60), &[KeyCode::ArrowUp]);
+        assert_eq!(
+            Scenario::Integrated.keys(61),
+            &[KeyCode::ArrowUp, KeyCode::ArrowLeft, KeyCode::KeyA, KeyCode::KeyW]
+        );
+        assert_eq!(
+            Scenario::Integrated.keys(121),
+            &[KeyCode::ArrowUp, KeyCode::ArrowLeft, KeyCode::KeyA]
+        );
+        assert!(Scenario::Integrated.keys(151).is_empty());
+        assert_eq!(Scenario::Integrated.keys(174), &[KeyCode::Space]);
+        assert!(Scenario::Integrated.keys(397).is_empty());
+        assert_eq!(Scenario::Integrated.keys(398), &[KeyCode::KeyA]);
+        assert_eq!(Scenario::Integrated.keys(501), &[KeyCode::Escape]);
+        assert_eq!(Scenario::Integrated.keys(505), &[KeyCode::Enter]);
         assert_eq!(Scenario::Index.keys(1), &[KeyCode::ArrowDown]);
         assert_eq!(Scenario::Index.keys(3), &[KeyCode::Enter]);
         assert_eq!(Scenario::Index.keys(5), &[KeyCode::Escape]);

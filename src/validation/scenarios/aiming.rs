@@ -284,7 +284,7 @@ enum Placement {
 ///
 /// 独立复算三态：画面内显示十字（命中加圆），画面外显示钳制后的边缘箭头
 ///（不显示命中圆），后方/近面/无效全部隐藏；期望值来自相机 API 与规格常量。
-fn check_layout(world: &mut World, point: Vec3, hit: bool) -> Result<(), String> {
+pub(super) fn check_layout(world: &mut World, point: Vec3, hit: bool) -> Result<(), String> {
     let (camera, transform) = world
         .query_filtered::<(&Camera, &GlobalTransform), With<crate::gameplay::camera::FollowCamera>>(
         )
