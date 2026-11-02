@@ -56,7 +56,7 @@ impl Scenario {
         match self {
             Self::Scene => &[0],
             Self::Aiming => &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
-            Self::Articulation => &[0, 1, 2, 3, 30, 120, 210, 211, 420, 421, 450, 749],
+            Self::Articulation => &[0, 1, 2, 3, 30, 120, 210, 211, 420, 421, 450, 749, 750, 809, 869, 870, 871],
             // 先直行 1 秒，再持续前进左转；路径不会触及 25 米外的混凝土墩。
             Self::Drive => &[0, 60, 180],
             Self::Combat => &[0, 1, 6, 24, 48, 60, 120],
@@ -80,6 +80,9 @@ impl Scenario {
             (Self::Articulation, 31..=90) => &[KeyCode::KeyA, KeyCode::KeyW, KeyCode::ArrowLeft],
             (Self::Articulation, 91..=210) => &[KeyCode::KeyA, KeyCode::KeyW],
             (Self::Articulation, 211 | 421) => &[KeyCode::Space],
+            (Self::Articulation, 750..=809) => &[KeyCode::ArrowUp, KeyCode::ArrowLeft, KeyCode::KeyA],
+            (Self::Articulation, 810..=869) => &[KeyCode::ArrowDown, KeyCode::ArrowRight, KeyCode::KeyD],
+            (Self::Articulation, 871) => &[KeyCode::KeyA],
             (Self::Articulation, 451..=749) => &[KeyCode::KeyA],
             (Self::Articulation, 212..=420) => &[KeyCode::KeyD, KeyCode::KeyS],
             (Self::Detail, 100..=279) => &[KeyCode::KeyA, KeyCode::KeyW],

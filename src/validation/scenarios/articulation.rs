@@ -9,8 +9,42 @@ use crate::{
     tank::articulation::TankAim,
 };
 
+/// 记录组合输入阶段的起始姿态和回绕前的相机位置。
+#[derive(Resource)]
+struct FollowSample {
+    /// 阶段开始时车体世界姿态。
+    body: Transform,
+    /// 阶段开始时炮塔相对偏航，单位弧度。
+    yaw: f32,
+    /// 世界坐标系中相机相对车体的位置，单位米。
+    camera_offset: Vec3,
+}
+
 /// 前三帧验证独立弹丸，后段使用真实键盘控制；开火帧只解除测试冷却。
 pub(super) fn prepare(world: &mut World, frame: u32) -> Result<(), String> {
+    if matches!(frame, 750 | 810 | 871) {
+        let (aim, body) = world
+            .query_filtered::<(&TankAim, &Transform), With<Tank>>()
+            .single(world)
+            .map(|(a, b)| (*a, *b))
+            .map_err(|e| e.to_string())?;
+        let camera = world
+            .query_filtered::<&Transform, With<crate::gameplay::camera::FollowCamera>>()
+            .single(world)
+            .map_err(|e| e.to_string())?;
+        world.insert_resource(FollowSample {
+            body,
+            yaw: aim.yaw,
+            camera_offset: camera.translation - body.translation,
+        });
+    }
+    if frame == 870 {
+        world
+            .query_filtered::<&mut TankAim, With<Tank>>()
+            .single_mut(world)
+            .map_err(|e| e.to_string())?
+            .yaw = 359.75_f32.to_radians();
+    }
     let angles = match frame {
         1 => Some((90.0_f32, 20.0_f32)),
         2 => Some((-90.0, -5.0)),
@@ -81,9 +115,59 @@ pub(super) fn check(world: &mut World, frame: u32, report: &mut String) -> Resul
         }
         report.push_str(&format!("断言通过：WASD 帧{frame}，相对偏航{expected_yaw}°、俯仰{expected_pitch}°，车体转向后保持相对角度，炮口发射方向正确\n"));
     }
+    if (750..=869).contains(&frame) || frame == 871 {
+        let (aim, body) = world
+            .query_filtered::<(&TankAim, &Transform), With<Tank>>()
+            .single(world)
+            .map(|(a, b)| (*a, *b))
+            .map_err(|e| e.to_string())?;
+        let camera = *world
+            .query_filtered::<&Transform, With<crate::gameplay::camera::FollowCamera>>()
+            .single(world)
+            .map_err(|e| e.to_string())?;
+        let sample = world.resource::<FollowSample>();
+        let rear = body.rotation * Quat::from_rotation_y(aim.yaw) * Vec3::X;
+        let horizontal = Vec3::new(rear.x, 0.0, rear.z).normalize();
+        ensure(
+            camera
+                .translation
+                .distance(body.translation + horizontal * 16.0 + Vec3::Y * 9.0)
+                < 0.001,
+            "组合输入后相机未跟随当帧姿态",
+        )?;
+        if frame == 871 {
+            ensure(sample.yaw > 6.0 && aim.yaw < 0.1, "炮塔未跨越角度回绕边界")?;
+            ensure(
+                (camera.translation - body.translation).distance(sample.camera_offset) < 0.2,
+                "回绕时相机跳变",
+            )?;
+        } else if matches!(frame, 809 | 869) {
+            let displacement = body.translation - sample.body.translation;
+            let forward = sample.body.rotation * Vec3::NEG_X;
+            let sign = if frame == 809 { 1.0 } else { -1.0 };
+            ensure(
+                displacement.dot(forward) * sign > 0.2,
+                "组合输入未产生预期方向的驾驶位移",
+            )?;
+            ensure(
+                body.rotation.angle_between(sample.body.rotation) > 0.1,
+                "组合输入未转动车体",
+            )?;
+            ensure((aim.yaw - sample.yaw).abs() > 0.1, "组合输入未转动炮塔")?;
+        }
+        if matches!(frame, 809 | 869 | 871) {
+            report.push_str(&format!("断言通过：组合驾驶与相机/回绕帧 {frame}\n"));
+        }
+    }
     if frame == 749 {
-        let aim = world.query_filtered::<&TankAim, With<Tank>>().single(world).map_err(|e| e.to_string())?;
-        ensure((aim.yaw.to_degrees() - 180.0).abs() < 0.02, "真实输入未转到朝后")?;
+        let aim = world
+            .query_filtered::<&TankAim, With<Tank>>()
+            .single(world)
+            .map_err(|e| e.to_string())?;
+        ensure(
+            (aim.yaw.to_degrees() - 180.0).abs() < 0.02,
+            "真实输入未转到朝后",
+        )?;
         report.push_str("断言通过：真实调炮朝后，跟随视角帧 749\n");
     }
     if !(1..=3).contains(&frame) {
