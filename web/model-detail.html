@@ -55,6 +55,7 @@
   </footer>
 
   <script src="models.js"></script>
+  <script src="ammunition.js"></script>
   <script>
     (() => {
       // ---------- 通过 URL 参数定位模型：?c=分类下标&m=模型下标 ----------
@@ -82,14 +83,30 @@
 
       // 规格行来自模型数据；没有定义参数的型号不渲染空行
       const specs = document.querySelector('.specs');
-      for (const { label, value, unit } of model.specs ?? []) {
-        const spec = document.createElement('div');
-        spec.className = 'spec';
-        spec.innerHTML =
-          `<span class="spec__label">${label}</span>` +
-          `<span class="spec__row"><span class="spec__value">${value}</span>` +
-          `<span class="spec__unit">${unit}</span></span>`;
-        specs.append(spec);
+      function appendSpecs(rows) {
+        for (const { label, value, unit } of rows) {
+          const spec = document.createElement('div');
+          spec.className = 'spec';
+          spec.innerHTML =
+            `<span class="spec__label">${label}</span>` +
+            `<span class="spec__row"><span class="spec__value">${value}</span>` +
+            `<span class="spec__unit">${unit}</span></span>`;
+          specs.append(spec);
+        }
+      }
+      if (ci === 0) {
+        specs.setAttribute('aria-busy', 'true');
+        Ammunition.load().then(config => appendSpecs([
+          { label: '初速', value: config.muzzle_velocity, unit: 'm/s' },
+          { label: '射速', value: config.rate_of_fire, unit: 'rpm' },
+        ])).catch(error => {
+          const message = document.createElement('p');
+          message.setAttribute('role', 'alert');
+          message.textContent = error.message;
+          specs.append(message);
+        }).finally(() => specs.setAttribute('aria-busy', 'false'));
+      } else {
+        appendSpecs(model.specs ?? []);
       }
 
       // ---------- 查看区：拖拽旋转 + 滚轮缩放 ----------

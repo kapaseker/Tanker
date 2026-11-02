@@ -6,7 +6,7 @@ use crate::{
         transition::{Fade, SceneTarget},
     },
     pages::index::{IndexBackground, IndexPalette},
-    tank::{track, visual},
+    tank::track,
     ui::{
         font::UiFont,
         resources::{
@@ -102,24 +102,15 @@ impl View {
 }
 
 /// 单条装备规格：标签与单位是静态文案，数值取自游戏装备定义，避免网页与玩法参数分叉。
+#[derive(Clone)]
 struct Spec {
     label: &'static str,
     value: f32,
     unit: &'static str,
 }
 
-/// 玩家整车规格；武器和驾驶参数取自同一运行时配置。
-const PLAYER_SPECS: [Spec; 4] = [
-    Spec {
-        label: strings_cn::detail::MUZZLE_VELOCITY,
-        value: visual::PLAYER_BARREL.muzzle_velocity,
-        unit: strings::UNIT_METERS_PER_SECOND,
-    },
-    Spec {
-        label: strings_cn::detail::RATE_OF_FIRE,
-        value: visual::PLAYER_BARREL.rate_of_fire,
-        unit: strings::UNIT_ROUNDS_PER_MINUTE,
-    },
+/// 玩家整车只展示驾驶规格。
+const PLAYER_SPECS: [Spec; 2] = [
     Spec {
         label: strings_cn::detail::FORWARD_SPEED,
         value: track::PLAYER_TRACKS.forward_speed,
@@ -132,11 +123,23 @@ const PLAYER_SPECS: [Spec; 4] = [
     },
 ];
 
-/// 玩家整车显示四项规格；弹丸和无已设定性能的敌车不生成空行。
-fn specs_for(entry: preview::Entry) -> &'static [Spec] {
+/// 弹药与玩家各显示两项规格，无已设定性能的敌车不生成空行。
+fn specs_for(entry: preview::Entry, ammo: &crate::tank::ammunition::AmmunitionSpec) -> Vec<Spec> {
     match (entry.category, entry.enemy) {
-        (1, false) => &PLAYER_SPECS,
-        _ => &[],
+        (0, _) => vec![
+            Spec {
+                label: strings_cn::detail::MUZZLE_VELOCITY,
+                value: ammo.muzzle_velocity,
+                unit: strings::UNIT_METERS_PER_SECOND,
+            },
+            Spec {
+                label: strings_cn::detail::RATE_OF_FIRE,
+                value: ammo.rate_of_fire,
+                unit: strings::UNIT_ROUNDS_PER_MINUTE,
+            },
+        ],
+        (1, false) => PLAYER_SPECS.to_vec(),
+        _ => vec![],
     }
 }
 
@@ -189,6 +192,7 @@ fn spawn_preview(
 /// 内容节点按网页原型布局；常驻标题栏和角标不在页面中重复生成。
 fn spawn_ui(
     mut commands: Commands,
+    ammo: Res<crate::tank::ammunition::AmmunitionSpec>,
     target: Res<SceneTarget>,
     font: Res<UiFont>,
     previews: Res<Previews>,
@@ -265,87 +269,81 @@ fn spawn_ui(
             ));
             // 左上角：分类眉题 + 已定义的装备规格（样式取网页 .specs/.spec）；
             // 没有真实参数的型号只保留眉题。三维尺寸改由模型边沿的尺寸轴标注。
-            root.spawn((
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: px(dims::SPECS_LEFT),
-                    top: px(bar::HEIGHT + dims::SPECS_TOP),
-                    flex_direction: FlexDirection::Column,
-                    align_items: AlignItems::FlexStart,
-                    row_gap: px(dims::SPECS_GAP),
-                    ..default()
-                },
-            ))
-            .with_children(|specs| {
-                specs
-                    .spawn((
-                        Node {
+            root.spawn((Node {
+                position_type: PositionType::Absolute,
+                left: px(dims::SPECS_LEFT),
+                top: px(bar::HEIGHT + dims::SPECS_TOP),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::FlexStart,
+                row_gap: px(dims::SPECS_GAP),
+                ..default()
+            },))
+                .with_children(|specs| {
+                    specs
+                        .spawn((Node {
                             align_items: AlignItems::Center,
                             column_gap: px(dims::EYEBROW_GAP),
                             ..default()
-                        },
-                    ))
-                    .with_children(|eyebrow| {
-                        eyebrow.spawn((
-                            Node {
-                                width: px(dims::EYEBROW_LINE.0),
-                                height: px(dims::EYEBROW_LINE.1),
-                                ..default()
-                            },
-                            BackgroundColor(colors::PRIMARY),
-                        ));
-                        eyebrow.spawn((
-                            Text::new(
-                                strings_cn::gallery::CATEGORIES
-                                    [previews.items[0].entry.category],
-                            ),
-                            text_font(&font, dims::EYEBROW_SIZE, 400.0),
-                            LetterSpacing::Px(dims::EYEBROW_SPACING),
-                            TextColor(colors::PRIMARY),
-                        ));
-                    });
-                for spec in specs_for(previews.items[0].entry) {
-                    specs
-                        .spawn((
-                            SpecRow,
-                            Node {
-                                flex_direction: FlexDirection::Column,
-                                row_gap: px(dims::SPEC_LABEL_GAP),
-                                ..default()
-                            },
-                        ))
-                        .with_children(|row| {
-                            row.spawn((
-                                Text::new(spec.label),
-                                text_font(&font, dims::SPEC_LABEL_SIZE, 400.0),
-                                LetterSpacing::Px(dims::SPEC_LABEL_SPACING),
-                                TextColor(colors::ON_SURFACE_MUTED),
-                            ));
-                            row.spawn((
+                        },))
+                        .with_children(|eyebrow| {
+                            eyebrow.spawn((
                                 Node {
+                                    width: px(dims::EYEBROW_LINE.0),
+                                    height: px(dims::EYEBROW_LINE.1),
+                                    ..default()
+                                },
+                                BackgroundColor(colors::PRIMARY),
+                            ));
+                            eyebrow.spawn((
+                                Text::new(
+                                    strings_cn::gallery::CATEGORIES
+                                        [previews.items[0].entry.category],
+                                ),
+                                text_font(&font, dims::EYEBROW_SIZE, 400.0),
+                                LetterSpacing::Px(dims::EYEBROW_SPACING),
+                                TextColor(colors::PRIMARY),
+                            ));
+                        });
+                    for spec in specs_for(previews.items[0].entry, &ammo) {
+                        specs
+                            .spawn((
+                                SpecRow,
+                                Node {
+                                    flex_direction: FlexDirection::Column,
+                                    row_gap: px(dims::SPEC_LABEL_GAP),
+                                    ..default()
+                                },
+                            ))
+                            .with_children(|row| {
+                                row.spawn((
+                                    Text::new(spec.label),
+                                    text_font(&font, dims::SPEC_LABEL_SIZE, 400.0),
+                                    LetterSpacing::Px(dims::SPEC_LABEL_SPACING),
+                                    TextColor(colors::ON_SURFACE_MUTED),
+                                ));
+                                row.spawn((Node {
                                     flex_direction: FlexDirection::Row,
                                     align_items: AlignItems::Baseline,
                                     column_gap: px(dims::SPEC_VALUE_GAP),
                                     ..default()
-                                },
-                            ))
-                            .with_children(|value| {
-                                // 薄荷亮色与画廊激活型号同源；单位为英文缩写。
-                                value.spawn((
-                                    Text::new(spec.value.to_string()),
-                                    text_font(&font, dims::SPEC_VALUE_SIZE, 700.0),
-                                    TextColor(colors::gallery::NAME_ACTIVE),
-                                ));
-                                value.spawn((
-                                    Text::new(spec.unit),
-                                    text_font(&font, dims::SPEC_UNIT_SIZE, 400.0),
-                                    LetterSpacing::Px(dims::SPEC_UNIT_SPACING),
-                                    TextColor(colors::ON_SURFACE_MUTED),
-                                ));
+                                },))
+                                    .with_children(|value| {
+                                        // 薄荷亮色与画廊激活型号同源；单位为英文缩写。
+                                        value.spawn((
+                                            Text::new(spec.value.to_string()),
+                                            text_font(&font, dims::SPEC_VALUE_SIZE, 700.0),
+                                            TextColor(colors::gallery::NAME_ACTIVE),
+                                        ));
+                                        value.spawn((
+                                            Text::new(spec.unit),
+                                            text_font(&font, dims::SPEC_UNIT_SIZE, 400.0),
+                                            LetterSpacing::Px(dims::SPEC_UNIT_SPACING),
+                                            TextColor(colors::ON_SURFACE_MUTED),
+                                        ));
+                                    });
                             });
-                        });
-                }
-            });
+                    }
+                });
             root.spawn((
                 Status,
                 Node {
@@ -532,7 +530,10 @@ fn axis_segments(bounds: (Vec3, Vec3)) -> Vec<(Vec3, Vec3, usize)> {
             1,
         );
     }
-    segments.into_iter().map(|(center, size, kind)| (center * scale, size * scale, kind)).collect()
+    segments
+        .into_iter()
+        .map(|(center, size, kind)| (center * scale, size * scale, kind))
+        .collect()
 }
 
 /// 尺寸标签锚点（content 局部空间，米）：长/宽钉在各自轴线中点，高度钉在轴外侧中点。
@@ -548,7 +549,8 @@ fn tag_anchors(bounds: (Vec3, Vec3)) -> [Vec3; 3] {
             (low.y + high.y) / 2.0,
             high.z,
         ),
-    ].map(|anchor| anchor * scale)
+    ]
+    .map(|anchor| anchor * scale)
 }
 
 /// 模型空间锚点 → 查看区逻辑坐标。复现预览链路的正交投影：
@@ -809,7 +811,11 @@ mod tests {
             assert!(size.min_element() < 0.002);
             assert!(size.y < 0.11 && size.z < 0.11);
         }
-        assert!(tag_anchors(bounds).iter().all(|anchor| anchor.length() < 0.45));
+        assert!(
+            tag_anchors(bounds)
+                .iter()
+                .all(|anchor| anchor.length() < 0.45)
+        );
     }
 
     /// 标题栏不开始拖拽，查看区开始后进入标题栏仍持续，松开/过渡/失焦均取消。
@@ -938,4 +944,16 @@ mod tests {
             (-28.0, -14.0, 1.0, false)
         );
     }
+    /// 弹药详情读取传入配置，坦克不再重复展示弹药性能。
+    #[test]
+    fn specs_follow_ammunition_configuration() {
+        let spec = crate::tank::ammunition::AmmunitionSpec { muzzle_velocity: 600.0, rate_of_fire: 30.0 };
+        let rows = specs_for(ENTRIES[0], &spec);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].value, 600.0);
+        assert_eq!(rows[1].value, 30.0);
+        assert_eq!(specs_for(ENTRIES[1], &spec).len(), 2);
+        assert!(specs_for(ENTRIES[2], &spec).is_empty());
+    }
+
 }

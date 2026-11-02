@@ -1027,15 +1027,17 @@
     background: linear-gradient(90deg, var(--mint-deep), var(--mint) 70%, var(--mint-bright));
   }
 
-  /* 5 秒冷却 → 轨道 5 等分，每格 1 秒；冷却时长变化时同步改 20% */
+  /* 刻度按冷却秒数向上取整后等分，与游戏 HUD 一致，最多 60 格。 */
   .bar__ticks {
     position: absolute;
     inset: 0;
-    background-image: repeating-linear-gradient(
-      90deg,
-      transparent 0 calc(20% - 1px),
-      rgba(8, 7, 6, 0.85) calc(20% - 1px) 20%
-    );
+  }
+  .bar__ticks > span {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: rgba(8, 7, 6, 0.85);
   }
 
   /* 图标与进度条始终完全不透明：半透明（0.6）只用于底板，

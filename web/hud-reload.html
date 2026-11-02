@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>战斗 HUD · 装填 · V-Tank</title>
-<meta name="description" content="V-Tank 游戏内战斗 HUD 设计稿：空格开火触发后坐与炮口火光，左下状态簇显示生命与五格装填，满格后降低强调并允许再次开火。">
+<meta name="description" content="V-Tank 游戏内战斗 HUD 设计稿：空格开火触发后坐与炮口火光，左下状态簇显示生命与弹药配置驱动的装填进度。">
 <meta name="theme-color" content="#0f0e0c">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230f0e0c'/%3E%3Cpath d='M16 5l11 6-11 6-11-6z' fill='%23e2edcf'/%3E%3Cpath d='M5 11v9l11 6v-9z' fill='%23b7cb9f'/%3E%3Cpath d='M27 11v9l-11 6v-9z' fill='%2391a97a'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
@@ -21,7 +21,7 @@
     <div class="battle__scan"></div>
   </div>
 
-  <!-- 左下固定状态簇：上为车体生命（连续条），下为装填（5 分格）。
+  <!-- 左下固定状态簇：上为车体生命（连续条），下为配置驱动的装填分格。
        两块轨道同宽同左对齐，用线性图标代替文字标签；
        外层取景盒取居中的 16:9 任务区，状态簇锚定其左下安全边距 -->
   <div class="hudbox">
@@ -38,7 +38,7 @@
         </div>
       </div>
 
-      <!-- 装填条：轨道 5 等分，每格 1 秒；满格后保持满格，即可再次开火 -->
+      <!-- 装填条：分格按弹药冷却生成，最多 60 格；满格后保持满格 -->
       <div class="status__row">
         <!-- 子弹图标：圆头弹体 + 弹壳分界 + 加宽底缘 -->
         <svg class="status__icon" viewBox="0 0 16 16" aria-hidden="true">
@@ -48,16 +48,17 @@
           <path d="M4.5 13.4h7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="square"/>
         </svg>
         <div class="bar bar--reload" id="reload" role="progressbar" aria-label="装填进度"
-             aria-valuemin="0" aria-valuemax="100" aria-valuenow="100">
-          <div class="bar__fill bar__fill--reload" id="reload-fill" style="width:100%"></div>
+             aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-busy="true">
+          <div class="bar__fill bar__fill--reload" id="reload-fill" style="width:0%"></div>
           <div class="bar__ticks" aria-hidden="true"></div>
         </div>
       </div>
     </section>
   </div>
 
+  <script src="ammunition.js"></script>
   <script>
-    (() => {
+    (async () => {
       // ---------- 16:9 任务区水平锚点 ----------
       // clientWidth/clientHeight 不随根元素 zoom 变化（见 scale.js 实测注释），
       // 据此计算居中 16:9 任务区左缘写入 CSS 变量；不在 CSS 中用 vw/vh，
@@ -71,21 +72,39 @@
       addEventListener('resize', layoutTaskArea);
 
       // ---------- 装填状态 ----------
-      // 装填时长取自 LeoPard2 A6 射速 12 发/分钟 → 5 秒，与 src/gameplay/combat/firing.rs 的发射间隔一致；
-      // 装填条固定 5 格（.bar__ticks 每格 20%），一格即 1 秒，射速变化时两处需同步
-      const RELOAD_MS = 5000;
+      // 配置读取成功前不注册开火输入，也不以默认数值掩盖配置错误。
+      let config;
+      try {
+        config = await Ammunition.load();
+      } catch (error) {
+        const message = document.createElement('p');
+        message.setAttribute('role', 'alert');
+        message.textContent = error.message;
+        document.querySelector('.status').append(message);
+        document.getElementById('reload').setAttribute('aria-busy', 'false');
+        return;
+      }
+      const RELOAD_MS = config.cooldown * 1000;
       const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
       const reloadBar = document.getElementById('reload');
       const fill = document.getElementById('reload-fill');
       const scene = document.getElementById('scene');
       const muzzle = document.getElementById('muzzle');
+      reloadBar.setAttribute('aria-busy', 'false');
+      const ticks = reloadBar.querySelector('.bar__ticks');
+      for (const position of Ammunition.reloadTicks(config.cooldown)) {
+        const mark = document.createElement('span');
+        mark.style.left = `${position}%`;
+        ticks.append(mark);
+      }
 
       let loading = false;
       let startedAt = 0;
       let raf = 0;
       let kickTimer = 0;
       let lastPercent = -1;
+      finish();
 
       // 逐帧用真实时间推进：填充比例和可开火状态都来自同一份冷却计时
       function tick(now) {

@@ -25,10 +25,17 @@ pub(super) fn run(options: Option<validation::Options>) -> Result<(), String> {
     let _watchdog = options.as_ref().map(validation::Options::watchdog);
     // 资产单位配置完整性：缺配置的 VOX 会被插件静默按默认 1 米/格加载，
     // 这里在任何加载开始前拦截，失败原因带路径直接 panic（与地形资产同策略）。
-    if let Err(reason) = vox_meta::validate(&bevy::asset::io::file::FileAssetReader::get_base_path().join("assets")) {
+    if let Err(reason) =
+        vox_meta::validate(&bevy::asset::io::file::FileAssetReader::get_base_path().join("assets"))
+    {
         panic!("{reason}");
     }
+    let ammunition = tank::ammunition::AmmunitionSpec::load(
+        &bevy::asset::io::file::FileAssetReader::get_base_path().join("assets"),
+        tank::visual::PLAYER_BULLET,
+    )?;
     let mut app = App::new();
+    app.insert_resource(ammunition);
     if options.is_some() {
         validation::configure(&mut app);
     } else {
@@ -119,9 +126,9 @@ mod tests {
     use bevy::image::Image;
     use bevy::math::Vec2;
     use bevy::text::{
-        ComputedTextBlock, Font, FontAtlasSet, FontCx, FontHinting, FontSize, FontSource, FontWeight,
-        Justify, LayoutCx, LetterSpacing, LineHeight, RemSize, ScaleCx, TextBounds, TextElement,
-        TextFont, TextLayout, TextLayoutInfo, TextPipeline,
+        ComputedTextBlock, Font, FontAtlasSet, FontCx, FontHinting, FontSize, FontSource,
+        FontWeight, Justify, LayoutCx, LetterSpacing, LineHeight, RemSize, ScaleCx, TextBounds,
+        TextElement, TextFont, TextLayout, TextLayoutInfo, TextPipeline,
     };
     use bevy::window::WindowResolution;
 

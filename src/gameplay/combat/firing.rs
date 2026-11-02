@@ -2,6 +2,7 @@
 
 use crate::gameplay::enemy::{EnemyDestroyed, EnemyTank};
 use crate::gameplay::player::Tank;
+use crate::tank::ammunition::AmmunitionSpec;
 use avian3d::prelude::{Collider, ShapeCastConfig, SpatialQuery, SpatialQueryFilter};
 use bevy::{
     asset::LoadState,
@@ -10,11 +11,6 @@ use bevy::{
     world_serialization::{WorldAsset, WorldInstance, WorldInstanceSpawner},
 };
 
-/// 点按与长按共用的最小发射间隔，单位：秒；由 lance 装备射速 12 发/分钟换算。
-/// 同时是装填条"一格一秒"的间隔来源（hud::reload_ticks 按它推导分格数）。
-pub(crate) const FIRE_INTERVAL: f32 = 60.0 / crate::tank::visual::PLAYER_BARREL.rate_of_fire;
-/// 子弹的匀速飞行速度即炮口初速，单位：米/秒；来自 lance 装备定义。
-const BULLET_SPEED: f32 = crate::tank::visual::PLAYER_BARREL.muzzle_velocity;
 /// 扫掠碰撞固定为 0.4 米立方体，与视觉尺寸无关，单位：米。
 const BULLET_SIZE: f32 = 0.4;
 /// 从出生点累计计算的最大飞行距离，单位：世界单位。
@@ -61,6 +57,8 @@ pub(crate) struct Bullet {
 pub(crate) struct Gun {
     /// 预加载并由各颗子弹复用的场景句柄，保持资源存活。
     bullet_scene: Handle<WorldAsset>,
+    /// 本次进程加载的弹药性能。
+    spec: AmmunitionSpec,
     /// 每次发射后的剩余冷却时间，松开空格或资源未就绪也继续计时。
     cadence: FireCadence,
 }
@@ -95,8 +93,9 @@ impl Plugin for FiringPlugin {
 }
 
 /// 启动时预加载子弹场景；加载完成前由发射系统忽略开火输入。
-fn load_bullet(mut commands: Commands, assets: Res<AssetServer>) {
+fn load_bullet(mut commands: Commands, assets: Res<AssetServer>, spec: Res<AmmunitionSpec>) {
     commands.insert_resource(Gun {
+        spec: *spec,
         bullet_scene: assets.load(crate::tank::visual::PLAYER_BULLET),
         cadence: default(),
     });
@@ -113,7 +112,10 @@ fn report_bullet(gun: Res<Gun>, assets: Res<AssetServer>, mut reported: Local<bo
             *reported = true;
         }
         _ if assets.is_loaded_with_dependencies(&gun.bullet_scene) => {
-            info!("子弹资源加载完成：assets/{}", crate::tank::visual::PLAYER_BULLET);
+            info!(
+                "子弹资源加载完成：assets/{}",
+                crate::tank::visual::PLAYER_BULLET
+            );
             *reported = true;
         }
         _ => {}
@@ -130,11 +132,11 @@ struct FireCadence {
 impl FireCadence {
     /// 推进计时并返回本帧是否发射；`delta` 为本帧游戏时间增量，单位：秒。
     /// `enabled` 表示空格按住且资源就绪；松开期间继续冷却，但不积攒发射次数。
-    fn tick(&mut self, enabled: bool, delta: f32) -> bool {
+    fn tick(&mut self, enabled: bool, delta: f32, interval: f32) -> bool {
         self.remaining = (self.remaining - delta).max(0.0);
         if enabled && self.remaining <= 0.0 {
             // 每帧最多一发，重置间隔而不追补卡顿期间的子弹。
-            self.remaining = FIRE_INTERVAL;
+            self.remaining = interval;
             return true;
         }
         false
@@ -159,9 +161,9 @@ pub(crate) fn reload_progress(remaining: f32, interval: f32) -> f32 {
 }
 
 impl Gun {
-    /// 距下一发可开火的装填进度，间隔取 FIRE_INTERVAL，供 HUD 只读。
+    /// 距下一发可开火的装填进度，间隔来自弹药配置，供 HUD 只读。
     pub(crate) fn reload_progress(&self) -> f32 {
-        reload_progress(self.cadence.remaining, FIRE_INTERVAL)
+        reload_progress(self.cadence.remaining, self.spec.cooldown())
     }
 }
 
@@ -187,11 +189,13 @@ fn fire_bullets(
             && assets.is_loaded_with_dependencies(&root.0)
             && assets.is_loaded_with_dependencies(&gun.bullet_scene)
     });
+    let interval = gun.spec.cooldown();
     if !gun.cadence.tick(
         keys.pressed(KeyCode::Space)
             && tank.is_some()
             && fade.as_ref().is_none_or(|fade| fade.accepts_input()),
         time.delta_secs(),
+        interval,
     ) {
         return;
     }
@@ -219,6 +223,7 @@ fn move_bullets(
     mut commands: Commands,
     time: Res<Time>,
     spatial: SpatialQuery,
+    spec: Res<AmmunitionSpec>,
     // 用 GlobalTransform 读取敌人位置，避免与子弹的 &mut Transform 查询冲突（B0001）；
     // 敌人都是场景根，两者等值。
     enemies: Query<&GlobalTransform, With<EnemyTank>>,
@@ -227,7 +232,7 @@ fn move_bullets(
     mut destroyed_enemies: MessageWriter<EnemyDestroyed>,
 ) {
     // 本帧前进的世界距离，按游戏时间计算，单位：米。
-    let step = BULLET_SPEED * time.delta_secs();
+    let step = spec.muzzle_velocity * time.delta_secs();
     let shape = Collider::cuboid(BULLET_SIZE, BULLET_SIZE, BULLET_SIZE);
     // 子弹投射只认敌人和混凝土墩；越过场地边界（±FIELD_SIDE/2）即视为失效，
     // 防止穿墙飞满射程。单帧最大位移约 18.75 米（1/64 秒 × 1200 米/秒），
@@ -253,8 +258,10 @@ fn move_bullets(
             Dir3::new(bullet.direction).expect("子弹方向必须为非零单位向量"),
             &ShapeCastConfig::from_max_distance(travel),
             &SpatialQueryFilter::default(),
-            &|target| concrete.contains(target)
-                || (enemies.contains(target) && !destroyed.contains(&target)),
+            &|target| {
+                concrete.contains(target)
+                    || (enemies.contains(target) && !destroyed.contains(&target))
+            },
         );
         if let Some(hit) = hit {
             if concrete.contains(hit.entity) {
@@ -336,13 +343,40 @@ mod tests {
         (mesh_count, minimum, maximum)
     }
 
-    /// 验证立即首发，随后按 lance 射速换算的间隔（60/12 = 5 秒）发射。
+    /// 验证立即首发，随后按 APFSDS 射速换算的间隔（60/12 = 5 秒）发射。
     #[test]
     fn space_fires_immediately_then_at_the_rated_interval() {
         let mut cadence = FireCadence::default();
-        assert!(cadence.tick(true, 0.016));
-        assert!(!cadence.tick(true, 2.0));
-        assert!(cadence.tick(true, 3.0));
+        assert!(cadence.tick(true, 0.016, 5.0));
+        assert!(!cadence.tick(true, 2.0, 5.0));
+        assert!(cadence.tick(true, 3.0, 5.0));
+    }
+
+    /// 非默认配置驱动连发间隔，而不是旧的五秒常量。
+    #[test]
+    fn cadence_consumes_ammunition_interval() {
+        let spec = AmmunitionSpec {
+            muzzle_velocity: 600.0,
+            rate_of_fire: 30.0,
+        };
+        let mut cadence = FireCadence::default();
+        assert!(cadence.tick(true, 0.0, spec.cooldown()));
+        assert!(!cadence.tick(true, 1.0, spec.cooldown()));
+        assert!(cadence.tick(true, 1.0, spec.cooldown()));
+    }
+
+    /// 非默认初速必须改变实际飞行位移。
+    #[test]
+    fn movement_consumes_ammunition_speed() {
+        use avian3d::collider_tree::ColliderTrees;
+        let mut app = App::new();
+        app.insert_resource(AmmunitionSpec { muzzle_velocity: 600.0, rate_of_fire: 30.0 });
+        let mut time = Time::<()>::default();
+        time.advance_by(std::time::Duration::from_secs_f32(0.05));
+        app.insert_resource(time).init_resource::<ColliderTrees>().add_message::<EnemyDestroyed>().add_systems(Update, move_bullets);
+        let entity = app.world_mut().spawn((Bullet { direction: Vec3::NEG_X, distance: 0.0 }, Transform::default())).id();
+        app.update();
+        assert!((app.world().get::<Transform>(entity).unwrap().translation.x + 30.0).abs() < 1e-4);
     }
 
     /// 验证装填进度换算：空、满、中值、越界钳制与除零防护。
@@ -360,38 +394,38 @@ mod tests {
     #[test]
     fn rapid_taps_cannot_bypass_the_fire_interval() {
         let mut cadence = FireCadence::default();
-        assert!(cadence.tick(true, 0.0));
-        assert!(!cadence.tick(true, 0.0));
+        assert!(cadence.tick(true, 0.0, 5.0));
+        assert!(!cadence.tick(true, 0.0, 5.0));
         // 松开期间冷却继续走，但 4 秒仍不足 5 秒间隔。
-        assert!(!cadence.tick(false, 2.0));
-        assert!(!cadence.tick(true, 2.0));
-        assert!(!cadence.tick(false, 2.0));
+        assert!(!cadence.tick(false, 2.0, 5.0));
+        assert!(!cadence.tick(true, 2.0, 5.0));
+        assert!(!cadence.tick(false, 2.0, 5.0));
         // 松开累计已走完冷却，重按立即首发后的下一发。
-        assert!(cadence.tick(true, 0.0));
+        assert!(cadence.tick(true, 0.0, 5.0));
     }
 
     /// 验证松开或资源不可用时继续冷却，冷却结束后也不积攒发射次数。
     #[test]
     fn release_or_unavailable_assets_reset_firing_without_queued_shots() {
         let mut cadence = FireCadence::default();
-        assert!(cadence.tick(true, 0.016));
-        assert!(!cadence.tick(false, 2.0));
-        assert!(!cadence.tick(true, 2.0));
-        assert!(!cadence.tick(false, 2.0));
+        assert!(cadence.tick(true, 0.016, 5.0));
+        assert!(!cadence.tick(false, 2.0, 5.0));
+        assert!(!cadence.tick(true, 2.0, 5.0));
+        assert!(!cadence.tick(false, 2.0, 5.0));
         // 冷却在松开期间走完，重按发射且不补发松开期间欠下的次数。
-        assert!(cadence.tick(true, 0.0));
-        assert!(!cadence.tick(false, 10.0));
-        assert!(cadence.tick(true, 0.0));
-        assert!(!cadence.tick(true, 0.016));
+        assert!(cadence.tick(true, 0.0, 5.0));
+        assert!(!cadence.tick(false, 10.0, 5.0));
+        assert!(cadence.tick(true, 0.0, 5.0));
+        assert!(!cadence.tick(true, 0.016, 5.0));
     }
 
     /// 验证长帧最多触发一发，后续帧不集中补发。
     #[test]
     fn long_frames_do_not_leave_a_backlog() {
         let mut cadence = FireCadence::default();
-        assert!(cadence.tick(true, 0.016));
-        assert!(cadence.tick(true, 5.0));
-        assert!(!cadence.tick(true, 0.016));
+        assert!(cadence.tick(true, 0.016, 5.0));
+        assert!(cadence.tick(true, 5.0, 5.0));
+        assert!(!cadence.tick(true, 0.016, 5.0));
     }
 
     /// 验证坦克平移、旋转后，炮口位置和方向正确转换到世界空间。
@@ -411,6 +445,13 @@ mod tests {
     fn hit_test_app(targets: &[(Vec3, f32)]) -> (App, Vec<Entity>) {
         use avian3d::prelude::*;
         let mut app = App::new();
+        app.insert_resource(
+            AmmunitionSpec::load(
+                std::path::Path::new("assets"),
+                crate::tank::visual::PLAYER_BULLET,
+            )
+            .unwrap(),
+        );
         app.add_plugins((MinimalPlugins, TransformPlugin, PhysicsPlugins::default()))
             .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f64(
                 1.0 / 64.0,
@@ -641,6 +682,13 @@ mod tests {
     #[test]
     fn bullets_move_independently_and_despawn_with_children_at_field_edge() {
         let mut app = App::new();
+        app.insert_resource(
+            AmmunitionSpec::load(
+                std::path::Path::new("assets"),
+                crate::tank::visual::PLAYER_BULLET,
+            )
+            .unwrap(),
+        );
         let mut time = Time::<()>::default();
         time.advance_by(Duration::from_secs_f32(0.05));
         app.insert_resource(time)
@@ -659,7 +707,7 @@ mod tests {
             .id();
         let child = app.world_mut().spawn(ChildOf(bullet)).id();
         app.update();
-        // lance 初速 1200 米/秒，0.05 秒推进 60 米。
+        // APFSDS 初速 1200 米/秒，0.05 秒推进 60 米。
         assert!(
             app.world()
                 .get::<Transform>(bullet)
@@ -692,6 +740,13 @@ mod tests {
     fn real_vox_assets_fire_and_clean_up_scene_instances() {
         let _asset_guard = crate::tank::model::lock_real_assets();
         let mut app = App::new();
+        app.insert_resource(
+            AmmunitionSpec::load(
+                std::path::Path::new("assets"),
+                crate::tank::visual::PLAYER_BULLET,
+            )
+            .unwrap(),
+        );
         app.add_plugins((
             MinimalPlugins,
             AssetPlugin::default(),
@@ -719,9 +774,12 @@ mod tests {
         .init_resource::<ButtonInput<KeyCode>>()
         .add_message::<EnemyDestroyed>()
         .add_systems(Update, crate::gameplay::enemy::spawn_enemy_barrels)
-        .add_systems(Startup, |mut commands: Commands, assets: Res<AssetServer>| {
-            crate::terrain::load_ground(&mut commands, &assets)
-        })
+        .add_systems(
+            Startup,
+            |mut commands: Commands, assets: Res<AssetServer>| {
+                crate::terrain::load_ground(&mut commands, &assets)
+            },
+        )
         .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f32(
             0.25,
         )));
@@ -789,10 +847,14 @@ mod tests {
                 });
             if ready
                 && barrel_ready
-                && world.get::<crate::tank::track::TracksValidated>(tank).is_some()
+                && world
+                    .get::<crate::tank::track::TracksValidated>(tank)
+                    .is_some()
                 && assets.is_loaded_with_dependencies(&world.resource::<Gun>().bullet_scene)
                 && assets.is_loaded_with_dependencies(&enemy_asset)
-                && world.get::<crate::tank::track::TracksValidated>(enemy).is_some()
+                && world
+                    .get::<crate::tank::track::TracksValidated>(enemy)
+                    .is_some()
                 && world.get::<WorldInstance>(enemy).is_some_and(|instance| {
                     world
                         .resource::<WorldInstanceSpawner>()
@@ -1031,7 +1093,8 @@ mod tests {
                 .get(&mesh.0)
                 .is_some_and(|loaded| {
                     loaded.get_aabb().is_some_and(|aabb| {
-                        aabb.half_extents.abs_diff_eq(Vec3::new(0.36, 0.05, 0.05).into(), 1e-5)
+                        aabb.half_extents
+                            .abs_diff_eq(Vec3::new(0.36, 0.05, 0.05).into(), 1e-5)
                     })
                 })
             {
@@ -1061,7 +1124,7 @@ mod tests {
             app.world_mut().query::<&Bullet>().iter(app.world()).count(),
             1
         );
-        // 持续按住一个完整发射间隔（lance 射速 12 发/分钟 → 5 秒）后再次开火；
+        // 持续按住一个完整发射间隔（APFSDS 射速 12 发/分钟 → 5 秒）后再次开火；
         // 首发早已飞出场界销毁，场上恰好只剩新的一发，且位置回到炮口。
         app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f32(
             5.0,

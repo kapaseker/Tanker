@@ -8,10 +8,10 @@
 //! 相机挂载仍是普通系统，BSN 只负责"出生时刻"的实体树。
 
 use bevy::prelude::*;
-use bevy::scene::{bsn, CommandsSceneExt, Scene, SceneList};
+use bevy::scene::{CommandsSceneExt, Scene, SceneList, bsn};
 
 use crate::app::state::GameState;
-use crate::gameplay::combat::firing::{FIRE_INTERVAL, Gun};
+use crate::gameplay::combat::firing::Gun;
 use crate::gameplay::health::Health;
 use crate::gameplay::player;
 use crate::gameplay::session::SessionEntity;
@@ -44,7 +44,7 @@ pub(crate) struct ReloadTrack;
 ///
 /// 使用 queue 模式：注册字符串资产路径后等图标加载完成，由 SpawnScene 调度
 /// 整树生成（比手写 spawn 晚 1-2 帧，肉眼不可感知）。
-pub(crate) fn setup(mut commands: Commands) {
+pub(crate) fn setup(mut commands: Commands, spec: Res<crate::tank::ammunition::AmmunitionSpec>) {
     let plate_border = BorderColor::all(colors::hud::PLATE_BORDER);
     commands.queue_spawn_scene(bsn! {
         HudRoot
@@ -64,7 +64,7 @@ pub(crate) fn setup(mut commands: Commands) {
         Children [
             @hud_row("image/hud/shield.png", true, health_track())
             --
-            @hud_row("image/hud/bullet.png", false, reload_track())
+            @hud_row("image/hud/bullet.png", false, reload_track(spec.cooldown()))
         ]
     });
 }
@@ -124,7 +124,7 @@ fn health_track() -> impl Scene {
 /// 装填条轨道：略矮于生命条；填充与分格线覆盖其上。
 ///
 /// 分格线由 [`reload_ticks`] 按"一格一秒"从冷却间隔运行时推导后拼接进列表。
-fn reload_track() -> impl Scene {
+fn reload_track(interval: f32) -> impl Scene {
     bsn! {
         ReloadTrack
         Node {
@@ -135,7 +135,7 @@ fn reload_track() -> impl Scene {
         Children [
             @reload_fill()
             --
-            { reload_ticks(FIRE_INTERVAL) }
+            { reload_ticks(interval) }
         ]
     }
 }
@@ -174,11 +174,11 @@ fn reload_fill() -> impl Scene {
 
 /// 装填分格线列表：一格最多一秒，格数由冷却间隔推导（5 秒 → 5 格 4 线）。
 ///
-/// 冷却来自 lance 装备射速数据（[`FIRE_INTERVAL`]），换炮后分格自动跟随，
-/// UI 不持有视觉常量投影；非整数秒向上取整保证一格不超过一秒。
+/// 冷却来自弹药配置；向上取整并最多显示 60 格，避免极长冷却创建过多节点。
+/// 60 秒以内每格不超过一秒，超过时每格按总冷却等分。
 /// 返回 `Vec<impl Scene>` 拼接进轨道的 Children 列表（`{ expr }` 拼接语法）。
 fn reload_ticks(interval: f32) -> impl SceneList {
-    let count = interval.ceil() as u32;
+    let count = interval.ceil().clamp(1.0, 60.0) as u32;
     (1..count)
         .map(|i| tick(i as f32 * 100.0 / count as f32))
         .collect::<Vec<_>>()
@@ -322,5 +322,24 @@ mod bsn_spike_tests {
             .single(world)
             .unwrap();
         assert_eq!(children.len(), 4, "4.5 秒向上取整为 5 格 4 线");
+    }
+    /// 极端冷却只限制显示节点，避免配置导致大量分配。
+    #[test]
+    fn long_reload_has_at_most_sixty_segments() {
+        #[derive(Component, Default, Clone)]
+        struct Root;
+        let mut app = spike_app();
+        let world = app.world_mut();
+        world
+            .spawn_scene(bsn! { Root Children [{ reload_ticks(f32::MAX) }] })
+            .unwrap();
+        assert_eq!(
+            world
+                .query_filtered::<&Children, With<Root>>()
+                .single(world)
+                .unwrap()
+                .len(),
+            59
+        );
     }
 }

@@ -9,7 +9,7 @@ pub(super) fn arrange_combat(world: &mut World) {
     let mut enemies: Vec<_> = query.iter(world).collect();
     enemies.sort_by_key(|entity| entity.to_bits());
     for (index, entity) in enemies.into_iter().enumerate() {
-        // 首个靶车放 40 米外：lance 初速 1200 米/秒下约 2 帧飞行时间，观察系统
+        // 首个靶车放 40 米外：APFSDS 初速 1200 米/秒下约 2 帧飞行时间，观察系统
         // 至少采样到一次移动；太近会被单帧生成即命中销毁，采不到位移。
         let position = if index == 0 {
             Vec3::new(-40.0, 3.0, 0.0)

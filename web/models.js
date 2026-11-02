@@ -1,5 +1,5 @@
 // 模型数据与 CSS 3D 占位模型构建器，供画廊页与详情页共用。
-// 使用经典脚本（非 ES module），保证 file:// 直接打开也能加载。
+// 使用经典脚本；弹药规格由详情页通过 HTTP 读取模型旁配置。
 // dims 为三维尺寸 [长, 宽, 高]（米）；parts 为占位模型盒子组合（px），以模型中心为原点偏移 (x, y, z)。
 
 // 三面色阶：顶面亮、正面中、侧面暗，模拟体素三面明暗
@@ -60,7 +60,7 @@ const CATEGORIES = [
     { name: 'APFSDS', tone: 'dark', dims: [0.72, 0.10, 0.10], parts: [{ w: 180, h: 10, d: 10 }, { w: 30, h: 25, d: 4, x: -75 }, { w: 30, h: 4, d: 25, x: -75 }] },
   ] },
   { name: '坦克', code: 'TK', models: [
-    { name: 'LeoPard2 A6', tone: 'mint', dims: [10.98, 3.76, 4.32], specs: [{ label: '初速', value: '1200', unit: 'm/s' }, { label: '射速', value: '12', unit: 'rpm' }, { label: '前进速度', value: '16', unit: 'm/s' }, { label: '倒车速度', value: '8', unit: 'm/s' }], parts: [{ w: 150, h: 30, d: 72 }, { w: 60, h: 22, d: 48, y: -26 }, { w: 106, h: 8, d: 8, x: 90, y: -26 }, { w: 150, h: 20, d: 16, y: 20, z: 28, tone: 'dark' }, { w: 150, h: 20, d: 16, y: 20, z: -28, tone: 'dark' }] },
+    { name: 'LeoPard2 A6', tone: 'mint', dims: [10.98, 3.76, 4.32], specs: [{ label: '前进速度', value: '16', unit: 'm/s' }, { label: '倒车速度', value: '8', unit: 'm/s' }], parts: [{ w: 150, h: 30, d: 72 }, { w: 60, h: 22, d: 48, y: -26 }, { w: 106, h: 8, d: 8, x: 90, y: -26 }, { w: 150, h: 20, d: 16, y: 20, z: 28, tone: 'dark' }, { w: 150, h: 20, d: 16, y: 20, z: -28, tone: 'dark' }] },
     { name: 'carapace', tone: 'sand', dims: [9, 3.4, 2.6], parts: [{ w: 132, h: 30, d: 68 }, { w: 54, h: 22, d: 46, y: -26 }, { w: 76, h: 8, d: 8, x: 78, y: -26 }, { w: 132, h: 20, d: 16, y: 20, z: 26, tone: 'dark' }, { w: 132, h: 20, d: 16, y: 20, z: -26, tone: 'dark' }] },
   ] },
 ];
