@@ -1,5 +1,7 @@
 # 豹 2A6 炮塔控制技术验收
 
+> 2026-11-02 清理说明：按用户要求，`.scratch/turret-control/`、`.scratch/architecture-reorganization/`、`.scratch/leopard-player/` 和 `.scratch/leopard-player-rework/` 已删除。下文涉及这些目录的路径及“本机保留”描述均为历史记录，原始产物已清理；本文验收结论和仓库内关键图继续保留。本次未重跑测试。
+
 日期：2026-11-02。范围为 WASD 控制与炮口世界姿态发射，不重新制作模型，不代表用户已确认动态美术效果。
 
 ## 行为与配置

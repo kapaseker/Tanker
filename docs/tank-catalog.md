@@ -19,7 +19,7 @@
 
 2026-10-30 概念设计更新（旧模型历史）：玩家 Leopard 2A6 新增[精细体素半写实七视角概念图](references/leopard-2a6-style-v2-2026-10-30/README.md)，用于新美术基线下的视觉参考，待用户美术评审。车型与资源组合未变，原有模型验收状态保留；本次未修改运行时资产。
 
-历史返工的[计划](../.scratch/leopard-player-rework/plan.md)、[规格](../.scratch/leopard-player-rework/spec.md)及[工单索引](../.scratch/leopard-player-rework/issues/README.md)按用户明确要求纳入 Git，作为本地 tracker 默认仅本机保存规则的本次例外。
+2026-11-02 按用户要求清理已完成的旧模型与返工工单目录。返工计划、规格及工单可从清理前提交 `f43c5ae873c97988af6539aa21abc698419bb31c` 的 `.scratch/leopard-player-rework/` 查阅；长期结论见[历史验收](testing/player-a6-final-acceptance.md)。
 
 ## 新增车型与维护方式
 

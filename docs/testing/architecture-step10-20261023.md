@@ -1,5 +1,7 @@
 # 任务 10：架构整理最终验收
 
+> 2026-11-02 清理说明：按用户要求，`.scratch/turret-control/`、`.scratch/architecture-reorganization/`、`.scratch/leopard-player/` 和 `.scratch/leopard-player-rework/` 已删除。下文涉及这些目录的路径及“本机保留”描述均为历史记录，原始产物已清理；本文验收结论和仓库内关键图继续保留。本次未重跑测试。
+
 2026-10-23，从 `e42d39967b4f197817f3610ef2d5e46da76bb4ba` 开始，当前分支 master。本任务只更新导航、ADR、计划和验收记录，无 Rust、依赖或资产修改。
 
 ## 路径与依赖检查

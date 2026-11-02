@@ -1,5 +1,7 @@
 # 目录整理迁移基线（任务 01）
 
+> 2026-11-02 清理说明：按用户要求，`.scratch/turret-control/`、`.scratch/architecture-reorganization/`、`.scratch/leopard-player/` 和 `.scratch/leopard-player-rework/` 已删除。下文涉及这些目录的路径及“本机保留”描述均为历史记录，原始产物已清理；本文验收结论和仓库内关键图继续保留。本次未重跑测试。
+
 2026-10-23 完成基线记录；未修改生产代码、依赖、断言或原资产，未启动可见窗口。
 基线提交为 `9a0bf8cb22c2d13efe845dd6b4e3c5bf485568ec`，分支 `master`。
 开始时已有未跟踪的 `docs/plans/`，本任务没有修改或纳入提交。

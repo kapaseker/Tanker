@@ -1,5 +1,7 @@
 # 玩家细网格作者化验收（2026-10-29）
 
+> 2026-11-02 清理说明：按用户要求，`.scratch/turret-control/`、`.scratch/architecture-reorganization/`、`.scratch/leopard-player/` 和 `.scratch/leopard-player-rework/` 已删除。下文涉及这些目录的路径及“本机保留”描述均为历史记录，原始产物已清理；本文验收结论和仓库内关键图继续保留。本次未重跑测试。
+
 工单：本机 `.scratch/leopard-player/issues/01-fine-authoring.md`。
 范围是可重建的尾舱细节示例；真实豹 2 尺寸、轮数和其它部件美术尚未改造。
 

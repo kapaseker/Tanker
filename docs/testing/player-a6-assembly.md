@@ -1,5 +1,7 @@
 # 豹 2A6 基础整车验收（工单 02，2026-10-29）
 
+> 2026-11-02 清理说明：按用户要求，`.scratch/turret-control/`、`.scratch/architecture-reorganization/`、`.scratch/leopard-player/` 和 `.scratch/leopard-player-rework/` 已删除。下文涉及这些目录的路径及“本机保留”描述均为历史记录，原始产物已清理；本文验收结论和仓库内关键图继续保留。本次未重跑测试。
+
 工单为本机 `.scratch/leopard-player/issues/02-real-scale-assembly.md`。
 本票交付真实尺度的基础整车：倾斜车首、楔形炮塔、L55 风格长炮管及可运行装配。
 本票交付时仍为每侧五负重轮加两个端轮；七轮与完整履带已由工单 03 交付，

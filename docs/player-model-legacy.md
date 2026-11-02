@@ -1,5 +1,7 @@
 > 历史归档：2026-11-01 已删除本文所述旧玩家资产、生成器和专用测试；下列路径与命令仅供追溯，不能用于当前工程。当前入口见 [玩家模型](player-model.md)。
 
+> 2026-11-02 清理说明：按用户要求，`.scratch/turret-control/`、`.scratch/architecture-reorganization/`、`.scratch/leopard-player/` 和 `.scratch/leopard-player-rework/` 已删除。下文涉及这些目录的路径及“本机保留”描述均为历史记录，原始产物已清理；本文验收结论和仓库内关键图继续保留。本次未重跑测试。
+
 # 历史玩家模型：anvil / lance / cleat
 
 > 本文保留 2026-10-29 版本的作者化契约与验收历史。2026-11-01 起的玩家整车接入见[当前玩家模型](player-model.md)。历史美术验收不适用于 astraH 动画集成。

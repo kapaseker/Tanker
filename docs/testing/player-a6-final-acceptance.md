@@ -1,5 +1,7 @@
 # 豹 2A6 玩家模型整体验收与成本对照（工单 06）
 
+> 2026-11-02 清理说明：按用户要求，`.scratch/turret-control/`、`.scratch/architecture-reorganization/`、`.scratch/leopard-player/` 和 `.scratch/leopard-player-rework/` 已删除。下文涉及这些目录的路径及“本机保留”描述均为历史记录，原始产物已清理；本文验收结论和仓库内关键图继续保留。本次未重跑测试。
+
 ## 最终集成验收（leopard-player-rework 工单 05，2026-10-29）
 
 02/03/04 全部完成后，对最终组合（样板车体/炮塔 + 02 轮带 + 03 细化，交付资产自 03 后未变）执行整车集成验证。**技术验收通过；美术验收经用户确认通过**（2026-10-29，用户对照旧模型/样板/最终三方同视点图、正常游戏镜头与炮塔/车顶/格栅/正后近景及详情页取景后明确确认）。最终核心图纳入 Git：`docs/references/leopard-2a6-final-*.png`；同条件三方对照图保留在本机 `.scratch/offscreen/rework-03-old-model/`、`rework-03-approved-sample/` 与 `rework-05-wheels/`。
