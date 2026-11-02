@@ -63,7 +63,7 @@ impl Scenario {
                 0, 1, 2, 3, 30, 31, 36, 120, 210, 211, 420, 421, 450, 749, 750, 809, 869, 870, 871,
                 877, 880, 887,
             ],
-            Self::Integrated => &[0, 60, 150, 174, 194, 270, 330, 360, 397, 398],
+            Self::Integrated => &[0, 60, 100, 101, 150, 174, 194, 270, 330, 360, 397, 398],
             // 先直行 1 秒，再持续前进左转；路径不会触及 25 米外的混凝土墩。
             Self::Drive => &[0, 60, 180],
             Self::Combat => &[0, 1, 6, 24, 48, 60, 120],
@@ -85,6 +85,13 @@ impl Scenario {
             (Self::Drive, 61..=180) => &[KeyCode::ArrowUp, KeyCode::ArrowLeft],
             (Self::Combat, 1) | (Self::Articulation, 1..=3) => &[KeyCode::Space],
             (Self::Integrated, 1..=60) => &[KeyCode::ArrowUp],
+            (Self::Integrated, 100) => &[
+                KeyCode::ArrowUp,
+                KeyCode::ArrowLeft,
+                KeyCode::KeyA,
+                KeyCode::KeyW,
+                KeyCode::Space,
+            ],
             // 上下各按 60 帧，经过相同加速后回到水平。
             (Self::Integrated, 61..=120) => &[
                 KeyCode::ArrowUp,
@@ -93,10 +100,14 @@ impl Scenario {
                 KeyCode::KeyW,
             ],
             (Self::Integrated, 121..=150) => &[KeyCode::ArrowUp, KeyCode::ArrowLeft, KeyCode::KeyA],
+            (Self::Integrated, 151..=170) => &[KeyCode::ArrowUp, KeyCode::ArrowLeft],
             (Self::Integrated, 174 | 194 | 336) => &[KeyCode::Space],
             (Self::Integrated, 211..=270) => &[KeyCode::KeyS],
             (Self::Integrated, 271..=330) => &[KeyCode::KeyW],
-            (Self::Integrated, 337..=396) => &[KeyCode::KeyA],
+            (Self::Integrated, 337..=360) => &[KeyCode::KeyA],
+            (Self::Integrated, 361) => &[KeyCode::KeyD, KeyCode::KeyW],
+            (Self::Integrated, 362) => &[KeyCode::KeyW],
+            (Self::Integrated, 364 | 366) => &[KeyCode::KeyA],
             (Self::Integrated, 398) => &[KeyCode::KeyA],
             (Self::Integrated, 400 | 506) => &[KeyCode::KeyA, KeyCode::KeyW],
             (Self::Integrated, 501) => &[KeyCode::Escape],
@@ -320,6 +331,10 @@ mod tests {
         assert!(Scenario::Scene.keys(1).is_empty());
         assert_eq!(Scenario::Integrated.keys(60), &[KeyCode::ArrowUp]);
         assert_eq!(
+            Scenario::Integrated.keys(100),
+            &[KeyCode::ArrowUp, KeyCode::ArrowLeft, KeyCode::KeyA, KeyCode::KeyW, KeyCode::Space]
+        );
+        assert_eq!(
             Scenario::Integrated.keys(61),
             &[
                 KeyCode::ArrowUp,
@@ -332,7 +347,8 @@ mod tests {
             Scenario::Integrated.keys(121),
             &[KeyCode::ArrowUp, KeyCode::ArrowLeft, KeyCode::KeyA]
         );
-        assert!(Scenario::Integrated.keys(151).is_empty());
+        assert_eq!(Scenario::Integrated.keys(151), &[KeyCode::ArrowUp, KeyCode::ArrowLeft]);
+        assert!(Scenario::Integrated.keys(171).is_empty());
         assert_eq!(Scenario::Integrated.keys(174), &[KeyCode::Space]);
         assert!(Scenario::Integrated.keys(397).is_empty());
         assert_eq!(Scenario::Integrated.keys(398), &[KeyCode::KeyA]);
