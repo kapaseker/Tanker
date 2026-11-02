@@ -11,7 +11,7 @@ use crate::{
         font::UiFont,
         resources::{
             colors,
-            dimens::{detail as dims, title_bar as bar},
+            dimens::{detail as dims, index as index_dims, title_bar as bar},
             strings, strings_cn,
         },
         widgets::{self, text_font},
@@ -416,26 +416,44 @@ fn spawn_ui(
                 TextColor(colors::ON_SURFACE),
             ));
             if previews.items[0].entry.category == 1 && !previews.items[0].entry.enemy {
-                root.spawn((
-                    Node {
-                        position_type: PositionType::Absolute,
-                        bottom: px(dims::AIM_HELP_BOTTOM),
-                        width: percent(100),
-                        ..default()
-                    },
-                    Text::new(format!(
-                        "{} / {} {} · {} / {} {}",
-                        strings::KEY_W,
-                        strings::KEY_S,
-                        strings_cn::detail::GUN_ELEVATION,
-                        strings::KEY_A,
-                        strings::KEY_D,
-                        strings_cn::detail::TURRET_TRAVERSE
-                    )),
-                    TextLayout::justify(Justify::Center),
-                    text_font(&font, dims::AIM_HELP_SIZE, 400.0),
-                    TextColor(colors::ON_SURFACE_MUTED),
-                ));
+                root.spawn(Node {
+                    position_type: PositionType::Absolute,
+                    bottom: px(dims::AIM_HELP_BOTTOM),
+                    width: percent(100),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    column_gap: px(dims::AIM_HELP_GROUP_GAP),
+                    ..default()
+                })
+                .with_children(|hint| {
+                    for (first, second, label) in [
+                        (
+                            strings::KEY_W,
+                            strings::KEY_S,
+                            strings_cn::detail::GUN_ELEVATION,
+                        ),
+                        (
+                            strings::KEY_A,
+                            strings::KEY_D,
+                            strings_cn::detail::TURRET_TRAVERSE,
+                        ),
+                    ] {
+                        hint.spawn(Node {
+                            align_items: AlignItems::Center,
+                            column_gap: px(index_dims::HINT_ITEM_GAP),
+                            ..default()
+                        })
+                        .with_children(|group| {
+                            widgets::spawn_keycap(group, &font, first, ());
+                            widgets::spawn_keycap(group, &font, second, ());
+                            group.spawn((
+                                Text::new(label),
+                                text_font(&font, dims::AIM_HELP_SIZE, 400.0),
+                                TextColor(colors::ON_SURFACE_MUTED),
+                            ));
+                        });
+                    }
+                });
             }
             widgets::spawn_version_text(root, &font);
         });

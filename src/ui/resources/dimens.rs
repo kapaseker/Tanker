@@ -188,6 +188,8 @@ pub(crate) mod detail {
     /// 炮塔按键提示沿用菜单页脚的底部留白与提示字号，单位：逻辑像素。
     pub(crate) const AIM_HELP_BOTTOM: f32 = 30.0;
     pub(crate) const AIM_HELP_SIZE: f32 = 12.0;
+    /// 炮管与炮塔两组键帽提示之间的留白，单位：逻辑像素。
+    pub(crate) const AIM_HELP_GROUP_GAP: f32 = 24.0;
     /// 平面网格间距；从标题栏底部开始计格。
     pub(crate) const GRID: f32 = 48.0;
     /// 左上角分类眉题相对查看区的位置。

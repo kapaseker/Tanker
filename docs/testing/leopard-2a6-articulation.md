@@ -58,3 +58,9 @@
 `cargo check`、配置驱动的详情规格测试通过；RTX 4060 / Vulkan 详情离屏退出0，[报告](leopard-2a6-articulation/detail-labels-report.txt)。已读取1280×720、640×720、1920×720关键帧，确认全圈、角度符号及单位位置，页面未出现旧标签附注。未重复驾驶/战斗离屏或全套测试；此次不修改这些行为。两轴代码复核未发现可行动问题。
 
 ![修订后的详情文案与角度单位](leopard-2a6-articulation/detail-labels.png)
+
+## 详情快捷键控件修订（2026-11-02）
+
+W/S、A/D 使用共享 `widgets::spawn_keycap`，保留 MiSans 与12px说明文字，仅显示“炮管俯仰”“炮塔旋转”。`cargo check` 与 RTX 4060/Vulkan 详情离屏通过；已读取关键帧确认键帽样式与居中布局。[报告](leopard-2a6-articulation/detail-kbd-report.txt)。纯界面调整，未重复逻辑全套测试。
+
+![统一键帽提示](leopard-2a6-articulation/detail-kbd.png)
