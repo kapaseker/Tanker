@@ -21,11 +21,9 @@
   ```text
   cargo run -- --capture .scratch/capture.png
   cargo run -- --offscreen-test scene --output .scratch/offscreen/scene
-  cargo run -- --offscreen-test drive --output .scratch/offscreen/drive
-  cargo run -- --offscreen-test combat --output .scratch/offscreen/combat
   ```
 
-- `--capture` 生成一张默认场景 PNG；三个场景分别验证静态场景、直行与转弯及履带、开炮命中与爆炸清理，输出 `frame-<六位模拟帧>.png` 和 `report.txt`。按改动选择相关场景，覆盖不到的 bug 应扩充离屏预设或逻辑测试，不默认改用窗口。
+- **预设选择**：按场景、驾驶、射击、瞄准、HUD、模型或页面改动，查 [离屏预设选择](docs/testing/offscreen-presets.md)；覆盖不到的 bug 应扩充离屏预设或逻辑测试。`--capture` 只生成一张默认场景 PNG，不替代预设断言。
 - 离屏模式复用实际游戏场景、资源和渲染配置，固定为 1280×720、随机种子 42、1/60 秒模拟步长。资源、实例与 GPU 管线就绪后先模拟 120 帧落地，再开始场景计帧；截图等待不推进模拟时间。
 - 产物目录自动创建，已有目标产物拒绝覆盖；重复验证使用新路径。只有断言通过且全部图片保存成功才返回 0；资源、渲染、断言、写入错误或启动后超过 180 秒均失败退出，编译不计入超时。
 - 验证时检查退出码和报告，并读取关键帧确认效果；图片不是纯色仅是最低自动检查，不代表模型、材质或动画正确。跨显卡/驱动不要求像素完全一致，固定种子与步长也不保证跨平台物理完全一致。
