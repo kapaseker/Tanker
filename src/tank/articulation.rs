@@ -8,6 +8,8 @@ use serde::Deserialize;
 #[derive(Component, Clone, Copy, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct AimSpec {
+    /// 水平全周范围，单位：度；当前车型支持 360 度连续旋转。
+    pub(crate) traverse_range_deg: f32,
     /// 炮塔相对车体的最大水平角速度，度/秒；水平允许连续整圈旋转。
     pub(crate) traverse_speed_deg_s: f32,
     /// 炮管相对炮塔的最大俯仰角速度，度/秒。
@@ -21,6 +23,9 @@ pub(crate) struct AimSpec {
 impl AimSpec {
     /// 配置进入运行前拒绝无效速度、反向区间或无法容纳默认水平姿态的限位。
     pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.traverse_range_deg != 360.0 {
+            return Err("当前炮塔仅支持 traverse_range_deg = 360 度连续旋转".into());
+        }
         if !self.traverse_speed_deg_s.is_finite()
             || self.traverse_speed_deg_s <= 0.0
             || !self.elevation_speed_deg_s.is_finite()
@@ -43,7 +48,7 @@ impl AimSpec {
     /// 按秒积分两轴意图（−1..=1），不改变车体；松手保持相对角度。
     pub(crate) fn advance(&self, aim: &mut TankAim, yaw: f32, pitch: f32, dt: f32) {
         aim.yaw = (aim.yaw + yaw * self.traverse_speed_deg_s.to_radians() * dt)
-            .rem_euclid(std::f32::consts::TAU);
+            .rem_euclid(self.traverse_range_deg.to_radians());
         aim.pitch = (aim.pitch + pitch * self.elevation_speed_deg_s.to_radians() * dt).clamp(
             self.min_elevation_deg.to_radians(),
             self.max_elevation_deg.to_radians(),
@@ -132,6 +137,7 @@ mod tests {
     #[test]
     fn aim_motion_respects_rates_limits_and_release() {
         let spec = AimSpec {
+            traverse_range_deg: 360.0,
             traverse_speed_deg_s: 40.0,
             elevation_speed_deg_s: 20.0,
             min_elevation_deg: -9.0,

@@ -11,6 +11,8 @@
   // docs/references/leopard-2a6-articulation.md，核查日期 2026-11-02。
   // shortcut: 全周共用俯仰限位，取得 A6 方位限位资料后补充车尾防碰撞联锁。
   "articulation": {
+    // 水平全周且可连续旋转；当前仅支持 360 度，不表示 ±180 度机械限位。
+    "traverse_range_deg": 360.0,
     // 两轴均为度/秒，按住即以该速度运动，松开停止。
     "traverse_speed_deg_s": 30.0,
     "elevation_speed_deg_s": 9.0,

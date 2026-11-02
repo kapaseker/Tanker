@@ -105,40 +105,67 @@ impl View {
 #[derive(Clone)]
 struct Spec {
     label: &'static str,
-    value: f32,
+    value: String,
     unit: &'static str,
 }
 
-/// 玩家整车只展示驾驶规格。
-const PLAYER_SPECS: [Spec; 2] = [
-    Spec {
-        label: strings_cn::detail::FORWARD_SPEED,
-        value: track::PLAYER_TRACKS.forward_speed,
-        unit: strings::UNIT_METERS_PER_SECOND,
-    },
-    Spec {
-        label: strings_cn::detail::REVERSE_SPEED,
-        value: track::PLAYER_TRACKS.reverse_speed,
-        unit: strings::UNIT_METERS_PER_SECOND,
-    },
-];
-
-/// 弹药与玩家各显示两项规格，无已设定性能的敌车不生成空行。
-fn specs_for(entry: preview::Entry, ammo: &crate::tank::ammunition::AmmunitionSpec) -> Vec<Spec> {
+/// 详情只读取已校验配置：弹药两项，豹 2A6 驾驶与炮塔六项，敌车不生成空行。
+fn specs_for(
+    entry: preview::Entry,
+    ammo: &crate::tank::ammunition::AmmunitionSpec,
+    tanks: &crate::tank::driving::TankConfigs,
+) -> Vec<Spec> {
     match (entry.category, entry.enemy) {
         (0, _) => vec![
             Spec {
                 label: strings_cn::detail::MUZZLE_VELOCITY,
-                value: ammo.muzzle_velocity,
+                value: ammo.muzzle_velocity.to_string(),
                 unit: strings::UNIT_METERS_PER_SECOND,
             },
             Spec {
                 label: strings_cn::detail::RATE_OF_FIRE,
-                value: ammo.rate_of_fire,
+                value: ammo.rate_of_fire.to_string(),
                 unit: strings::UNIT_ROUNDS_PER_MINUTE,
             },
         ],
-        (1, false) => PLAYER_SPECS.to_vec(),
+        (1, false) => {
+            let aim = tanks
+                .player
+                .articulation
+                .expect("启动已校验豹 2A6 炮塔配置");
+            vec![
+                Spec {
+                    label: strings_cn::detail::FORWARD_SPEED,
+                    value: track::PLAYER_TRACKS.forward_speed.to_string(),
+                    unit: strings::UNIT_METERS_PER_SECOND,
+                },
+                Spec {
+                    label: strings_cn::detail::REVERSE_SPEED,
+                    value: track::PLAYER_TRACKS.reverse_speed.to_string(),
+                    unit: strings::UNIT_METERS_PER_SECOND,
+                },
+                Spec {
+                    label: strings_cn::detail::TRAVERSE_RANGE,
+                    value: aim.traverse_range_deg.to_string(),
+                    unit: strings::UNIT_DEGREES,
+                },
+                Spec {
+                    label: strings_cn::detail::ELEVATION_RANGE,
+                    value: format!("{:+}～{:+}", aim.min_elevation_deg, aim.max_elevation_deg),
+                    unit: strings::UNIT_DEGREES,
+                },
+                Spec {
+                    label: strings_cn::detail::TRAVERSE_SPEED,
+                    value: aim.traverse_speed_deg_s.to_string(),
+                    unit: strings::UNIT_DEGREES_PER_SECOND,
+                },
+                Spec {
+                    label: strings_cn::detail::ELEVATION_SPEED,
+                    value: aim.elevation_speed_deg_s.to_string(),
+                    unit: strings::UNIT_DEGREES_PER_SECOND,
+                },
+            ]
+        }
         _ => vec![],
     }
 }
@@ -198,6 +225,7 @@ fn spawn_preview(
 fn spawn_ui(
     mut commands: Commands,
     ammo: Res<crate::tank::ammunition::AmmunitionSpec>,
+    tanks: Res<crate::tank::driving::TankConfigs>,
     target: Res<SceneTarget>,
     font: Res<UiFont>,
     previews: Res<Previews>,
@@ -309,45 +337,63 @@ fn spawn_ui(
                                 TextColor(colors::PRIMARY),
                             ));
                         });
-                    for spec in specs_for(previews.items[0].entry, &ammo) {
-                        specs
-                            .spawn((
-                                SpecRow,
-                                Node {
-                                    flex_direction: FlexDirection::Column,
-                                    row_gap: px(dims::SPEC_LABEL_GAP),
-                                    ..default()
+                    specs
+                        .spawn(Node {
+                            display: Display::Grid,
+                            grid_template_columns: RepeatedGridTrack::px(
+                                if previews.items[0].entry.category == 1
+                                    && !previews.items[0].entry.enemy
+                                {
+                                    2
+                                } else {
+                                    1
                                 },
-                            ))
-                            .with_children(|row| {
-                                row.spawn((
-                                    Text::new(spec.label),
-                                    text_font(&font, dims::SPEC_LABEL_SIZE, 400.0),
-                                    LetterSpacing::Px(dims::SPEC_LABEL_SPACING),
-                                    TextColor(colors::ON_SURFACE_MUTED),
-                                ));
-                                row.spawn((Node {
-                                    flex_direction: FlexDirection::Row,
-                                    align_items: AlignItems::Baseline,
-                                    column_gap: px(dims::SPEC_VALUE_GAP),
-                                    ..default()
-                                },))
-                                    .with_children(|value| {
-                                        // 薄荷亮色与画廊激活型号同源；单位为英文缩写。
-                                        value.spawn((
-                                            Text::new(spec.value.to_string()),
-                                            text_font(&font, dims::SPEC_VALUE_SIZE, 700.0),
-                                            TextColor(colors::gallery::NAME_ACTIVE),
-                                        ));
-                                        value.spawn((
-                                            Text::new(spec.unit),
-                                            text_font(&font, dims::SPEC_UNIT_SIZE, 400.0),
-                                            LetterSpacing::Px(dims::SPEC_UNIT_SPACING),
-                                            TextColor(colors::ON_SURFACE_MUTED),
-                                        ));
-                                    });
-                            });
-                    }
+                                dims::SPEC_COLUMN_WIDTH,
+                            ),
+                            column_gap: px(dims::SPEC_COLUMN_GAP),
+                            row_gap: px(dims::SPECS_GAP),
+                            ..default()
+                        })
+                        .with_children(|rows| {
+                            for spec in specs_for(previews.items[0].entry, &ammo, &tanks) {
+                                rows.spawn((
+                                    SpecRow,
+                                    Node {
+                                        flex_direction: FlexDirection::Column,
+                                        row_gap: px(dims::SPEC_LABEL_GAP),
+                                        ..default()
+                                    },
+                                ))
+                                .with_children(|row| {
+                                    row.spawn((
+                                        Text::new(spec.label),
+                                        text_font(&font, dims::SPEC_LABEL_SIZE, 400.0),
+                                        LetterSpacing::Px(dims::SPEC_LABEL_SPACING),
+                                        TextColor(colors::ON_SURFACE_MUTED),
+                                    ));
+                                    row.spawn((Node {
+                                        flex_direction: FlexDirection::Row,
+                                        align_items: AlignItems::Baseline,
+                                        column_gap: px(dims::SPEC_VALUE_GAP),
+                                        ..default()
+                                    },))
+                                        .with_children(|value| {
+                                            // 薄荷亮色与画廊激活型号同源；单位为英文缩写。
+                                            value.spawn((
+                                                Text::new(spec.value),
+                                                text_font(&font, dims::SPEC_VALUE_SIZE, 700.0),
+                                                TextColor(colors::gallery::NAME_ACTIVE),
+                                            ));
+                                            value.spawn((
+                                                Text::new(spec.unit),
+                                                text_font(&font, dims::SPEC_UNIT_SIZE, 400.0),
+                                                LetterSpacing::Px(dims::SPEC_UNIT_SPACING),
+                                                TextColor(colors::ON_SURFACE_MUTED),
+                                            ));
+                                        });
+                                });
+                            }
+                        });
                 });
             root.spawn((
                 Status,
@@ -997,16 +1043,34 @@ mod tests {
             (-28.0, -14.0, 1.0, false)
         );
     }
-    /// 弹药详情读取传入配置，坦克不再重复展示弹药性能。
+    /// 详情显示传入配置，调参不会只改变玩法而留下旧的界面数字。
     #[test]
-    fn specs_follow_ammunition_configuration() {
-        let spec = crate::tank::ammunition::AmmunitionSpec { muzzle_velocity: 600.0, rate_of_fire: 30.0, ..crate::tank::ammunition::AmmunitionSpec::load(std::path::Path::new("assets"), crate::tank::visual::PLAYER_BULLET).unwrap() };
-        let rows = specs_for(ENTRIES[0], &spec);
+    fn specs_follow_equipment_configuration() {
+        let mut ammo = crate::tank::ammunition::AmmunitionSpec::load(
+            std::path::Path::new("assets"),
+            crate::tank::visual::PLAYER_BULLET,
+        )
+        .unwrap();
+        ammo.muzzle_velocity = 600.0;
+        ammo.rate_of_fire = 30.0;
+        let mut tanks =
+            crate::tank::driving::TankConfigs::load(std::path::Path::new("assets")).unwrap();
+        let aim = tanks.player.articulation.as_mut().unwrap();
+        aim.traverse_speed_deg_s = 25.0;
+        aim.elevation_speed_deg_s = 8.0;
+        aim.min_elevation_deg = -5.0;
+        aim.max_elevation_deg = 15.0;
+        let rows = specs_for(ENTRIES[0], &ammo, &tanks);
         assert_eq!(rows.len(), 2);
-        assert_eq!(rows[0].value, 600.0);
-        assert_eq!(rows[1].value, 30.0);
-        assert_eq!(specs_for(ENTRIES[1], &spec).len(), 2);
-        assert!(specs_for(ENTRIES[2], &spec).is_empty());
+        assert_eq!(rows[0].value, "600");
+        assert_eq!(rows[1].value, "30");
+        let rows = specs_for(ENTRIES[1], &ammo, &tanks);
+        assert_eq!(rows.len(), 6);
+        assert_eq!(rows[2].value, "360");
+        assert_eq!(rows[2].unit, strings::UNIT_DEGREES);
+        assert_eq!(rows[3].value, "-5～+15");
+        assert_eq!(rows[4].value, "25");
+        assert_eq!(rows[5].value, "8");
+        assert!(specs_for(ENTRIES[2], &ammo, &tanks).is_empty());
     }
-
 }

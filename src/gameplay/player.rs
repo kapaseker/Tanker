@@ -95,6 +95,7 @@ mod tests {
             )))
             .add_systems(Update, read_aim_input);
         let spec = AimSpec {
+            traverse_range_deg: 360.0,
             traverse_speed_deg_s: 30.0,
             elevation_speed_deg_s: 9.0,
             min_elevation_deg: -9.0,

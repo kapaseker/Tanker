@@ -245,6 +245,7 @@ mod tests {
         let source = std::fs::read_to_string("assets/tank/player/leopard2_a6/tank.jsonc").unwrap();
         assert!(TankConfig::parse(source.as_bytes()).unwrap().articulation.is_some());
         for (old, new) in [
+            ("\"traverse_range_deg\": 360.0", "\"traverse_range_deg\": 180.0"),
             ("\"traverse_speed_deg_s\": 30.0", "\"traverse_speed_deg_s\": 0.0"),
             ("\"elevation_speed_deg_s\": 9.0", "\"elevation_speed_deg_s\": -1.0"),
             ("\"min_elevation_deg\": -9.0", "\"min_elevation_deg\": 21.0"),

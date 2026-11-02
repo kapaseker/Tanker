@@ -114,7 +114,7 @@ fn assert_dims(app: &mut App) -> Result<(), String> {
     Ok(())
 }
 
-/// 弹药与玩家整车各显示两行参数，敌方不显示空行。
+/// 弹药两项、豹 2A6 驾驶与炮塔六项，敌方不显示空行。
 /// 数值与单位的人工核对由初始帧截图完成，这里防止空行重新出现。
 fn assert_specs(app: &mut App, index: usize) -> Result<(), String> {
     let world = app.world_mut();
@@ -122,7 +122,7 @@ fn assert_specs(app: &mut App, index: usize) -> Result<(), String> {
         .query_filtered::<(), With<SpecRow>>()
         .iter(world)
         .count();
-    let expected = if index <= 1 { 2 } else { 0 };
+    let expected = match index { 0 => 2, 1 => 6, _ => 0 };
     ensure(
         rows == expected,
         format!("目录项{index}规格行应为 {expected}，实际 {rows}").as_str(),

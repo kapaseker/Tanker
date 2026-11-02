@@ -202,6 +202,9 @@ pub(crate) mod detail {
     /// 装备规格行（网页 .specs/.spec）：眉题与规格行、标签与数值的间距，
     /// 以及标签/数值/单位的字号与字距。
     pub(crate) const SPECS_GAP: f32 = 16.0;
+    /// 玩家六项参数使用两列，避免超宽矮视口下挤出页脚；单位：逻辑像素。
+    pub(crate) const SPEC_COLUMN_WIDTH: f32 = 190.0;
+    pub(crate) const SPEC_COLUMN_GAP: f32 = 24.0;
     pub(crate) const SPEC_LABEL_GAP: f32 = 8.0;
     pub(crate) const SPEC_LABEL_SIZE: f32 = 18.0;
     pub(crate) const SPEC_LABEL_SPACING: f32 = 2.0;

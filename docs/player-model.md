@@ -39,3 +39,5 @@
 弹药初速与射速的权威来源是 `assets/tank/ammunition/apfsds/bullet.jsonc`；冷却按 `60 / rate_of_fire` 推导，剩余冷却只存在于对局状态。配置缺失或非法时阻止启动，无数值兜底。
 
 玩家碰撞体尺寸与圆角半径由 `assets/tank/player/leopard2_a6/tank.jsonc` 配置；弹丸主体扫掠盒由 `bullet.jsonc` 配置。
+
+2026-11-02 参数展示补充：`articulation.traverse_range_deg` 显式记录 360°全周连续范围；俯仰范围和两轴速度沿用同一配置。豹 2A6 详情展示驾驶两项、水平范围、俯仰范围、水平速度及俯仰速度共六项，按两列排列；速度保留“暂定”标识。
