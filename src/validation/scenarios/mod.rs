@@ -1,6 +1,7 @@
 //! 场景帧表、输入脚本与公共预热/计帧流程；各场景保留原有断言。
 
 mod articulation;
+mod aiming;
 mod combat;
 mod detail;
 mod drive;
@@ -29,6 +30,8 @@ use scene::{subject_state, validate_scene};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Scenario {
     Scene,
+    /// 实际射击、预测接触及最终准星布局的确定性验收。
+    Aiming,
     /// 玩家炮塔、炮管与多发弹丸的世界姿态验证。
     Articulation,
     /// 田园视觉样板、自由相机与首页往返。
@@ -52,6 +55,7 @@ impl Scenario {
     pub(super) fn frames(self) -> &'static [u32] {
         match self {
             Self::Scene => &[0],
+            Self::Aiming => &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
             Self::Articulation => &[0, 1, 2, 3, 30, 120, 210, 211, 420, 421, 450, 749],
             // 先直行 1 秒，再持续前进左转；路径不会触及 25 米外的混凝土墩。
             Self::Drive => &[0, 60, 180],
@@ -80,7 +84,8 @@ impl Scenario {
             (Self::Articulation, 212..=420) => &[KeyCode::KeyD, KeyCode::KeyS],
             (Self::Detail, 100..=279) => &[KeyCode::KeyA, KeyCode::KeyW],
             (Self::Detail, 280..=489) => &[KeyCode::KeyD, KeyCode::KeyS],
-            (Self::Hud, 1) => &[KeyCode::Space],
+            (Self::Hud | Self::Aiming, 1) => &[KeyCode::Space],
+            (Self::Aiming, 2) => &[KeyCode::KeyW],
             (Self::Wheels, 1..=30) => &[KeyCode::ArrowUp],
             (Self::Wheels, 31..=60) => &[KeyCode::ArrowDown],
             (Self::Wheels, 61..=90) => &[KeyCode::ArrowLeft],
@@ -158,6 +163,7 @@ pub(super) fn run_scenario(
     validate_scene(app.world_mut())?;
     scene::validate_concrete(app.world_mut())?;
     report.push_str("断言通过：唯一混凝土墩静态刚体、VOX 实例与实际网格尺寸、贴地位置\n");
+    if options.scenario == Scenario::Aiming { return aiming::run(app, options, report); }
     let (start, start_tracks) = subject_state(app.world_mut())?;
     report.push_str(&format!(
         "预热：120 帧；断言通过：地形就绪、坦克位置、相机跟随\n起点：{:?}\n",

@@ -7,6 +7,8 @@
 //! 静态结构使用 BSN（Bevy Scene Notation）的 `bsn!` 宏声明；逐帧更新与
 //! 相机挂载仍是普通系统，BSN 只负责"出生时刻"的实体树。
 
+pub(crate) mod reticle;
+
 use bevy::prelude::*;
 use bevy::scene::{CommandsSceneExt, Scene, SceneList, bsn};
 
@@ -236,7 +238,8 @@ pub(crate) struct HudPlugin;
 
 impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::InGame), setup)
+        app.add_plugins(reticle::ReticlePlugin)
+            .add_systems(OnEnter(GameState::InGame), setup)
             .add_systems(
                 Update,
                 (attach_ui_target, update).run_if(in_state(GameState::InGame)),

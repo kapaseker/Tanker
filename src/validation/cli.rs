@@ -20,7 +20,7 @@ pub(crate) struct Options {
 impl Options {
     /// 无参数返回普通游戏；其余参数必须完整匹配已公布的接口。
     pub(crate) fn parse(args: Vec<OsString>) -> Result<Option<Self>, String> {
-        let usage = "用法：--capture <图片.png> 或 --offscreen-test <scene|drive|combat|articulation|wheels|index|gallery|detail|hud|pastoral> --output <目录> [--model enemy] [--lighting candidate]（后两者仅 wheels）";
+        let usage = "用法：--capture <图片.png> 或 --offscreen-test <scene|aiming|drive|combat|articulation|wheels|index|gallery|detail|hud|pastoral> --output <目录> [--model enemy] [--lighting candidate]（后两者仅 wheels）";
         if args.is_empty() {
             return Ok(None);
         }
@@ -45,6 +45,7 @@ impl Options {
         {
             let scenario = match args[1].to_str() {
                 Some("scene") => Scenario::Scene,
+                Some("aiming") => Scenario::Aiming,
                 Some("articulation") => Scenario::Articulation,
                 Some("drive") => Scenario::Drive,
                 Some("combat") => Scenario::Combat,
