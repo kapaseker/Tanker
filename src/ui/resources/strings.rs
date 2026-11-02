@@ -23,9 +23,10 @@ pub(crate) const UNIT_METERS_PER_SECOND: &str = "m/s";
 
 /// 装备参数单位：发/分钟；英文缩写，不随语言翻译。
 pub(crate) const UNIT_ROUNDS_PER_MINUTE: &str = "rpm";
-/// 炮塔运动规格的角度与角速度单位。
+/// 炮塔运动规格的角度符号；与数字放在同一文本中以保持右上位置。
 pub(crate) const UNIT_DEGREES: &str = "°";
-pub(crate) const UNIT_DEGREES_PER_SECOND: &str = "°/s";
+/// 每秒后缀；角度符号已跟随主数值排版。
+pub(crate) const UNIT_PER_SECOND: &str = "/s";
 
 /// 返回操作方向符号。
 pub(crate) const BACK_ARROW: &str = "←";

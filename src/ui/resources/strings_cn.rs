@@ -43,11 +43,12 @@ pub(crate) mod detail {
     /// 履带规格：前进与倒车速度。
     pub(crate) const FORWARD_SPEED: &str = "前进速度";
     pub(crate) const REVERSE_SPEED: &str = "倒车速度";
-    /// 详情炮塔规格；速度尚未核实为 A6 实车值，界面保留暂定标记。
-    pub(crate) const TRAVERSE_RANGE: &str = "水平旋转（连续）";
+    /// 详情炮塔规格，来源与可信度维护在车型资料中。
+    pub(crate) const TRAVERSE_RANGE: &str = "水平旋转";
+    pub(crate) const FULL_CIRCLE: &str = "全圈";
     pub(crate) const ELEVATION_RANGE: &str = "炮管俯仰范围";
-    pub(crate) const TRAVERSE_SPEED: &str = "水平转速（暂定）";
-    pub(crate) const ELEVATION_SPEED: &str = "俯仰速度（暂定）";
+    pub(crate) const TRAVERSE_SPEED: &str = "水平转速";
+    pub(crate) const ELEVATION_SPEED: &str = "俯仰速度";
 }
 
 /// 田园预览的操作提示。

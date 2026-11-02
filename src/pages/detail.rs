@@ -146,23 +146,28 @@ fn specs_for(
                 },
                 Spec {
                     label: strings_cn::detail::TRAVERSE_RANGE,
-                    value: aim.traverse_range_deg.to_string(),
-                    unit: strings::UNIT_DEGREES,
+                    // 配置校验只接受 360° 连续旋转，界面用“全圈”表达该模式。
+                    value: strings_cn::detail::FULL_CIRCLE.into(),
+                    unit: "",
                 },
                 Spec {
                     label: strings_cn::detail::ELEVATION_RANGE,
-                    value: format!("{:+}～{:+}", aim.min_elevation_deg, aim.max_elevation_deg),
-                    unit: strings::UNIT_DEGREES,
+                    value: format!(
+                        "{:+}{}～{:+}{}",
+                        aim.min_elevation_deg, strings::UNIT_DEGREES,
+                        aim.max_elevation_deg, strings::UNIT_DEGREES
+                    ),
+                    unit: "",
                 },
                 Spec {
                     label: strings_cn::detail::TRAVERSE_SPEED,
-                    value: aim.traverse_speed_deg_s.to_string(),
-                    unit: strings::UNIT_DEGREES_PER_SECOND,
+                    value: format!("{}{}", aim.traverse_speed_deg_s, strings::UNIT_DEGREES),
+                    unit: strings::UNIT_PER_SECOND,
                 },
                 Spec {
                     label: strings_cn::detail::ELEVATION_SPEED,
-                    value: aim.elevation_speed_deg_s.to_string(),
-                    unit: strings::UNIT_DEGREES_PER_SECOND,
+                    value: format!("{}{}", aim.elevation_speed_deg_s, strings::UNIT_DEGREES),
+                    unit: strings::UNIT_PER_SECOND,
                 },
             ]
         }
@@ -378,18 +383,20 @@ fn spawn_ui(
                                         ..default()
                                     },))
                                         .with_children(|value| {
-                                            // 薄荷亮色与画廊激活型号同源；单位为英文缩写。
+                                            // 角度符号与数字同字形排版，保留 ° 自身的右上位置。
                                             value.spawn((
                                                 Text::new(spec.value),
                                                 text_font(&font, dims::SPEC_VALUE_SIZE, 700.0),
                                                 TextColor(colors::gallery::NAME_ACTIVE),
                                             ));
-                                            value.spawn((
-                                                Text::new(spec.unit),
-                                                text_font(&font, dims::SPEC_UNIT_SIZE, 400.0),
-                                                LetterSpacing::Px(dims::SPEC_UNIT_SPACING),
-                                                TextColor(colors::ON_SURFACE_MUTED),
-                                            ));
+                                            if !spec.unit.is_empty() {
+                                                value.spawn((
+                                                    Text::new(spec.unit),
+                                                    text_font(&font, dims::SPEC_UNIT_SIZE, 400.0),
+                                                    LetterSpacing::Px(dims::SPEC_UNIT_SPACING),
+                                                    TextColor(colors::ON_SURFACE_MUTED),
+                                                ));
+                                            }
                                         });
                                 });
                             }
@@ -1066,11 +1073,12 @@ mod tests {
         assert_eq!(rows[1].value, "30");
         let rows = specs_for(ENTRIES[1], &ammo, &tanks);
         assert_eq!(rows.len(), 6);
-        assert_eq!(rows[2].value, "360");
-        assert_eq!(rows[2].unit, strings::UNIT_DEGREES);
-        assert_eq!(rows[3].value, "-5～+15");
-        assert_eq!(rows[4].value, "25");
-        assert_eq!(rows[5].value, "8");
+        assert_eq!(rows[2].value, "全圈");
+        assert!(rows[2].unit.is_empty());
+        assert_eq!(rows[3].value, "-5°～+15°");
+        assert_eq!(rows[4].value, "25°");
+        assert_eq!(rows[5].value, "8°");
+        assert_eq!(rows[4].unit, strings::UNIT_PER_SECOND);
         assert!(specs_for(ENTRIES[2], &ammo, &tanks).is_empty());
     }
 }
