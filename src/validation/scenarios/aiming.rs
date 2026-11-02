@@ -34,8 +34,8 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
         .map_err(|e| e.to_string())?;
     world.entity_mut(player).insert((
         RigidBody::Static,
-        Transform::from_xyz(0., 4., 0.),
-        Position(Vec3::new(0., 4., 0.)),
+        Transform::from_xyz(0., 4., 10.),
+        Position(Vec3::new(0., 4., 10.)),
         Rotation::default(),
         LinearVelocity::ZERO,
     ));
@@ -139,12 +139,27 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
         }
         let world = app.world_mut();
         let predicted = world.resource::<ShotPrediction>().0.ok_or("预测未就绪")?;
-        let expected_target = hit.then_some(if blocked { concrete } else { enemy });
+        // 依据已知地面坐标和围墙位置确定首碰，不从预测结果推导预期。
+        let ground: Vec<_> = world.query_filtered::<Entity, With<crate::terrain::TerrainSurface>>().iter(world).collect();
+        let expected_target = match index {
+            2 => world.run_system_once(move |spatial: SpatialQuery| {
+                spatial.cast_ray_predicate(
+                    Vec3::new(-31.5, 2., 9.98), Dir3::NEG_Y, 4., true,
+                    &SpatialQueryFilter::default(), &|entity| ground.contains(&entity),
+                ).map(|hit| hit.entity)
+            }).map_err(|e| e.to_string())?,
+            7 | 8 | 9 | 11 | 12 => world
+                .query_filtered::<(Entity, &Transform), With<crate::terrain::TerrainWall>>()
+                .iter(world).find(|(_, transform)| transform.translation.x < -300.)
+                .map(|(entity, _)| entity),
+            _ => hit.then_some(if blocked { concrete } else { enemy }),
+        };
+        ensure(!matches!(index, 2 | 7 | 8 | 9 | 11 | 12) || expected_target.is_some(), "已知地面或围墙未找到")?;
         ensure(
             predicted.target == expected_target,
             &format!("案例 {index} 最近目标错误：{predicted:?}"),
         )?;
-        if hit && distance > 0. && lateral == 0. && !blocked {
+        if expected_target == Some(enemy) && distance > 0. && lateral == 0. && !blocked {
             let face = muzzle + direction * (distance - enemy_collision.size[0] / 2.);
             // 接触面上两个切向坐标不是唯一值，只检查独立已知迎弹平面的法向距离。
             ensure(
@@ -168,13 +183,16 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
             ensure(ray_hit.is_none(), "擦边用例的中心射线意外命中")?;
         }
         ensure(predicted.point.is_finite(), "起始重叠产生无效点")?;
-        check_layout(world, predicted.point, hit)?;
+        check_layout(world, predicted.point, expected_target.is_some())?;
         super::wait_render(app, false)?;
         capture(app, &options.image_path(index as u32))?;
         let mut cursor = MessageCursor::<ShotImpact>::default();
         cursor.clear(app.world().resource::<Messages<ShotImpact>>());
         firing::reset_session(app.world_mut());
         update(app, STEP, Some(1))?;
+        let fired_direction = app.world_mut().query::<&Bullet>().single(app.world())
+            .map_err(|e| format!("案例 {index} 未生成弹丸：{e}"))?.direction;
+        ensure(fired_direction.abs_diff_eq(direction, 1e-5), "弹丸初始方向与炮管世界方向不一致")?;
         let mut actual = None;
         for _ in 0..110 {
             update(app, STEP, None)?;
@@ -188,9 +206,14 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
         }
         ensure(
             actual.map(|impact| impact.target) == expected_target,
-            "真实首个碰撞对象与预测不一致",
+            &format!("案例 {index} 真实首碰 {:?}，预期 {:?}", actual.map(|impact| impact.target), expected_target),
         )?;
         if let Some(actual) = actual {
+            if actual.target != enemy {
+                ensure(app.world().get_entity(enemy).is_ok(), "前方障碍未保护靶车")?;
+                ensure(app.world().get_entity(actual.target).is_ok(), "环境命中后被销毁")?;
+            }
+            ensure(app.world().get_entity(rear_enemy).is_ok(), "远处靶车不应被首碰击毁")?;
             if actual.target == enemy {
                 ensure(
                     app.world()

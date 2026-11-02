@@ -6,7 +6,7 @@
 use avian3d::prelude::*;
 use bevy::prelude::*;
 
-use super::{AUTHOR_RES, FIELD_SIDE, TERRAIN_STEP, TerrainEntity};
+use super::{AUTHOR_RES, FIELD_SIDE, TERRAIN_STEP, TerrainEntity, TerrainWall};
 
 /// 碰撞体 cuboid 的统一底面高度，单位：米；保留地下厚度及合成台阶测试范围。
 /// 所有 cuboid 统一延伸到此底面：静态碰撞体在地下互相重叠无副作用，
@@ -101,6 +101,7 @@ pub(super) fn spawn_walls(commands: &mut Commands) {
         ] {
             commands.spawn((
                 TerrainEntity,
+                TerrainWall,
                 RigidBody::Static,
                 Collider::cuboid(size.x, size.y, size.z),
                 Transform::from_translation(position),

@@ -56,6 +56,10 @@ pub(crate) struct TerrainChunk;
 #[derive(Component)]
 pub(crate) struct TerrainSurface;
 
+/// 场地边界的静态挡弹碰撞体。
+#[derive(Component)]
+pub(crate) struct TerrainWall;
+
 /// 地形自有的根实体标记（视觉块、碰撞面与边界墙）：地形实体由本模块的
 /// [`reset_session`] 回收，不依赖对局或页面状态的标记。
 #[derive(Component)]

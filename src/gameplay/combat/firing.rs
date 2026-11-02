@@ -1,4 +1,4 @@
-//! 坦克空格连发：按炮口世界方向发射，沿飞行路径检测敌人，命中或射程耗尽时清理。
+//! 坦克空格连发：按炮口世界方向发射，沿飞行路径检测场景碰撞，命中或射程耗尽时清理。
 
 use crate::gameplay::enemy::{EnemyDestroyed, EnemyTank};
 use crate::gameplay::player::Tank;
@@ -177,13 +177,13 @@ pub(crate) struct ShotImpact {
     pub(crate) point: Vec3,
 }
 
-/// 命中白名单由预测和实际弹丸共用，排除地形、玩家及装饰。
+/// 预测和实射共用场景碰撞白名单，排除玩家及装饰。
 fn is_target(
     target: Entity,
     enemies: &Query<&GlobalTransform, With<EnemyTank>>,
-    concrete: &Query<(), With<crate::gameplay::obstacle::Concrete>>,
+    environment: &Query<(), Or<(With<crate::gameplay::obstacle::Concrete>, With<crate::terrain::TerrainSurface>, With<crate::terrain::TerrainWall>)>>,
 ) -> bool {
-    enemies.contains(target) || concrete.contains(target)
+    enemies.contains(target) || environment.contains(target)
 }
 
 /// 同一弹体形状、中心偏移与世界旋转用于整段预测和单帧飞行。
@@ -253,7 +253,7 @@ pub(crate) fn predict_shot(
     tanks: Query<(&WorldAssetRoot, &WorldInstance), With<Tank>>,
     barrels: Query<(&GlobalTransform, &WorldAssetRoot, &WorldInstance), With<PlayerBarrel>>,
     enemies: Query<&GlobalTransform, With<EnemyTank>>,
-    concrete: Query<(), With<crate::gameplay::obstacle::Concrete>>,
+    environment: Query<(), Or<(With<crate::gameplay::obstacle::Concrete>, With<crate::terrain::TerrainSurface>, With<crate::terrain::TerrainWall>)>>,
 ) {
     prediction.0 = None;
     let (Ok((root, instance)), Ok((barrel, barrel_root, barrel_instance))) =
@@ -289,7 +289,7 @@ pub(crate) fn predict_shot(
                 &Transform::from_translation(origin).with_rotation(barrel.rotation()),
                 direction,
                 travel,
-                &|target| is_target(target, &enemies, &concrete),
+                &|target| is_target(target, &enemies, &environment),
             )
         })
         .flatten();
@@ -371,7 +371,7 @@ fn fire_bullets(
     ));
 }
 
-/// 沿完整位移扫掠弹体，命中最近敌人或混凝土墩；仅敌人会被击毁。
+/// 沿完整位移扫掠弹体，命中最近场景物体；仅敌人会被击毁。
 fn move_bullets(
     mut commands: Commands,
     time: Res<Time>,
@@ -380,16 +380,14 @@ fn move_bullets(
     // 用 GlobalTransform 读取敌人位置，避免与子弹的 &mut Transform 查询冲突（B0001）；
     // 敌人都是场景根，两者等值。
     enemies: Query<&GlobalTransform, With<EnemyTank>>,
-    concrete: Query<(), With<crate::gameplay::obstacle::Concrete>>,
+    environment: Query<(), Or<(With<crate::gameplay::obstacle::Concrete>, With<crate::terrain::TerrainSurface>, With<crate::terrain::TerrainWall>)>>,
     mut bullets: Query<(Entity, &mut Transform, &mut Bullet)>,
     mut destroyed_enemies: MessageWriter<EnemyDestroyed>,
     mut impacts: MessageWriter<ShotImpact>,
 ) {
     // 本帧前进的世界距离，按游戏时间计算，单位：米。
     let step = spec.muzzle_velocity * time.delta_secs();
-    // 子弹投射只认敌人和混凝土墩；越过场地边界（±FIELD_SIDE/2）即视为失效，
-    // 防止穿墙飞满射程。单帧最大位移约 18.75 米（1/64 秒 × 1200 米/秒），
-    // 出界后最远深入一帧位移才被销毁，对 ±300 米场地无实质影响。
+    // 越过场地边界（±FIELD_SIDE/2）后清理，保留原有飞行范围。
     let half_field = crate::terrain::FIELD_SIDE / 2.0;
     // Commands 在系统结束后才删除实体，同帧后续弹体必须主动跳过已击毁目标。
     let mut destroyed = Vec::new();
@@ -410,15 +408,15 @@ fn move_bullets(
             &transform,
             bullet.direction,
             travel,
-            &|target| is_target(target, &enemies, &concrete) && !destroyed.contains(&target),
+            &|target| is_target(target, &enemies, &environment) && !destroyed.contains(&target),
         );
         if let Some(hit) = hit {
             impacts.write(ShotImpact {
                 target: hit.entity,
                 point: contact_point(&hit, transform.translation),
             });
-            if concrete.contains(hit.entity) {
-                // 墩体不销毁、不记入已毁敌人，后续同帧炮弹仍须被它阻挡。
+            if environment.contains(hit.entity) {
+                // 环境不销毁，后续同帧炮弹仍须被它阻挡。
                 commands.entity(entity).despawn();
                 continue;
             }
@@ -709,6 +707,50 @@ mod tests {
                     .with_rotation(Quat::from_rotation_arc(Vec3::NEG_X, direction)),
             ))
             .id()
+    }
+
+    /// 地面先于远方敌车截获弹丸，且静态地面保留。
+    #[test]
+    fn ground_intercepts_projectile_before_enemy() {
+        use avian3d::prelude::*;
+        let (mut app, enemies) = hit_test_app(&[(Vec3::new(-40.0, -3.0, 0.0), 0.0)]);
+        let ground = app.world_mut().spawn((
+            crate::terrain::TerrainSurface,
+            RigidBody::Static,
+            Collider::cuboid(100.0, 2.0, 100.0),
+            Transform::from_xyz(0.0, -1.0, 0.0),
+        )).id();
+        for _ in 0..3 { app.update(); }
+        let mut impacts = bevy::ecs::message::MessageCursor::<ShotImpact>::default();
+        let bullet = test_bullet(&mut app, Vec3::new(0.0, 2.0, 0.0), Vec3::new(-1.0, -0.1, 0.0).normalize(), 0.0);
+        advance_test_bullets(&mut app, 0.05);
+        let hits: Vec<_> = impacts.read(app.world().resource::<Messages<ShotImpact>>()).collect();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].target, ground);
+        assert!(hits[0].point.is_finite());
+        assert!(app.world().get_entity(bullet).is_err());
+        assert!(app.world().get_entity(ground).is_ok());
+        assert!(app.world().get_entity(enemies[0]).is_ok());
+    }
+
+    /// 弹体出生时与地面重叠，只报告一次有限的首碰并清理。
+    #[test]
+    fn overlapping_ground_intercepts_once() {
+        use avian3d::prelude::*;
+        let (mut app, enemies) = hit_test_app(&[(Vec3::new(-20.0, 0.0, 0.0), 0.0)]);
+        let ground = app.world_mut().spawn((crate::terrain::TerrainSurface, RigidBody::Static,
+            Collider::cuboid(10.0, 2.0, 10.0), Transform::from_xyz(0.0, -1.0, 0.0))).id();
+        for _ in 0..3 { app.update(); }
+        let bullet = test_bullet(&mut app, Vec3::new(0.0, -0.1, 0.0), Vec3::NEG_X, 0.0);
+        let mut impacts = bevy::ecs::message::MessageCursor::<ShotImpact>::default();
+        advance_test_bullets(&mut app, 0.05);
+        advance_test_bullets(&mut app, 0.05);
+        let hits: Vec<_> = impacts.read(app.world().resource::<Messages<ShotImpact>>()).collect();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].target, ground);
+        assert!(hits[0].point.is_finite());
+        assert!(app.world().get_entity(bullet).is_err());
+        assert!(app.world().get_entity(enemies[0]).is_ok());
     }
 
     /// 高速弹的细截面不会击中旧碰撞盒会擦到的目标。
