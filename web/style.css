@@ -358,7 +358,9 @@
   .menu__item:hover .menu__arrow,
   .menu__item:focus-visible .menu__arrow { transform: translateX(6px); }
 
-  .status {
+  /* 主菜单操作提示：单行文字。原名 .status 与战斗 HUD 状态簇同名，
+     被后文 .status 的绝对定位盒样式覆盖，故改名 .hint 消除冲突 */
+  .hint {
     margin: 22px 0 0;
     min-height: 14px;
     font-family: var(--font-mono);
@@ -395,6 +397,13 @@
   html[data-transition="boot"] body { background: #000; }
 
   .stage--home { padding-top: 104px; }
+
+  /* 画廊与游戏一致：内容不是垂直居中，而是从固定标题栏（88px）下方
+     自上而下流式排布（首个栏目距顶 = 88 + 60 栏目间距），随页面滚动 */
+  .stage--gallery {
+    align-items: flex-start;
+    padding-top: 0;
+  }
 
   /* ---------- 返回栏：返回按钮 + 页面标题 ---------- */
   /* 固定在窗口顶部，不随内容滚动；背景与分隔线遮住下方穿过的文字 */
@@ -716,6 +725,14 @@
     transform-style: preserve-3d;
   }
 
+  /* 炮塔组与炮管耳轴枢轴：零尺寸容器挂在模型原点，
+     由详情页脚本写 rotateY / rotateZ 驱动玩家坦克瞄准 */
+  .model__turret,
+  .model__barrel {
+    position: absolute;
+    transform-style: preserve-3d;
+  }
+
   .model__face {
     position: absolute;
   }
@@ -769,6 +786,43 @@
 
   .specs__id {
     flex: none;
+  }
+
+  /* 规格行两列网格：与游戏详情页一致，玩家坦克 6 项排两列，弹药 2 项排一行 */
+  .specs__rows {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, auto));
+    column-gap: 48px;
+    row-gap: 16px;
+    justify-content: start;
+  }
+
+  /* WASD 瞄准提示（仅玩家坦克）：底部居中，两组间 24px，组内键帽间距统一 */
+  .aim-help {
+    position: absolute;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    margin: 0;
+    display: flex;
+    gap: 24px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  /* display:flex 会覆盖 [hidden] 的 UA 样式，需显式恢复隐藏语义 */
+  .aim-help[hidden] {
+    display: none;
+  }
+
+  .aim-help__group {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
   }
 
   .spec {
@@ -968,7 +1022,7 @@
 
   /* 生命（上）与装填（下）聚合成一簇：同一左对齐、同宽轨道，
      低位单调变化不会带动整组位移；两块轨道共用一个暗底板保证可读。
-     水平锚定居中 16:9 任务区左缘（--task-left 由 hud-reload.html 脚本
+     水平锚定居中 16:9 任务区左缘（--task-left 由 gameplay.html 脚本
      按窗口尺寸计算，超宽窗口不贴画面最外侧），垂直贴住窗口底边；
      24px 取 hud.safe-inset */
   .status {
@@ -1022,9 +1076,9 @@
     background: var(--mint);
   }
 
-  /* 装填填充沿用交互渐变，右端最亮表示当前装填到的位置 */
+  /* 装填填充用薄荷平色：与游戏 HUD 实现一致（游戏未做渐变） */
   .bar__fill--reload {
-    background: linear-gradient(90deg, var(--mint-deep), var(--mint) 70%, var(--mint-bright));
+    background: var(--mint);
   }
 
   /* 刻度按冷却秒数向上取整后等分，与游戏 HUD 一致，最多 60 格。 */

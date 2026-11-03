@@ -21,23 +21,27 @@ const { mkdir } = require('node:fs/promises');
     assert.deepEqual(await page.locator('.spec__value').allTextContents(), ['1200', '12']);
     await screenshot('apfsds');
     await page.goto(base + 'model-detail.html?c=1&m=0');
-    assert.deepEqual(await labels(), ['前进速度', '倒车速度']);
+    assert.deepEqual(await labels(),
+      ['前进速度', '倒车速度', '水平旋转', '炮管俯仰范围', '水平转速', '俯仰速度']);
+    assert.deepEqual(await page.locator('.spec__value').allTextContents(),
+      ['16', '8', '全圈', '-9°～+20°', '30°', '9°']);
+    assert.ok(await page.locator('#aim-help').isVisible());
     await screenshot('tank');
-    await page.goto(base + 'hud-reload.html');
+    await page.goto(base + 'gameplay.html');
     await page.locator('#reload[aria-busy="false"]').waitFor();
     assert.equal(await page.locator('.bar__ticks > span').count(), 4);
     assert.equal(await page.locator('#reload').getAttribute('aria-valuenow'), '100');
     await screenshot('hud');
 
     // 修改响应而非磁盘配置，证明详情与HUD从同一文件动态读取，非编译常量。
-    await page.route('**/ammunition.jsonc', route => route.fulfill({
-      body: '{// 调整弹药\n"muzzle_velocity":1500,"rate_of_fire":24}',
+    await page.route('**/bullet.jsonc', route => route.fulfill({
+      body: '{// 调整弹药\n"muzzle_velocity":1500,"rate_of_fire":24,"collision":{"size":[0.72,0.04,0.04],"center_forward_offset":0.16}}',
       contentType: 'application/json',
     }));
     await page.goto(base + 'model-detail.html?c=0&m=0');
     await page.locator('.specs[aria-busy="false"]').waitFor();
     assert.deepEqual(await page.locator('.spec__value').allTextContents(), ['1500', '24']);
-    await page.goto(base + 'hud-reload.html');
+    await page.goto(base + 'gameplay.html');
     await page.locator('#reload[aria-busy="false"]').waitFor();
     assert.equal(await page.locator('.bar__ticks > span').count(), 2);
     await page.keyboard.press('Space');
@@ -49,9 +53,9 @@ const { mkdir } = require('node:fs/promises');
     assert.ok(Number(await page.locator('#reload').getAttribute('aria-valuenow')) >= progress);
     await page.waitForFunction(() => document.querySelector('#reload').getAttribute('aria-valuenow') === '100');
 
-    await page.unroute('**/ammunition.jsonc');
-    await page.route('**/ammunition.jsonc', route => route.fulfill({ status: 404, body: '' }));
-    await page.goto(base + 'hud-reload.html');
+    await page.unroute('**/bullet.jsonc');
+    await page.route('**/bullet.jsonc', route => route.fulfill({ status: 404, body: '' }));
+    await page.goto(base + 'gameplay.html');
     await page.locator('[role="alert"]').waitFor();
     assert.match(await page.locator('[role="alert"]').textContent(), /弹药配置加载失败.*404/);
     await page.keyboard.press('Space');

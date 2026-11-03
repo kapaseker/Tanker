@@ -44,13 +44,43 @@ function buildBox(part, tone) {
 }
 
 // 组合模型：整车示意以 body 中心为原点，与游戏内的旋转轴约定一致。
+// 部件带 turret:true 时归入炮塔组（绕模型中心竖轴 rotateY）；
+// 带 barrel:true 的炮管再套一层耳轴枢轴（绕 Z 轴 rotateZ 做俯仰），
+// 枢轴取炮管后端 (x - w/2, y, z)，与游戏内炮管俯仰轴一致。
+// 返回的 el 上挂 turretGroup / barrelPivot / barrelBase，供详情页 WASD 驱动。
 function buildModel(model) {
   const el = document.createElement('div');
   el.className = 'model';
   el.setAttribute('aria-hidden', 'true');
+  let turretGroup = null;
   for (const part of model.parts) {
-    el.append(buildBox(part, model.tone));
+    const box = buildBox(part, model.tone);
+    if (part.turret) {
+      if (!turretGroup) {
+        turretGroup = document.createElement('div');
+        turretGroup.className = 'model__turret';
+        el.append(turretGroup);
+      }
+      if (part.barrel) {
+        const pivot = document.createElement('div');
+        pivot.className = 'model__barrel';
+        // 枢轴基点：炮管后端；俯仰时在此基础上追加 rotateZ
+        const base = `translate3d(${(part.x || 0) - part.w / 2}px, ${part.y || 0}px, ${part.z || 0}px)`;
+        pivot.style.transform = base;
+        // 炮管盒改为相对耳轴向前伸出
+        box.style.transform = `translate3d(${part.w / 2}px, 0px, 0px)`;
+        pivot.append(box);
+        turretGroup.append(pivot);
+        el.barrelPivot = pivot;
+        el.barrelBase = base;
+      } else {
+        turretGroup.append(box);
+      }
+    } else {
+      el.append(box);
+    }
   }
+  el.turretGroup = turretGroup;
   return el;
 }
 
@@ -60,7 +90,20 @@ const CATEGORIES = [
     { name: 'APFSDS', tone: 'dark', dims: [0.72, 0.10, 0.10], parts: [{ w: 180, h: 10, d: 10 }, { w: 30, h: 25, d: 4, x: -75 }, { w: 30, h: 4, d: 25, x: -75 }] },
   ] },
   { name: '坦克', code: 'TK', models: [
-    { name: 'LeoPard2 A6', tone: 'mint', dims: [10.98, 3.76, 4.32], specs: [{ label: '前进速度', value: '16', unit: 'm/s' }, { label: '倒车速度', value: '8', unit: 'm/s' }], parts: [{ w: 150, h: 30, d: 72 }, { w: 60, h: 22, d: 48, y: -26 }, { w: 106, h: 8, d: 8, x: 90, y: -26 }, { w: 150, h: 20, d: 16, y: 20, z: 28, tone: 'dark' }, { w: 150, h: 20, d: 16, y: 20, z: -28, tone: 'dark' }] },
+    // 规格数值与游戏同源：前进/倒车来自 PLAYER_TRACKS，
+    // 炮塔参数来自 assets/tank/player/leopard2_a6/tank.jsonc
+    { name: 'LeoPard2 A6', tone: 'mint', dims: [10.98, 3.76, 4.32],
+      specs: [
+        { label: '前进速度', value: '16', unit: 'm/s' },
+        { label: '倒车速度', value: '8', unit: 'm/s' },
+        { label: '水平旋转', value: '全圈', unit: '' },
+        { label: '炮管俯仰范围', value: '-9°～+20°', unit: '' },
+        { label: '水平转速', value: '30°', unit: '/s' },
+        { label: '俯仰速度', value: '9°', unit: '/s' },
+      ],
+      // WASD 驱动占位模型用：度/秒与俯仰限位，与游戏配置一致
+      articulation: { traverse: 30, elevation: 9, minElevation: -9, maxElevation: 20 },
+      parts: [{ w: 150, h: 30, d: 72 }, { w: 60, h: 22, d: 48, y: -26, turret: true }, { w: 106, h: 8, d: 8, x: 90, y: -26, turret: true, barrel: true }, { w: 150, h: 20, d: 16, y: 20, z: 28, tone: 'dark' }, { w: 150, h: 20, d: 16, y: 20, z: -28, tone: 'dark' }] },
     { name: 'carapace', tone: 'sand', dims: [9, 3.4, 2.6], parts: [{ w: 132, h: 30, d: 68 }, { w: 54, h: 22, d: 46, y: -26 }, { w: 76, h: 8, d: 8, x: 78, y: -26 }, { w: 132, h: 20, d: 16, y: 20, z: 26, tone: 'dark' }, { w: 132, h: 20, d: 16, y: 20, z: -26, tone: 'dark' }] },
   ] },
 ];

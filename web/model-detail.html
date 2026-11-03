@@ -35,12 +35,20 @@
         <div class="viewer" id="viewer" aria-label="模型查看区，按住鼠标拖拽可旋转模型"></div>
 
         <!-- 三维尺寸改由模型边沿的三条尺寸轴标注（见下方脚本）；
-             左侧保留分类眉题，规格行由本页脚本按模型参数生成 -->
+             左侧保留分类眉题，规格行由本页脚本按模型参数生成（两列网格，与游戏一致）；
+             玩家坦克追加 WASD 瞄准提示行，占位模型可实际驱动 -->
         <div class="specs">
           <div class="specs__id">
             <p class="eyebrow" id="detail-cat">坦克</p>
           </div>
+          <div class="specs__rows" id="spec-rows"></div>
         </div>
+
+        <!-- 玩家坦克专属操作提示：底部居中，两组 24px 间距，与游戏一致 -->
+        <p class="aim-help" id="aim-help" hidden>
+          <span class="aim-help__group"><kbd>W</kbd><kbd>S</kbd> 炮管俯仰</span>
+          <span class="aim-help__group"><kbd>A</kbd><kbd>D</kbd> 炮塔旋转</span>
+        </p>
 
         <!-- 尺寸轴为纯图形标注，同步提供文字替代 -->
         <p class="sr-only" id="detail-dims-sr"></p>
@@ -72,17 +80,18 @@
       }
 
       const back = document.getElementById('detail-back');
-      // 型号 = 分类代码-编号（如 AM-01），与画廊卡片编号一致
+      // 型号 = 分类代码-编号（如 AM-01），与画廊卡片编号一致，仅用于返回锚点
       const modelCode = modelCardId(category, mi);
-      // 带锚点返回画廊，画廊据此聚焦原卡片；同时更新标签页标题
       back.href = `model-gallery.html#${modelCode}`;
-      document.title = `${modelCode} · V-Tank`;
 
+      // 与游戏一致：标题栏显示模型名而非型号编号
+      document.title = `${model.name} · V-Tank`;
       document.getElementById('detail-cat').textContent = category.name;
-      document.getElementById('detail-name').textContent = modelCode;
+      document.getElementById('detail-name').textContent = model.name;
 
       // 规格行来自模型数据；没有定义参数的型号不渲染空行
       const specs = document.querySelector('.specs');
+      const specRows = document.getElementById('spec-rows');
       function appendSpecs(rows) {
         for (const { label, value, unit } of rows) {
           const spec = document.createElement('div');
@@ -91,7 +100,7 @@
             `<span class="spec__label">${label}</span>` +
             `<span class="spec__row"><span class="spec__value">${value}</span>` +
             `<span class="spec__unit">${unit}</span></span>`;
-          specs.append(spec);
+          specRows.append(spec);
         }
       }
       if (ci === 0) {
@@ -120,6 +129,35 @@
       const detailModel = buildModel(model);
       // 伴随子弹只作组合示意展示，尺寸轴的包围盒只读 parts，不把子弹计入
       viewer.append(detailModel);
+
+      // ---------- WASD 瞄准：仅玩家坦克，转速与俯仰限位与游戏配置一致 ----------
+      // A/D 炮塔绕模型中心竖轴连续旋转；W/S 炮管绕耳轴俯仰。
+      // CSS 的 Y 轴向下，炮口上仰对应负 rotateZ。
+      if (model.articulation && detailModel.turretGroup) {
+        const spec = model.articulation;
+        document.getElementById('aim-help').hidden = false;
+        let turretYaw = 0;
+        let barrelElev = 0;
+        const held = new Set();
+        const AIM_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD']);
+        document.addEventListener('keydown', (event) => {
+          if (AIM_KEYS.has(event.code)) held.add(event.code);
+        });
+        document.addEventListener('keyup', (event) => held.delete(event.code));
+        let last = performance.now();
+        requestAnimationFrame(function aimLoop(now) {
+          const dt = Math.min(0.05, (now - last) / 1000);
+          last = now;
+          if (held.has('KeyA')) turretYaw = (turretYaw + spec.traverse * dt) % 360;
+          if (held.has('KeyD')) turretYaw = (turretYaw - spec.traverse * dt) % 360;
+          if (held.has('KeyW')) barrelElev = Math.min(spec.maxElevation, barrelElev + spec.elevation * dt);
+          if (held.has('KeyS')) barrelElev = Math.max(spec.minElevation, barrelElev - spec.elevation * dt);
+          detailModel.turretGroup.style.transform = `rotateY(${turretYaw}deg)`;
+          detailModel.barrelPivot.style.transform =
+            `${detailModel.barrelBase} rotateZ(${-barrelElev}deg)`;
+          requestAnimationFrame(aimLoop);
+        });
+      }
 
       // ---------- 三维尺寸轴：贴合模型包围盒边沿的工程标注 ----------
       // 轴线、端点刻度与延长线都是 .model 的子元素，天然跟随同一套旋转/缩放；
