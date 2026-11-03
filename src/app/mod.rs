@@ -74,6 +74,7 @@ pub(super) fn run(options: Option<validation::Options>) -> Result<(), String> {
         gameplay::hud::HudPlugin,
         pages::pastoral::PastoralPlugin,
         gameplay::gunner::GunnerCameraPlugin,
+        gameplay::sight::SightPlugin,
     ))
     // 必须在 TransitionPlugin 之后：chrome 相机需要已插入的 SceneTarget。
     .add_plugins((pages::detail::DetailPlugin, chrome::ChromePlugin))

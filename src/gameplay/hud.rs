@@ -230,7 +230,11 @@ pub(crate) fn attach_ui_target(
     gunner: Query<Entity, With<crate::gameplay::gunner::GunnerCamera>>,
     roots: Query<
         (Entity, Option<&UiTargetCamera>),
-        Or<(With<HudRoot>, With<crate::gameplay::gunner::PipFrame>)>,
+        Or<(
+            With<HudRoot>,
+            With<crate::gameplay::gunner::PipFrame>,
+            With<crate::gameplay::sight::SightRoot>,
+        )>,
     >,
 ) {
     use crate::gameplay::gunner::ViewMode;

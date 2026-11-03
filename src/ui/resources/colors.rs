@@ -135,6 +135,16 @@ pub(crate) mod hud {
     pub(crate) const TICK: Color = Color::srgb_u8(12, 11, 9);
 }
 
+/// 炮镜分划配色（design.md「第一人称炮镜」）；全部不透明，对照原型 web/gameplay.html 的 `.sight`。
+pub(crate) mod sight {
+    use super::*;
+
+    /// 中央十字与弹道分划：暖白（原型 #ebe8df，与 ON_SURFACE 同源）。
+    pub(crate) const CROSS: Color = ON_SURFACE;
+    /// 角度刻度装饰与角度读数：浅绿（原型 #b9d6ad，暗于状态簇薄荷以示层级）。
+    pub(crate) const SCALE: Color = Color::srgb_u8(185, 214, 173);
+}
+
 /// Bevy 的 Alpha trait 不能用于常量求值；本文件的颜色均明确使用 sRGB。
 const fn with_alpha(color: Color, alpha: f32) -> Color {
     match color {

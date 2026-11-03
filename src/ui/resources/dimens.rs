@@ -26,6 +26,27 @@ pub(crate) mod hud {
     pub(crate) const RELOAD_TRACK_HEIGHT: f32 = 8.0;
 }
 
+/// 炮镜分划设计像素，以 web/gameplay.html 的 `.sight`（SVG viewBox 440×460、
+/// 中心 (220,230) 对齐屏幕中心）为基准；线段端点表在 gameplay::sight 内维护，
+/// 此处只存放读数排版与线宽。全部随 UiScale 整体缩放，无独立响应式逻辑。
+pub(crate) mod sight {
+    /// 十字/弹道分划线宽（原型 stroke-width 2）。
+    pub(crate) const RETICLE_STROKE: f32 = 2.0;
+    /// 角度刻度装饰线宽（原型 stroke-width 1.5）。
+    pub(crate) const SCALE_STROKE: f32 = 1.5;
+    /// 读数字号（原型 .sight__readout 12px）。
+    pub(crate) const READOUT_SIZE: f32 = 12.0;
+    /// 读数行高：Bevy 0.20 默认行高 = 1.2 × 字号（见 ui::font 的推导说明）。
+    pub(crate) const READOUT_LINE_HEIGHT: f32 = READOUT_SIZE * 1.2;
+    /// 俯仰角读数右缘距中心的偏移（原型右缘在 center−184px，垂直居中对齐刻度中线）。
+    pub(crate) const PITCH_RIGHT: f32 = 184.0;
+    /// 炮塔角读数顶边距中心的偏移（原型 top = center−154px，横刻度下方 16px）。
+    pub(crate) const TURRET_TOP: f32 = 154.0;
+    /// 炮塔角读数居中盒宽：固定宽盒水平居中等效 CSS translateX(-50%)，
+    /// 盒内 JustifyText::Center 对齐，文字实际宽度远小于盒宽。
+    pub(crate) const TURRET_BOX_WIDTH: f32 = 120.0;
+}
+
 /// 副窗（PiP）设计像素，对照网页原型 gameplay.html 的 `.view.is-pip`：
 /// 320×180（1280×720 参考分辨率的 1/4）、距窗口右/上缘 24px（取 hud.safe-inset）、
 /// 1px 薄荷描边。运行时乘 UiScale（zoom）与窗口 DPR 换算物理像素视口矩形。

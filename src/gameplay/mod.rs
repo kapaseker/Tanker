@@ -9,3 +9,4 @@ pub(crate) mod hud;
 pub(crate) mod obstacle;
 pub(crate) mod player;
 pub(crate) mod session;
+pub(crate) mod sight;
