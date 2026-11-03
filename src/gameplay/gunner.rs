@@ -133,9 +133,15 @@ fn spawn_pip_frame(mut commands: Commands) {
 /// 每帧同步炮镜相机位姿：严格取炮管世界位姿，安装点炮口端面。
 ///
 /// 炮管场景实例未就绪时静默跳过，不污染上一帧可用姿态。
+///
+/// 本系统排在 Propagate 之后，必须同时写 `GlobalTransform`：渲染提取的是
+/// GlobalTransform，若只写 Transform，它要等下一帧传播才更新，相机位姿
+/// 恒慢一帧——静止时无差异，前进时炮口已前移、相机落在炮管内，副窗里
+/// 会看到炮管内壁。相机为根实体（无父级），GlobalTransform 即 Transform。
 fn sync_gunner_camera(
-    barrels: Query<&GlobalTransform, With<PlayerBarrel>>,
-    mut cameras: Query<&mut Transform, With<GunnerCamera>>,
+    // Without 保证与相机查询不相交：炮管只读、相机写 GlobalTransform。
+    barrels: Query<&GlobalTransform, (With<PlayerBarrel>, Without<GunnerCamera>)>,
+    mut cameras: Query<(&mut Transform, &mut GlobalTransform), With<GunnerCamera>>,
 ) {
     let Ok(barrel) = barrels.single() else {
         return;
@@ -144,8 +150,9 @@ fn sync_gunner_camera(
     if !transform.translation.is_finite() || !transform.rotation.is_finite() {
         return;
     }
-    for mut camera in &mut cameras {
-        *camera = transform;
+    for (mut local, mut global) in &mut cameras {
+        *local = transform;
+        *global = GlobalTransform::from(transform);
     }
 }
 
@@ -329,6 +336,17 @@ mod tests {
             "旋转应为 {:?}，实际 {:?}",
             expected.rotation,
             actual.rotation
+        );
+        // 回归锁定：GlobalTransform 必须当帧同步。若只写 Transform，渲染提取
+        // 到的是上一帧位姿，前进时相机滞后落进炮管，副窗会看到炮管内壁。
+        let actual_global = app.world().get::<GlobalTransform>(camera).unwrap();
+        assert!(
+            actual_global
+                .translation()
+                .abs_diff_eq(expected.translation, 1e-4),
+            "GlobalTransform 应当帧同步：期望 {:?}，实际 {:?}",
+            expected.translation,
+            actual_global.translation()
         );
     }
 
