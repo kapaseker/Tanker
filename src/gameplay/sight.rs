@@ -4,13 +4,14 @@
 //! 「第一人称炮镜」：中央十字暖白、角度刻度装饰与读数浅绿。分划挂在现有
 //! HUD 相机宿主（与状态簇同层，沿用 UiScale 体系），挂载归属复用
 //! [`hud::attach_ui_target`](crate::gameplay::hud) 按主槽相机逐帧校对；
-//! 炮镜相机自身不挂任何 UI，副窗零 HUD。读数由 [`TankAim`] 驱动，格式同原型。
+//! 角度读数由 [`TankAim`] 驱动；倍率与距离由炮镜状态驱动。
 //!
 //! 与原型的刻意差异：CSS 投影（text-shadow/drop-shadow）Bevy 无对应能力，
-//! 暂不移植；距离读数与倍率文字按 spec 范围外不移植；字距 1px 无对应
+//! 暂不移植；字距 1px 无对应
 //! 排版参数，不做。
 
 use bevy::prelude::*;
+use bevy::ui::{BackgroundGradient, ColorStop, RadialGradient, RadialGradientShape, UiPosition};
 
 use crate::app::state::GameState;
 use crate::gameplay::gunner::ViewMode;
@@ -21,7 +22,7 @@ use crate::ui::font::UiFont;
 use crate::ui::resources::{colors, dimens};
 use crate::ui::widgets::text_font;
 
-/// 分划根节点：0×0 锚点钉在屏幕中心，子项以中心相对偏移绝对定位；
+/// 全屏炮镜分划根节点，分划定位在其中心锚点；
 /// 显隐由 [`update`] 按 [`ViewMode`] 每帧校对，无残影。
 #[derive(Component, Default, Clone)]
 pub(crate) struct SightRoot;
@@ -33,6 +34,14 @@ pub(crate) struct PitchReadout;
 /// 炮塔旋转角读数节点标记；文本每帧由 [`update`] 写入。
 #[derive(Component, Default, Clone)]
 pub(crate) struct TurretReadout;
+
+/// 倍率读数标记。
+#[derive(Component)]
+pub(crate) struct ZoomReadout;
+
+/// 实时测距读数标记。
+#[derive(Component)]
+pub(crate) struct RangeReadout;
 
 /// 线段端点 (x0, y0, x1, y1)，坐标为原型 SVG viewBox(440×460) 系；
 /// 竖线 x0==x1，横线 y0==y1。屏幕映射：SVG 中心 (220,230) = 屏幕中心。
@@ -83,6 +92,21 @@ const SCALE_DECOR: [Seg; 18] = [
 const SVG_CENTER_X: f32 = 220.0;
 const SVG_CENTER_Y: f32 = 230.0;
 
+/// 主视野和炮镜小窗共用的渐晕，半轴随承载节点尺寸等比缩放。
+pub(crate) fn lens_vignette() -> BackgroundGradient {
+    // 半轴取视口宽高的一半，100% 对应边缘中点，四角约为 141.4%。
+    BackgroundGradient::from(RadialGradient::new(
+        UiPosition::CENTER,
+        RadialGradientShape::Ellipse(percent(50), percent(50)),
+        vec![
+            ColorStop::percent(colors::ON_PRIMARY.with_alpha(0.0), 72),
+            ColorStop::percent(colors::ON_PRIMARY.with_alpha(0.23), 100),
+            ColorStop::percent(colors::ON_PRIMARY.with_alpha(0.60), 125),
+            ColorStop::percent(colors::ON_PRIMARY.with_alpha(0.90), 142),
+        ],
+    ))
+}
+
 /// 进入对局生成分划；退出清理由 SessionEntity 的统一回收系统完成。
 ///
 /// UI 相机挂载不在此处绑定：复用 hud::attach_ui_target 按主槽归属逐帧补挂。
@@ -91,20 +115,29 @@ pub(crate) fn setup(mut commands: Commands, font: Res<UiFont>) {
         .spawn((
             SightRoot,
             SessionEntity,
-            // 0×0 锚点钉在屏幕中心：百分比定位随窗口缩放，子项用中心相对偏移。
             Node {
                 position_type: PositionType::Absolute,
-                left: Val::Percent(50.0),
-                top: Val::Percent(50.0),
-                width: px(0.0),
-                height: px(0.0),
+                width: percent(100),
+                height: percent(100),
                 ..default()
             },
-            // 默认隐藏：ViewMode 初始为第三人称主槽，update 逐帧校对显隐。
+            // 默认隐藏，炮镜占主槽时显示分划。
             Visibility::Hidden,
         ))
         .id();
-    commands.entity(root).with_children(|parent| {
+    // 保留以屏幕中心为原点的分划坐标。
+    let anchor = commands.spawn((
+        ChildOf(root),
+        Node {
+            position_type: PositionType::Absolute,
+            left: percent(50),
+            top: percent(50),
+            width: px(0.0),
+            height: px(0.0),
+            ..default()
+        },
+    )).id();
+    commands.entity(anchor).with_children(|parent| {
         for (x0, y0, x1, y1) in RETICLE {
             parent.spawn(seg_node(
                 x0,
@@ -154,7 +187,30 @@ pub(crate) fn setup(mut commands: Commands, font: Res<UiFont>) {
             text_font(&font, dimens::sight::READOUT_SIZE, 400.0),
             TextColor(colors::sight::SCALE),
         ));
+        parent.spawn((ZoomReadout, Node {
+            position_type: PositionType::Absolute,
+            left: px(92.0), top: px(-dimens::sight::READOUT_LINE_HEIGHT * 0.5), ..default()
+        }, Text::new("×1.0"), text_font(&font, dimens::sight::READOUT_SIZE, 400.0),
+            TextColor(Color::srgb_u8(169, 201, 231))));
+        parent.spawn((RangeReadout, Node {
+            position_type: PositionType::Absolute,
+            left: px(-60.0), top: px(92.0), width: px(120.0), ..default()
+        }, Text::new("--"), TextLayout::justify(Justify::Center),
+            text_font(&font, dimens::sight::READOUT_SIZE, 400.0),
+            TextColor(Color::srgb_u8(231, 188, 120))));
     });
+}
+
+/// 倍率和距离文本由炮镜状态驱动，未命中时清除旧值。
+fn update_optics_readouts(
+    optics: Res<crate::gameplay::gunner::GunnerOptics>,
+    mut zoom: Query<&mut Text, (With<ZoomReadout>, Without<RangeReadout>)>,
+    mut range: Query<&mut Text, With<RangeReadout>>,
+) {
+    if let Ok(mut text) = zoom.single_mut() { *text = Text::new(format!("×{:.1}", optics.zoom)); }
+    if let Ok(mut text) = range.single_mut() {
+        *text = Text::new(optics.range.map_or_else(|| "--".to_string(), |distance| format!("{:.0} m", distance.round())));
+    }
 }
 
 /// 一条分划线：SVG 端点转中心相对偏移的绝对定位矩形（等效 stroke，
@@ -258,7 +314,8 @@ pub(crate) struct SightPlugin;
 impl Plugin for SightPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(GameState::InGame), setup)
-            .add_systems(Update, update.run_if(in_state(GameState::InGame)));
+            .add_systems(Update, update.run_if(in_state(GameState::InGame)))
+            .add_systems(PostUpdate, update_optics_readouts.after(crate::gameplay::gunner::measure_range).run_if(in_state(GameState::InGame)));
     }
 }
 
@@ -267,6 +324,22 @@ mod tests {
     use super::*;
     use crate::ui::font::TextOptics;
     use bevy::ecs::system::RunSystemOnce;
+
+    /// 倍率和距离按要求显示，丢失命中时立即清空旧距离。
+    #[test]
+    fn optics_readouts_show_zoom_and_range() {
+        let mut app = App::new();
+        app.insert_resource(crate::gameplay::gunner::GunnerOptics { zoom: 4.23, range: Some(420.6) })
+            .add_systems(Update, update_optics_readouts);
+        let zoom = app.world_mut().spawn((ZoomReadout, Text::default())).id();
+        let range = app.world_mut().spawn((RangeReadout, Text::default())).id();
+        app.update();
+        assert_eq!(app.world().get::<Text>(zoom).unwrap().as_str(), "×4.2");
+        assert_eq!(app.world().get::<Text>(range).unwrap().as_str(), "421 m");
+        app.world_mut().resource_mut::<crate::gameplay::gunner::GunnerOptics>().range = None;
+        app.update();
+        assert_eq!(app.world().get::<Text>(range).unwrap().as_str(), "--");
+    }
 
     /// 俯仰角读数格式与原型一致；四舍五入后为 0 时符号取 +。
     #[test]
@@ -301,7 +374,7 @@ mod tests {
         app
     }
 
-    /// 分划结构锁定：根节点 + 8 条十字/弹道线 + 18 条刻度线 + 2 个读数。
+    /// 分划结构锁定：根节点、十字/弹道线、角度刻度与四个读数。
     #[test]
     fn setup_spawns_reticle_scale_and_readouts() {
         let mut app = spike_app();
@@ -311,11 +384,13 @@ mod tests {
             .query_filtered::<(Entity, Option<&Children>), With<SightRoot>>()
             .single(world)
             .unwrap();
-        let children = children.expect("分划根节点应持有子实体");
+        let anchors = children.expect("炮镜根节点应持有分划锚点");
+        assert_eq!(anchors.len(), 1);
+        let children = world.get::<Children>(anchors[0]).expect("分划锚点应持有子实体");
         assert_eq!(
             children.len(),
-            RETICLE.len() + SCALE_DECOR.len() + 2,
-            "应为线段表全量 + 两个读数节点"
+            RETICLE.len() + SCALE_DECOR.len() + 4,
+            "应为线段表全量 + 四个读数节点"
         );
         // 初始隐藏（默认第三人称主槽），读数标记存在。
         assert_eq!(

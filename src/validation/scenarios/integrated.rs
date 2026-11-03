@@ -173,6 +173,7 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
             capture(app, &options.image_path(frame))?;
         }
     }
+    ensure(app.world().resource::<crate::gameplay::gunner::GunnerOptics>().zoom > 1.0, "退出前倍率未改变")?;
     update(app, STEP, Some(501))?;
     let started = std::time::Instant::now();
     loop {
@@ -223,6 +224,7 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
         .single(app.world())
         .map_err(|e| e.to_string())?;
     ensure(aim.yaw == 0.0 && aim.pitch == 0.0, "重进后炮塔角度未复位")?;
+    ensure(app.world().resource::<crate::gameplay::gunner::GunnerOptics>().zoom == 1.0, "重进后倍率未复位")?;
     capture(app, &options.output.join("reentry.png"))?;
     update(app, STEP, Some(506))?;
     let aim = *app.world_mut().query_filtered::<&crate::tank::articulation::TankAim, With<Tank>>()

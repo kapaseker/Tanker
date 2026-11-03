@@ -14,8 +14,8 @@
 use super::*;
 use crate::gameplay::{
     combat::firing::{Bullet, PlayerBarrel},
-    gunner::{GunnerCamera, MAIN_ORDER, SUB_ORDER, ViewMode, gunner_camera_transform},
-    sight::{PitchReadout, SightRoot, TurretReadout},
+    gunner::{GunnerCamera, GunnerOptics, PipCross, MAIN_ORDER, SUB_ORDER, ViewMode, gunner_camera_transform},
+    sight::{PitchReadout, RangeReadout, SightRoot, TurretReadout, ZoomReadout},
 };
 
 /// 跨帧行为基线：视角切换前记录的炮塔/炮管角与逐帧位姿断言统计。
@@ -196,6 +196,33 @@ pub(super) fn check(
                 describe(expected_visibility)
             ),
         );
+    }
+
+    if matches!(frame, 0 | 30 | 120) {
+        let crosses: Vec<Visibility> = world.query_filtered::<&Visibility, With<PipCross>>()
+            .iter(world).copied().collect();
+        let expected = if gunner_main { Visibility::Hidden } else { Visibility::Inherited };
+        record_check(report, failures, crosses.len() == 4 && crosses.iter().all(|v| *v == expected),
+            &format!("帧 {frame} 副窗四臂十字显隐正确"));
+
+    }
+
+    // 实际输入驱动倍率，并核对炮镜读数与运行时状态。
+    if matches!(frame, 30 | 60 | 90 | 120) {
+        let optics = world.resource::<GunnerOptics>();
+        let zoom_value = optics.zoom;
+        let range_value = optics.range;
+        let zoom_text = world.query_filtered::<&Text, With<ZoomReadout>>().single(world)
+            .map_err(|e| format!("倍率读数缺失：{e}"))?.as_str().to_string();
+        let range_text = world.query_filtered::<&Text, With<RangeReadout>>().single(world)
+            .map_err(|e| format!("距离读数缺失：{e}"))?.as_str().to_string();
+        let expected_range = range_value.map_or_else(|| "--".to_string(), |d| format!("{:.0} m", d.round()));
+        record_check(report, failures, zoom_text == format!("×{zoom_value:.1}") && range_text == expected_range,
+            &format!("帧 {frame} 倍率与测距读数：{zoom_text} / {range_text}"));
+        let expected_zoom = match frame { 30 => 1.0 + 20.0 * 11.0 / 180.0, 60 => 1.0 + 50.0 * 11.0 / 180.0,
+            _ => 1.0 + 20.0 * 11.0 / 180.0 };
+        record_check(report, failures, (zoom_value - expected_zoom).abs() < 0.03,
+            &format!("帧 {frame} Q/E 缩放与视图切换保留：{zoom_value:.2}（期望 {expected_zoom:.2}）"));
     }
 
     // ── 断言 6：视角切换前后炮塔/炮管角度不变。

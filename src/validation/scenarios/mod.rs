@@ -12,6 +12,7 @@ mod pastoral;
 pub(super) mod scene;
 mod sight;
 mod wheels;
+mod window_resize;
 
 use super::*;
 use super::{
@@ -53,6 +54,8 @@ pub(super) enum Scenario {
     /// 位姿逐帧同步、副窗视口矩形换算、第三人称无准星哨兵、弹丸沿炮口方向、
     /// 切换前后调炮角不变，以及分划显隐与读数抽查。
     GunnerSight,
+    /// 真实渲染链路的模拟高 DPI 进入对局与连续调整尺寸。
+    WindowResize,
 }
 
 impl Scenario {
@@ -78,7 +81,7 @@ impl Scenario {
                 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 75, 90, 105, 120, 130, 240, 250,
             ],
             // 菜单关键帧按真实阶段动态计帧，固定列表只声明基准图。
-            Self::Index | Self::Gallery | Self::Detail | Self::Pastoral => &[0],
+            Self::Index | Self::Gallery | Self::Detail | Self::Pastoral | Self::WindowResize => &[0],
         }
     }
 
@@ -113,6 +116,7 @@ impl Scenario {
             (Self::Integrated, 361) => &[KeyCode::KeyD, KeyCode::KeyW],
             (Self::Integrated, 362) => &[KeyCode::KeyW],
             (Self::Integrated, 364 | 366) => &[KeyCode::KeyA],
+            (Self::Integrated, 380..=390) => &[KeyCode::KeyQ],
             (Self::Integrated, 398) => &[KeyCode::KeyA],
             (Self::Integrated, 400 | 506) => &[KeyCode::KeyA, KeyCode::KeyW],
             (Self::Integrated, 501) => &[KeyCode::Escape],
@@ -140,18 +144,19 @@ impl Scenario {
             // 单按 Shift 进炮镜主槽；按住 5 帧验证长按不连发；随后左调炮抬
             // 炮管、再右调炮，供读数抽查；帧 91 单按退回，帧 101 开火。
             (Self::GunnerSight, 1..=5) => &[KeyCode::ShiftLeft],
-            (Self::GunnerSight, 11..=40) => &[KeyCode::KeyA, KeyCode::KeyW],
-            (Self::GunnerSight, 41..=90) => &[KeyCode::KeyD],
+            (Self::GunnerSight, 11..=40) => &[KeyCode::KeyA, KeyCode::KeyW, KeyCode::KeyQ],
+            (Self::GunnerSight, 41..=60) => &[KeyCode::KeyD, KeyCode::KeyQ],
+            (Self::GunnerSight, 61..=90) => &[KeyCode::KeyD, KeyCode::KeyE],
             (Self::GunnerSight, 91) => &[KeyCode::ShiftLeft],
             (Self::GunnerSight, 101) => &[KeyCode::Space],
             (Self::Wheels, 1..=30) => &[KeyCode::ArrowUp],
             (Self::Wheels, 31..=60) => &[KeyCode::ArrowDown],
             (Self::Wheels, 61..=90) => &[KeyCode::ArrowLeft],
             (Self::Wheels, 91..=120) => &[KeyCode::ArrowRight],
-            (Self::Index | Self::Gallery | Self::Detail | Self::Pastoral, 1) => {
+            (Self::Index | Self::Gallery | Self::Detail | Self::Pastoral | Self::WindowResize, 1) => {
                 &[KeyCode::ArrowDown]
             }
-            (Self::Index | Self::Gallery | Self::Detail | Self::Pastoral, 3) => &[KeyCode::Enter],
+            (Self::Index | Self::Gallery | Self::Detail | Self::Pastoral | Self::WindowResize, 3) => &[KeyCode::Enter],
             (Self::Index | Self::Gallery | Self::Detail | Self::Pastoral, 5) => &[KeyCode::Escape],
             (Self::Index | Self::Gallery | Self::Detail | Self::Pastoral, 7) => &[KeyCode::Tab],
             (Self::Index | Self::Gallery | Self::Detail | Self::Pastoral, 8) => {
@@ -177,6 +182,9 @@ pub(super) fn run_scenario(
     options: &Options,
     report: &mut String,
 ) -> Result<(), String> {
+    if options.scenario == Scenario::WindowResize {
+        return window_resize::run(app, options, report);
+    }
     if options.scenario == Scenario::Pastoral {
         return pastoral::run(app, options, report);
     }

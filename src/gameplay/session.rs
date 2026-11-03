@@ -49,6 +49,7 @@ pub(crate) fn setup(
 ) {
     // 每局固定从「第三人称主槽」开始，清除上一局可能残留的视角状态。
     commands.insert_resource(gunner::ViewMode::default());
+    commands.insert_resource(gunner::GunnerOptics::default());
     let size = Vec3::from_array(tanks.player.collision.size);
     let tank_transform = Transform::from_xyz(0.0, size.y / 2.0, 0.0);
     commands.spawn((
@@ -87,7 +88,7 @@ pub(crate) fn setup(
     // far 2000 米对齐弹丸射程，FOV 沿用默认垂直 45°（zoom ×1）。
     // 副槽矩形按窗口 UiScale 与 DPR 换算；后续 resize 由 gunner 的重算系统接管。
     let pip = gunner::pip_viewport_for_window(windows.single().ok());
-    commands.spawn((
+    let gunner_camera = commands.spawn((
         Camera3d::default(),
         gunner::GunnerCamera,
         SessionEntity,
@@ -118,6 +119,20 @@ pub(crate) fn setup(
             ..default()
         },
         bevy::pbr::ScreenSpaceAmbientOcclusion::default(),
+    )).id();
+
+    // 渐晕固定跟随炮镜相机，尺寸取当前视口，分划和副窗十字绘制在上方。
+    commands.spawn((
+        SessionEntity,
+        UiTargetCamera(gunner_camera),
+        GlobalZIndex(-1),
+        Node {
+            position_type: PositionType::Absolute,
+            width: percent(100),
+            height: percent(100),
+            ..default()
+        },
+        crate::gameplay::sight::lens_vignette(),
     ));
 
     // 加载整个 MagicaVoxel 场景为 Bevy 场景图

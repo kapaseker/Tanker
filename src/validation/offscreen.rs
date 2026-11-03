@@ -25,7 +25,7 @@ use super::*;
 use super::{capture::write_new, scenarios::run_scenario};
 
 /// 配置真正无窗口的渲染器；禁用并行渲染以便受控更新后检查 GPU 状态。
-pub(crate) fn configure(app: &mut App) {
+pub(crate) fn configure(app: &mut App, options: &Options) {
     app.add_plugins(
         DefaultPlugins
             .set(WindowPlugin {
@@ -34,7 +34,7 @@ pub(crate) fn configure(app: &mut App) {
                 ..default()
             })
             .set(RenderPlugin {
-                synchronous_pipeline_compilation: true,
+                synchronous_pipeline_compilation: !options.asynchronous_pipelines(),
                 ..default()
             })
             .disable::<WinitPlugin>()
@@ -163,7 +163,7 @@ pub(crate) fn run(mut app: App, options: Options) -> Result<(), String> {
         .add_systems(Last, collect_evidence);
     if !matches!(
         options.scenario,
-        Scenario::Index | Scenario::Gallery | Scenario::Detail | Scenario::Pastoral
+        Scenario::Index | Scenario::Gallery | Scenario::Detail | Scenario::Pastoral | Scenario::WindowResize
     ) {
         // 旧场景在首个 StateTransition 前直接请求 InGame 跳过菜单：
         // 启动期 StateTransition 应用 InGame 并运行 OnEnter(session::setup)，

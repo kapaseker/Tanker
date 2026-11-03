@@ -1,7 +1,7 @@
 //! 炮镜相机与视角槽位切换：常驻 3D 相机严格跟随炮管世界位姿，Shift 单按互换主副槽。
 //!
 //! 炮镜位姿为纯函数（炮管 GlobalTransform → 相机 Transform），安装点为炮口端面
-//! （沿炮轴 −5.42 m 常量），投影 zoom ×1（FOV 同第三人称默认垂直 45°），far 2000 m
+//! （沿炮轴 −5.42 m 常量），倍率 1～12 倍对应透视视野角，far 2000 m
 //! 对齐弹丸射程。视角状态为单一枚举资源（第三人称主 / 炮镜主），Shift 按下翻转模式，
 //! 槽位参数（全屏/矩形视口、优先级）由 [`update_view_slots`] 按模式统一应用，
 //! 瞬时完成无过渡动画；长按/连按只响应首次按下。
@@ -14,6 +14,7 @@ use crate::gameplay::combat::firing::PlayerBarrel;
 use crate::gameplay::session::SessionEntity;
 use crate::tank::model::astra;
 use crate::ui::resources::{colors, dimens};
+use avian3d::prelude::{SpatialQuery, SpatialQueryFilter};
 use bevy::{
     camera::Viewport,
     prelude::*,
@@ -32,6 +33,29 @@ pub(crate) enum ViewMode {
     ThirdPersonMain,
     /// 炮镜主槽（全屏），第三人称副槽（右上矩形）。
     GunnerMain,
+}
+
+/// 对局内炮镜倍率及最近有效命中距离（米）。
+#[derive(Resource, Debug)]
+pub(crate) struct GunnerOptics {
+    /// 相对于 45° 基准视野的倍率。
+    pub(crate) zoom: f32,
+    /// 最近有效表面到炮镜的距离（米）。
+    pub(crate) range: Option<f32>,
+}
+
+impl Default for GunnerOptics {
+    fn default() -> Self { Self { zoom: 1.0, range: None } }
+}
+
+/// 匀速调整倍率，双键抵消。
+fn next_zoom(zoom: f32, up: bool, down: bool, seconds: f32) -> f32 {
+    (zoom + (i32::from(up) - i32::from(down)) as f32 * (11.0 / 3.0) * seconds).clamp(1.0, 12.0)
+}
+
+/// 基于透视投影的放大倍率换算垂直视野角。
+fn zoom_fov(zoom: f32) -> f32 {
+    2.0 * ((std::f32::consts::FRAC_PI_8).tan() / zoom).atan()
 }
 
 /// 主槽（全屏）相机渲染优先级：先于副槽渲染，为副槽叠加让位。
@@ -91,6 +115,10 @@ pub(crate) fn pip_viewport_for_window(window: Option<&Window>) -> Viewport {
     pip_viewport(physical, ui_scale, dpr)
 }
 
+/// 副窗覆盖层相机，随主副相机同步目标缩放。
+#[derive(Component)]
+pub(crate) struct PipOverlayCamera;
+
 /// 副窗边框标记：绝对定位 UI 根节点，按副槽矩形描边，随主槽相机全屏渲染。
 #[derive(Component)]
 pub(crate) struct PipFrame;
@@ -101,11 +129,12 @@ pub(crate) struct GunnerCameraPlugin;
 impl Plugin for GunnerCameraPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ViewMode>()
+            .init_resource::<GunnerOptics>()
             .add_systems(
                 PostUpdate,
-                sync_gunner_camera.after(TransformSystems::Propagate),
+                (sync_gunner_camera.after(TransformSystems::Propagate), measure_range.after(sync_gunner_camera)),
             )
-            .add_systems(Update, update_view_slots)
+            .add_systems(Update, (update_view_slots, update_zoom.run_if(in_state(GameState::InGame))))
             .add_systems(OnEnter(GameState::InGame), spawn_pip_frame);
     }
 }
@@ -113,10 +142,19 @@ impl Plugin for GunnerCameraPlugin {
 /// 进入对局生成副窗边框：1px 薄荷描边，与状态簇底板边框同色
 /// （原型 `.view.is-pip` 的 rgba(200,219,177,0.38) 线性等效）。
 /// 位置尺寸由 [`update_view_slots`] 按窗口换算逐次刷新，初始取设计值。
-fn spawn_pip_frame(mut commands: Commands) {
+fn spawn_pip_frame(mut commands: Commands, target: Res<crate::app::transition::SceneTarget>) {
+    // 独立 UI 相机在两个场景相机之后绘制，避免副窗清屏覆盖十字。
+    let overlay = commands.spawn((
+        Camera2d,
+        PipOverlayCamera,
+        Camera { order: 0, clear_color: ClearColorConfig::None, ..default() },
+        bevy::camera::RenderTarget::Image(target.0.clone().into()),
+        SessionEntity,
+    )).id();
     commands.spawn((
         PipFrame,
         SessionEntity,
+        UiTargetCamera(overlay),
         Node {
             position_type: PositionType::Absolute,
             top: px(dimens::pip::INSET),
@@ -127,7 +165,58 @@ fn spawn_pip_frame(mut commands: Commands) {
             ..default()
         },
         BorderColor::all(colors::hud::PLATE_BORDER),
-    ));
+    )).with_children(|parent| {
+        // 按 1280×720 主视图比例映射到副窗，仅绘制十字四臂。
+        for (x, y, w, h) in [(-40.0, -1.0, 34.0, 2.0), (6.0, -1.0, 34.0, 2.0), (-1.0, -40.0, 2.0, 34.0), (-1.0, 6.0, 2.0, 20.0)] {
+            parent.spawn((PipCross, Node {
+                position_type: PositionType::Absolute,
+                left: percent(50.0 + x * 100.0 / 1280.0),
+                top: percent(50.0 + y * 100.0 / 720.0),
+                width: percent(w * 100.0 / 1280.0),
+                height: percent(h * 100.0 / 720.0),
+                // 半像素线宽会被布局舍入为零，保留最小一逻辑像素。
+                min_width: px(1.0),
+                min_height: px(1.0),
+                ..default()
+            }, BackgroundColor(colors::sight::CROSS)));
+        }
+    });
+}
+
+/// 副窗中央十字，第三人称主视图时显示。
+#[derive(Component)]
+pub(crate) struct PipCross;
+
+/// 按输入更新倍率及实际投影；失焦或页面过渡时停止输入。
+fn update_zoom(
+    keys: Res<ButtonInput<KeyCode>>, time: Res<Time>, windows: Query<&Window>,
+    fade: Option<Res<crate::app::transition::Fade>>, mut optics: ResMut<GunnerOptics>,
+    mut cameras: Query<&mut Projection, With<GunnerCamera>>,
+) {
+    let seconds = time.delta_secs();
+    if seconds.is_finite() && seconds >= 0.0 && !windows.iter().any(|w| !w.focused)
+        && !fade.as_ref().is_some_and(|f| !f.accepts_input()) {
+        optics.zoom = next_zoom(optics.zoom, keys.pressed(KeyCode::KeyQ), keys.pressed(KeyCode::KeyE), seconds);
+    }
+    for mut projection in &mut cameras {
+        let fov = zoom_fov(optics.zoom);
+        if matches!(&*projection, Projection::Perspective(perspective) if perspective.fov != fov) {
+            if let Projection::Perspective(perspective) = &mut *projection { perspective.fov = fov; }
+        }
+    }
+}
+
+/// 相机同步后从炮口投射无限距离射线；只接受可见且可命中的场景碰撞体。
+pub(crate) fn measure_range(
+    cameras: Query<&GlobalTransform, With<GunnerCamera>>, spatial: SpatialQuery,
+    valid: Query<(), Or<(With<crate::gameplay::enemy::EnemyTank>, With<crate::gameplay::obstacle::Concrete>, With<crate::terrain::TerrainSurface>)>>,
+    mut optics: ResMut<GunnerOptics>,
+) {
+    optics.range = cameras.single().ok().and_then(|camera| {
+        let direction = Dir3::new(camera.forward().as_vec3()).ok()?;
+        spatial.cast_ray_predicate(camera.translation(), direction, f32::MAX, true,
+            &SpatialQueryFilter::default(), &|entity| valid.contains(entity)).map(|hit| hit.distance)
+    });
 }
 
 /// 每帧同步炮镜相机位姿：严格取炮管世界位姿，安装点炮口端面。
@@ -190,6 +279,7 @@ fn update_view_slots(
     mut follow: Query<&mut Camera, (With<FollowCamera>, Without<GunnerCamera>)>,
     mut gunner: Query<&mut Camera, (With<GunnerCamera>, Without<FollowCamera>)>,
     mut frames: Query<&mut Node, With<PipFrame>>,
+    mut crosses: Query<&mut Visibility, With<PipCross>>,
 ) {
     if keys.just_pressed(KeyCode::ShiftLeft) || keys.just_pressed(KeyCode::ShiftRight) {
         *mode = match *mode {
@@ -205,6 +295,9 @@ fn update_view_slots(
     }
     for mut camera in &mut gunner {
         apply_slot(&mut camera, !third_person_main, &pip);
+    }
+    for mut visibility in &mut crosses {
+        *visibility = if third_person_main { Visibility::Inherited } else { Visibility::Hidden };
     }
     // 边框节点为逻辑像素：Bevy UI 内部再乘 DPR，故只乘 UiScale。
     let inset = px(dimens::pip::INSET * ui_scale);
@@ -231,6 +324,42 @@ fn update_view_slots(
 mod tests {
     use super::*;
     use bevy::window::WindowResolution;
+
+    /// 倍率变化按三秒走完全程，投影须对应真实透视放大倍数。
+    #[test]
+    fn zoom_limits_and_projection() {
+        assert_eq!(next_zoom(1.0, true, false, 3.0), 12.0);
+        assert_eq!(next_zoom(12.0, false, true, 3.0), 1.0);
+        assert_eq!(next_zoom(4.0, true, true, 1.0), 4.0);
+        assert_eq!(next_zoom(4.0, false, false, 1.0), 4.0);
+        assert!(((zoom_fov(1.0) / 2.0).tan() / (zoom_fov(12.0) / 2.0).tan() - 12.0).abs() < 1e-5);
+    }
+
+    /// 真实物理射线忽略空气墙、取最近有效表面，且不限相机远裁面。
+    #[test]
+    fn range_uses_nearest_valid_surface_beyond_render_distance() {
+        use avian3d::prelude::{Collider, PhysicsPlugins, RigidBody};
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, TransformPlugin, PhysicsPlugins::default()))
+            .init_resource::<GunnerOptics>()
+            .add_systems(PostUpdate, measure_range);
+        app.world_mut().spawn((GunnerCamera, Transform::default()));
+        app.world_mut().spawn((crate::terrain::TerrainWall, RigidBody::Static, Collider::cuboid(4.0, 4.0, 2.0), Transform::from_xyz(0.0, 0.0, -5.0)));
+        let ground = app.world_mut().spawn((crate::terrain::TerrainSurface, RigidBody::Static, Collider::cuboid(4.0, 4.0, 2.0), Transform::from_xyz(0.0, 0.0, -2501.0))).id();
+        let enemy = app.world_mut().spawn((crate::gameplay::enemy::EnemyTank, RigidBody::Static, Collider::cuboid(4.0, 4.0, 2.0), Transform::from_xyz(0.0, 0.0, -21.0))).id();
+        let obstacle = app.world_mut().spawn((crate::gameplay::obstacle::Concrete, RigidBody::Static, Collider::cuboid(4.0, 4.0, 2.0), Transform::from_xyz(0.0, 0.0, -11.0))).id();
+        for _ in 0..4 { app.update(); }
+        assert!((app.world().resource::<GunnerOptics>().range.unwrap() - 10.0).abs() < 0.01);
+        app.world_mut().despawn(obstacle);
+        for _ in 0..4 { app.update(); }
+        assert!((app.world().resource::<GunnerOptics>().range.unwrap() - 20.0).abs() < 0.01);
+        app.world_mut().despawn(enemy);
+        for _ in 0..4 { app.update(); }
+        assert!((app.world().resource::<GunnerOptics>().range.unwrap() - 2500.0).abs() < 0.01);
+        app.world_mut().despawn(ground);
+        for _ in 0..4 { app.update(); }
+        assert_eq!(app.world().resource::<GunnerOptics>().range, None);
+    }
 
     /// 任意炮塔 yaw / 炮管 pitch 下，炮镜位姿 = 炮管世界位姿（安装点炮口端面、前向炮管 −X）。
     #[test]

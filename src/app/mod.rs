@@ -39,8 +39,8 @@ pub(super) fn run(options: Option<validation::Options>) -> Result<(), String> {
     let mut app = App::new();
     app.insert_resource(ammunition);
     app.insert_resource(tanks);
-    if options.is_some() {
-        validation::configure(&mut app);
+    if let Some(options) = options.as_ref() {
+        validation::configure(&mut app, options);
     } else {
         app.add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {

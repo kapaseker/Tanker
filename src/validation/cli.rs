@@ -18,9 +18,14 @@ pub(crate) struct Options {
 }
 
 impl Options {
+    /// 窗口回归模拟正常游戏的异步管线编译。
+    pub(crate) fn asynchronous_pipelines(&self) -> bool {
+        self.scenario == Scenario::WindowResize
+    }
+
     /// 无参数返回普通游戏；其余参数必须完整匹配已公布的接口。
     pub(crate) fn parse(args: Vec<OsString>) -> Result<Option<Self>, String> {
-        let usage = "用法：--capture <图片.png> 或 --offscreen-test <scene|drive|combat|articulation|integrated|wheels|index|gallery|detail|hud|gunner_sight|pastoral> --output <目录> [--model enemy] [--lighting candidate]（后两者仅 wheels）";
+        let usage = "用法：--capture <图片.png> 或 --offscreen-test <scene|drive|combat|articulation|integrated|wheels|index|gallery|detail|hud|gunner_sight|window_resize|pastoral> --output <目录> [--model enemy] [--lighting candidate]（后两者仅 wheels）";
         if args.is_empty() {
             return Ok(None);
         }
@@ -55,6 +60,7 @@ impl Options {
                 Some("detail") => Scenario::Detail,
                 Some("hud") => Scenario::Hud,
                 Some("gunner_sight") => Scenario::GunnerSight,
+                Some("window_resize") => Scenario::WindowResize,
                 Some("pastoral") => Scenario::Pastoral,
                 _ => return Err(usage.into()),
             };

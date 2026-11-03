@@ -211,7 +211,7 @@ fn resize_target(
     target: Res<SceneTarget>,
     mut images: ResMut<Assets<Image>>,
     mut index_cameras: Query<
-        &mut RenderTarget,
+        (&mut RenderTarget, &mut Projection),
         Or<(
             With<crate::pages::index::IndexCamera>,
             With<crate::pages::gallery::GalleryCamera>,
@@ -220,13 +220,18 @@ fn resize_target(
         )>,
     >,
     mut scene_cameras: Query<
-        &mut RenderTarget,
+        (&mut RenderTarget, &mut Projection),
         (
             Without<crate::pages::index::IndexCamera>,
             Without<crate::pages::gallery::GalleryCamera>,
             Without<crate::pages::detail::DetailCamera>,
             Without<crate::app::chrome::ChromeCamera>,
-            Or<(With<crate::gameplay::camera::FollowCamera>, With<crate::pages::pastoral::PreviewCamera>)>,
+            Or<(
+                With<crate::gameplay::camera::FollowCamera>,
+                With<crate::gameplay::gunner::GunnerCamera>,
+                With<crate::gameplay::gunner::PipOverlayCamera>,
+                With<crate::pages::pastoral::PreviewCamera>,
+            )>,
         ),
     >,
 ) {
@@ -239,7 +244,10 @@ fn resize_target(
         Err(_) => (images.get(&target.0).unwrap().size(), 1.0),
     };
     let mut image = images.get_mut(&target.0).unwrap();
-    if image.size() != physical {
+    // 图像事件要到后续帧才能被 camera_system 读到；相机必须同帧刷新尺寸，
+    // 否则共享同一深度纹理的相机可能分别使用新旧尺寸。
+    let resized = image.size() != physical;
+    if resized {
         image.resize(bevy::render::render_resource::Extent3d {
             width: physical.x,
             height: physical.y,
@@ -250,18 +258,22 @@ fn resize_target(
     // 菜单相机缩放系数 = 窗口缩放 × zoom；只缩不放大，高度不参与。
     let index_scale = scale_factor * crate::ui::zoom(physical.x as f32 / scale_factor);
     let mut scale_changed = false;
-    for mut camera in &mut index_cameras {
+    for (mut camera, mut projection) in &mut index_cameras {
+        if resized { projection.set_changed(); }
         if let RenderTarget::Image(image) = &mut *camera {
             if (image.scale_factor - index_scale).abs() > f32::EPSILON {
                 image.scale_factor = index_scale;
+                projection.set_changed();
                 scale_changed = true;
             }
         }
     }
-    for mut camera in &mut scene_cameras {
+    for (mut camera, mut projection) in &mut scene_cameras {
+        if resized { projection.set_changed(); }
         if let RenderTarget::Image(image) = &mut *camera {
             if (image.scale_factor - scale_factor).abs() > f32::EPSILON {
                 image.scale_factor = scale_factor;
+                projection.set_changed();
                 scale_changed = true;
             }
         }
@@ -476,6 +488,89 @@ pub(crate) fn diagnostics(world: &mut World) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 改变窗口时，同一帧中两台共享深度纹理的相机必须看到相同的新尺寸。
+    #[test]
+    fn resizing_updates_both_gameplay_camera_sizes_in_same_frame() {
+        use bevy::{ecs::system::RunSystemOnce, window::{WindowCreated, WindowResized, WindowScaleFactorChanged}};
+        let mut world = World::new();
+        world.init_resource::<bevy::ecs::message::Messages<WindowResized>>();
+        world.init_resource::<bevy::ecs::message::Messages<WindowCreated>>();
+        world.init_resource::<bevy::ecs::message::Messages<WindowScaleFactorChanged>>();
+        world.init_resource::<bevy::ecs::message::Messages<bevy::asset::AssetEvent<Image>>>();
+        world.init_resource::<bevy::render::texture::ManualTextureViews>();
+        let mut images = Assets::<Image>::default();
+        let image = images.add(Image::new_target_texture(1280, 720, TextureFormat::Rgba8UnormSrgb, None));
+        world.insert_resource(SceneTarget(image.clone()));
+        world.insert_resource(images);
+        let mut window = Window::default();
+        window.resolution = bevy::window::WindowResolution::new(1280, 720);
+        window.resolution.set_scale_factor_override(Some(2.0));
+        let window = world.spawn(window).id();
+        let follow = world.spawn((Camera3d::default(), Projection::default(), crate::gameplay::camera::FollowCamera, RenderTarget::Image(image.clone().into()))).id();
+        let gunner = world.spawn((Camera3d::default(), Projection::default(), crate::gameplay::gunner::GunnerCamera, RenderTarget::Image(image.into()))).id();
+        world.run_system_once(resize_target).unwrap();
+        let camera_system: bevy::ecs::system::SystemId<(), ()> = world.register_system(bevy::render::camera::camera_system);
+        world.run_system(camera_system).unwrap();
+        let mut resolution = bevy::window::WindowResolution::new(1282, 720);
+        resolution.set_scale_factor_override(Some(2.0));
+        world.get_mut::<Window>(window).unwrap().resolution = resolution;
+        world.run_system_once(resize_target).unwrap();
+        // 模拟倍率系统更新炮镜投影；图像变更事件尚未进入相机系统。
+        world.get_mut::<Projection>(gunner).unwrap().set_changed();
+        world.run_system(camera_system).unwrap();
+        assert_eq!(world.get::<Camera>(follow).unwrap().physical_target_size(), Some(UVec2::new(1282, 720)));
+        assert_eq!(world.get::<Camera>(gunner).unwrap().physical_target_size(), Some(UVec2::new(1282, 720)));
+    }
+
+    /// 同一纹理上的主副相机必须共享缩放，否则 Bevy 会把它们当成不同目标。
+    #[test]
+    fn gameplay_cameras_share_target_at_high_dpi() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut world = World::new();
+        let mut images = Assets::<Image>::default();
+        let image = images.add(Image::new_target_texture(
+            1280,
+            720,
+            TextureFormat::Rgba8UnormSrgb,
+            None,
+        ));
+        world.insert_resource(SceneTarget(image.clone()));
+        world.insert_resource(images);
+        let mut window = Window::default();
+        window.resolution.set_scale_factor_override(Some(2.0));
+        world.spawn(window);
+        let follow = world
+            .spawn((
+                crate::gameplay::camera::FollowCamera,
+                Projection::default(),
+                RenderTarget::Image(image.clone().into()),
+            ))
+            .id();
+        let gunner = world
+            .spawn((
+                crate::gameplay::gunner::GunnerCamera,
+                Projection::default(),
+                RenderTarget::Image(image.clone().into()),
+            ))
+            .id();
+        let overlay = world.spawn((
+            crate::gameplay::gunner::PipOverlayCamera,
+            Projection::default(),
+            RenderTarget::Image(image.clone().into()),
+        )).id();
+        world.run_system_once(resize_target).unwrap();
+        let RenderTarget::Image(follow_target) = world.get::<RenderTarget>(follow).unwrap() else {
+            panic!()
+        };
+        let RenderTarget::Image(gunner_target) = world.get::<RenderTarget>(gunner).unwrap() else {
+            panic!()
+        };
+        let RenderTarget::Image(overlay_target) = world.get::<RenderTarget>(overlay).unwrap() else { panic!() };
+        assert_eq!(follow_target, gunner_target);
+        assert_eq!(follow_target, overlay_target);
+        assert_eq!(follow_target.scale_factor, 2.0);
+    }
 
     /// 无地形的加载等待必须冻结重力；揭幕后继续真实物理积分。
     #[test]
