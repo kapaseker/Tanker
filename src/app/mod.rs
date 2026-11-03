@@ -70,7 +70,11 @@ pub(super) fn run(options: Option<validation::Options>) -> Result<(), String> {
         pages::gallery::GalleryPlugin,
     ))
     // 元组插件数已到上限，HUD 单独注册；其系统按状态门控，与注册顺序无关。
-    .add_plugins((gameplay::hud::HudPlugin, pages::pastoral::PastoralPlugin))
+    .add_plugins((
+        gameplay::hud::HudPlugin,
+        pages::pastoral::PastoralPlugin,
+        gameplay::gunner::GunnerCameraPlugin,
+    ))
     // 必须在 TransitionPlugin 之后：chrome 相机需要已插入的 SceneTarget。
     .add_plugins((pages::detail::DetailPlugin, chrome::ChromePlugin))
     .insert_resource(GlobalAmbientLight {

@@ -3,6 +3,7 @@
 pub(crate) mod camera;
 pub(crate) mod combat;
 pub(crate) mod enemy;
+pub(crate) mod gunner;
 pub(crate) mod health;
 pub(crate) mod hud;
 pub(crate) mod obstacle;

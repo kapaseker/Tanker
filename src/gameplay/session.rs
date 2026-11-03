@@ -11,7 +11,7 @@ use bevy::{
 };
 
 use crate::app::transition;
-use crate::gameplay::{camera, combat, enemy, health, player};
+use crate::gameplay::{camera, combat, enemy, gunner, health, player};
 use crate::tank;
 use crate::terrain;
 
@@ -45,15 +45,19 @@ pub(crate) fn setup(
     assets: Res<AssetServer>,
     target: Res<transition::SceneTarget>,
     tanks: Res<tank::driving::TankConfigs>,
+    windows: Query<&Window>,
 ) {
+    // 每局固定从「第三人称主槽」开始，清除上一局可能残留的视角状态。
+    commands.insert_resource(gunner::ViewMode::default());
     let size = Vec3::from_array(tanks.player.collision.size);
     let tank_transform = Transform::from_xyz(0.0, size.y / 2.0, 0.0);
     commands.spawn((
         Camera3d::default(),
         camera::FollowCamera,
         SessionEntity,
+        // 主槽 order：先全屏清屏并渲染，副槽与 chrome（0）依次叠加。
         Camera {
-            order: -1,
+            order: gunner::MAIN_ORDER,
             ..default()
         },
         bevy::camera::RenderTarget::Image(target.0.clone().into()),
@@ -65,6 +69,45 @@ pub(crate) fn setup(
             quality: bevy::pbr::ScreenSpaceTransmissionQuality::High,
         },
         camera::camera_transform(&tank_transform, 0.0),
+        bevy::core_pipeline::tonemapping::Tonemapping::BlenderFilmic,
+        bevy::post_process::bloom::Bloom {
+            intensity: 0.3,
+            ..default()
+        },
+        EnvironmentMapLight {
+            diffuse_map: assets.load("pisa_diffuse.ktx2"),
+            specular_map: assets.load("pisa_specular.ktx2"),
+            intensity: 500.0,
+            ..default()
+        },
+        bevy::pbr::ScreenSpaceAmbientOcclusion::default(),
+    ));
+
+    // 常驻炮镜相机：初始占副槽（右上矩形、order -1），位姿由 gunner 同步系统逐帧取炮管；
+    // far 2000 米对齐弹丸射程，FOV 沿用默认垂直 45°（zoom ×1）。
+    let window_physical = windows
+        .single()
+        .map(|window| window.resolution.physical_size())
+        .unwrap_or(bevy::math::uvec2(1280, 720));
+    commands.spawn((
+        Camera3d::default(),
+        gunner::GunnerCamera,
+        SessionEntity,
+        Camera {
+            order: gunner::SUB_ORDER,
+            viewport: Some(gunner::pip_viewport(window_physical)),
+            ..default()
+        },
+        Projection::from(PerspectiveProjection {
+            far: 2000.0,
+            ..default()
+        }),
+        bevy::camera::RenderTarget::Image(target.0.clone().into()),
+        Msaa::Off,
+        bevy::pbr::ScreenSpaceTransmission {
+            steps: 1,
+            quality: bevy::pbr::ScreenSpaceTransmissionQuality::High,
+        },
         bevy::core_pipeline::tonemapping::Tonemapping::BlenderFilmic,
         bevy::post_process::bloom::Bloom {
             intensity: 0.3,
