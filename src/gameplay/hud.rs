@@ -217,27 +217,31 @@ pub(crate) fn update(
     }
 }
 
-/// 把 HUD 根节点挂到当前占据主槽的相机的 UI 目标上。
+/// 把 HUD 根节点（状态簇与副窗边框）挂到当前占据主槽的相机的 UI 目标上。
 ///
 /// 相机与状态簇同帧经命令生成，命令应用前查询不到，故逐帧补挂；
 /// 视角切换（工单 02）后主槽易主，UI 必须随主槽相机全屏渲染，
 /// 因此每帧按 [`ViewMode`] 校对归属，仅在实际变化时写入命令。
+/// 副槽相机不挂任何 UI，副窗画面保持零 HUD。
 pub(crate) fn attach_ui_target(
     mut commands: Commands,
     mode: Res<crate::gameplay::gunner::ViewMode>,
     follow: Query<Entity, With<crate::gameplay::camera::FollowCamera>>,
     gunner: Query<Entity, With<crate::gameplay::gunner::GunnerCamera>>,
-    roots: Query<(Entity, Option<&UiTargetCamera>), With<HudRoot>>,
+    roots: Query<
+        (Entity, Option<&UiTargetCamera>),
+        Or<(With<HudRoot>, With<crate::gameplay::gunner::PipFrame>)>,
+    >,
 ) {
     use crate::gameplay::gunner::ViewMode;
     let main = match *mode {
         ViewMode::ThirdPersonMain => follow.single().ok(),
         ViewMode::GunnerMain => gunner.single().ok(),
     };
-    let Ok((root, current)) = roots.single() else {
+    let Some(camera) = main else {
         return;
     };
-    if let Some(camera) = main {
+    for (root, current) in &roots {
         if current.map(|target| target.0) != Some(camera) {
             commands.entity(root).insert(UiTargetCamera(camera));
         }

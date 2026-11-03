@@ -85,17 +85,15 @@ pub(crate) fn setup(
 
     // 常驻炮镜相机：初始占副槽（右上矩形、order -1），位姿由 gunner 同步系统逐帧取炮管；
     // far 2000 米对齐弹丸射程，FOV 沿用默认垂直 45°（zoom ×1）。
-    let window_physical = windows
-        .single()
-        .map(|window| window.resolution.physical_size())
-        .unwrap_or(bevy::math::uvec2(1280, 720));
+    // 副槽矩形按窗口 UiScale 与 DPR 换算；后续 resize 由 gunner 的重算系统接管。
+    let pip = gunner::pip_viewport_for_window(windows.single().ok());
     commands.spawn((
         Camera3d::default(),
         gunner::GunnerCamera,
         SessionEntity,
         Camera {
             order: gunner::SUB_ORDER,
-            viewport: Some(gunner::pip_viewport(window_physical)),
+            viewport: Some(pip),
             ..default()
         },
         Projection::from(PerspectiveProjection {

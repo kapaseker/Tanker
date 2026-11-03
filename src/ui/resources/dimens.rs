@@ -26,6 +26,19 @@ pub(crate) mod hud {
     pub(crate) const RELOAD_TRACK_HEIGHT: f32 = 8.0;
 }
 
+/// 副窗（PiP）设计像素，对照网页原型 gameplay.html 的 `.view.is-pip`：
+/// 320×180（1280×720 参考分辨率的 1/4）、距窗口右/上缘 24px（取 hud.safe-inset）、
+/// 1px 薄荷描边。运行时乘 UiScale（zoom）与窗口 DPR 换算物理像素视口矩形。
+pub(crate) mod pip {
+    /// 副窗设计宽/高。
+    pub(crate) const WIDTH: f32 = 320.0;
+    pub(crate) const HEIGHT: f32 = 180.0;
+    /// 距窗口右/上缘的设计边距，与状态簇 INSET 同源。
+    pub(crate) const INSET: f32 = 24.0;
+    /// 边框线宽（CSS 1px，同样随 UiScale 缩放）。
+    pub(crate) const BORDER_WIDTH: f32 = 1.0;
+}
+
 /// 统一标题栏逻辑像素：全页面共用一个标题栏控件（高度、ESC 返回框、标题、全屏宽底部分割线），
 /// 以画廊网页设计稿 .header/.back 为基准；新页面直接复用本模块常量，不再各自定义。
 pub(crate) mod title_bar {

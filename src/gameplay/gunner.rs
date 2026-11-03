@@ -2,12 +2,18 @@
 //!
 //! 炮镜位姿为纯函数（炮管 GlobalTransform → 相机 Transform），安装点为炮口端面
 //! （沿炮轴 −5.42 m 常量），投影 zoom ×1（FOV 同第三人称默认垂直 45°），far 2000 m
-//! 对齐弹丸射程。视角状态为单一枚举资源（第三人称主 / 炮镜主），Shift 按下互换两相机的
-//! 槽位参数（全屏/矩形、优先级），瞬时完成，无过渡动画；长按/连按只响应首次按下。
+//! 对齐弹丸射程。视角状态为单一枚举资源（第三人称主 / 炮镜主），Shift 按下翻转模式，
+//! 槽位参数（全屏/矩形视口、优先级）由 [`update_view_slots`] 按模式统一应用，
+//! 瞬时完成无过渡动画；长按/连按只响应首次按下。
+//! 副槽视口为设计像素 320×180、距窗口右/上缘 24px，乘 UiScale（zoom）与窗口 DPR
+//! 换算物理像素，窗口 resize 重算；副窗边框为挂在主槽相机 UI 层的 1px 描边节点。
 
+use crate::app::state::GameState;
 use crate::gameplay::camera::FollowCamera;
 use crate::gameplay::combat::firing::PlayerBarrel;
+use crate::gameplay::session::SessionEntity;
 use crate::tank::model::astra;
+use crate::ui::resources::{colors, dimens};
 use bevy::{
     camera::Viewport,
     prelude::*,
@@ -45,22 +51,51 @@ pub(crate) fn gunner_camera_transform(barrel: &GlobalTransform) -> Transform {
     Transform::from_translation(position).with_rotation(rotation)
 }
 
-/// 副槽视口占位：设计像素 320×180、距窗口右/上缘 24px，乘 UiScale 与 DPR 由 03 提供。
+/// 副槽视口矩形换算纯函数：设计像素（320×180、边距 24）乘 UiScale 与窗口 DPR
+/// 得物理像素，锚窗口右上（Bevy 视口坐标以窗口左上为原点、y 向下）。
 ///
-/// 当前为最小实现：直接使用物理像素，不乘 UiScale/DPR；窗口 resize 重算由 03 提供。
-pub(crate) fn pip_viewport(window_physical: UVec2) -> Viewport {
-    let width = 320.min(window_physical.x.saturating_sub(24));
-    let height = 180.min(window_physical.y.saturating_sub(24));
-    let x = window_physical.x.saturating_sub(width + 24);
-    let y = 24;
+/// 窗口不足以容纳完整副窗时尺寸钳制到可用区域，仍保留右上边距不溢出。
+pub(crate) fn pip_viewport(window_physical: UVec2, ui_scale: f32, dpr: f32) -> Viewport {
+    let design_px = |value: f32| (value * ui_scale * dpr).round().max(0.0) as u32;
+    let margin = design_px(dimens::pip::INSET);
+    let width = design_px(dimens::pip::WIDTH).min(window_physical.x.saturating_sub(margin));
+    let height = design_px(dimens::pip::HEIGHT).min(window_physical.y.saturating_sub(margin));
     Viewport {
-        physical_position: UVec2::new(x, y),
+        physical_position: UVec2::new(
+            window_physical.x.saturating_sub(width + margin),
+            margin,
+        ),
         physical_size: UVec2::new(width, height),
         ..default()
     }
 }
 
-/// 注册炮镜相机生成、位姿同步与视角切换系统。
+/// 读取窗口得副窗换算三元组（物理尺寸, UiScale, DPR）：
+/// UiScale 取整体等比缩放 zoom（按逻辑宽度），DPR 取窗口缩放因子；
+/// 无窗口（离屏回退）按 1280×720、DPR 1 基线。
+pub(crate) fn window_layout_params(window: Option<&Window>) -> (UVec2, f32, f32) {
+    match window {
+        Some(w) => {
+            let dpr = w.resolution.scale_factor();
+            let physical = w.resolution.physical_size();
+            let ui_scale = crate::ui::zoom(physical.x as f32 / dpr.max(f32::EPSILON));
+            (physical, ui_scale, dpr)
+        }
+        None => (bevy::math::uvec2(1280, 720), 1.0, 1.0),
+    }
+}
+
+/// 从窗口读取实际参数换算副槽矩形；无窗口时回退基线换算。
+pub(crate) fn pip_viewport_for_window(window: Option<&Window>) -> Viewport {
+    let (physical, ui_scale, dpr) = window_layout_params(window);
+    pip_viewport(physical, ui_scale, dpr)
+}
+
+/// 副窗边框标记：绝对定位 UI 根节点，按副槽矩形描边，随主槽相机全屏渲染。
+#[derive(Component)]
+pub(crate) struct PipFrame;
+
+/// 注册炮镜相机生成、位姿同步、视角切换与副窗布局系统。
 pub(crate) struct GunnerCameraPlugin;
 
 impl Plugin for GunnerCameraPlugin {
@@ -70,8 +105,29 @@ impl Plugin for GunnerCameraPlugin {
                 PostUpdate,
                 sync_gunner_camera.after(TransformSystems::Propagate),
             )
-            .add_systems(Update, switch_view);
+            .add_systems(Update, update_view_slots)
+            .add_systems(OnEnter(GameState::InGame), spawn_pip_frame);
     }
+}
+
+/// 进入对局生成副窗边框：1px 薄荷描边，与状态簇底板边框同色
+/// （原型 `.view.is-pip` 的 rgba(200,219,177,0.38) 线性等效）。
+/// 位置尺寸由 [`update_view_slots`] 按窗口换算逐次刷新，初始取设计值。
+fn spawn_pip_frame(mut commands: Commands) {
+    commands.spawn((
+        PipFrame,
+        SessionEntity,
+        Node {
+            position_type: PositionType::Absolute,
+            top: px(dimens::pip::INSET),
+            right: px(dimens::pip::INSET),
+            width: px(dimens::pip::WIDTH),
+            height: px(dimens::pip::HEIGHT),
+            border: UiRect::all(px(dimens::pip::BORDER_WIDTH)),
+            ..default()
+        },
+        BorderColor::all(colors::hud::PLATE_BORDER),
+    ));
 }
 
 /// 每帧同步炮镜相机位姿：严格取炮管世界位姿，安装点炮口端面。
@@ -94,38 +150,48 @@ fn sync_gunner_camera(
 }
 
 /// 按槽位写相机参数：主槽全屏（viewport 清空），副槽矩形视口。
+/// 仅实际差异时写入，避免每帧标记 Camera 变更触发渲染重建。
+/// `Viewport` 未实现 `PartialEq`，按本项目构造仅比较位置与尺寸两字段。
 fn apply_slot(camera: &mut Camera, main: bool, pip: &Viewport) {
-    if main {
-        camera.viewport = None;
-        camera.order = MAIN_ORDER;
-    } else {
-        camera.viewport = Some(pip.clone());
-        camera.order = SUB_ORDER;
+    let order = if main { MAIN_ORDER } else { SUB_ORDER };
+    let viewport_matches = match &camera.viewport {
+        None => main,
+        Some(current) => {
+            !main
+                && current.physical_position == pip.physical_position
+                && current.physical_size == pip.physical_size
+        }
+    };
+    if !viewport_matches || camera.order != order {
+        camera.viewport = if main { None } else { Some(pip.clone()) };
+        camera.order = order;
     }
 }
 
-/// Shift 单按互换主副槽位：长按/连按只响应首次按下，瞬时完成无过渡。
+/// 视角槽位与副窗布局的唯一写入点。
 ///
-/// 切换后 TankAim 数值不变（视角状态不触碰炮塔/炮管角）。
-fn switch_view(
+/// Shift 单按翻转 [`ViewMode`]（长按/连按只响应首次按下，瞬时完成无过渡）；
+/// 每帧按（模式, 窗口物理尺寸, DPR）计算目标槽位参数与副窗边框，仅在实际差异时
+/// 写入，避免触发 Camera/Node 变更检测导致无谓的渲染重建与 UI 重排。
+/// 系统无跨帧状态，重入对局新生成的相机/边框同样会被立即校正。
+/// 切换视角不触碰炮塔/炮管角（TankAim 数值保持）。
+/// 无窗口（离屏回退）按 1280×720、DPR 1 基线换算。
+fn update_view_slots(
     keys: Res<ButtonInput<KeyCode>>,
     mut mode: ResMut<ViewMode>,
     windows: Query<&Window>,
     mut follow: Query<&mut Camera, (With<FollowCamera>, Without<GunnerCamera>)>,
     mut gunner: Query<&mut Camera, (With<GunnerCamera>, Without<FollowCamera>)>,
+    mut frames: Query<&mut Node, With<PipFrame>>,
 ) {
-    if !(keys.just_pressed(KeyCode::ShiftLeft) || keys.just_pressed(KeyCode::ShiftRight)) {
-        return;
+    if keys.just_pressed(KeyCode::ShiftLeft) || keys.just_pressed(KeyCode::ShiftRight) {
+        *mode = match *mode {
+            ViewMode::ThirdPersonMain => ViewMode::GunnerMain,
+            ViewMode::GunnerMain => ViewMode::ThirdPersonMain,
+        };
     }
-    *mode = match *mode {
-        ViewMode::ThirdPersonMain => ViewMode::GunnerMain,
-        ViewMode::GunnerMain => ViewMode::ThirdPersonMain,
-    };
-    let window_physical = windows
-        .single()
-        .map(|w| w.resolution.physical_size())
-        .unwrap_or(UVec2::new(1280, 720));
-    let pip = pip_viewport(window_physical);
+    let (physical, ui_scale, dpr) = window_layout_params(windows.single().ok());
+    let pip = pip_viewport(physical, ui_scale, dpr);
     let third_person_main = matches!(*mode, ViewMode::ThirdPersonMain);
     for mut camera in &mut follow {
         apply_slot(&mut camera, third_person_main, &pip);
@@ -133,11 +199,31 @@ fn switch_view(
     for mut camera in &mut gunner {
         apply_slot(&mut camera, !third_person_main, &pip);
     }
+    // 边框节点为逻辑像素：Bevy UI 内部再乘 DPR，故只乘 UiScale。
+    let inset = px(dimens::pip::INSET * ui_scale);
+    let width = px(dimens::pip::WIDTH * ui_scale);
+    let height = px(dimens::pip::HEIGHT * ui_scale);
+    let border = UiRect::all(px(dimens::pip::BORDER_WIDTH * ui_scale));
+    for mut node in &mut frames {
+        if node.top != inset
+            || node.right != inset
+            || node.width != width
+            || node.height != height
+            || node.border != border
+        {
+            node.top = inset;
+            node.right = inset;
+            node.width = width;
+            node.height = height;
+            node.border = border;
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bevy::window::WindowResolution;
 
     /// 任意炮塔 yaw / 炮管 pitch 下，炮镜位姿 = 炮管世界位姿（安装点炮口端面、前向炮管 −X）。
     #[test]
@@ -176,20 +262,37 @@ mod tests {
         );
     }
 
-    /// 副槽视口占位：1280×720 窗口下应为右上 320×180、距右/上缘 24px。
+    /// 矩形换算基线：1280×720、UiScale 1、DPR 1 下应为右上 320×180、距右/上缘 24px。
     #[test]
-    fn pip_viewport_placeholder_anchors_top_right() {
-        let viewport = pip_viewport(UVec2::new(1280, 720));
+    fn pip_viewport_baseline_anchors_top_right() {
+        let viewport = pip_viewport(UVec2::new(1280, 720), 1.0, 1.0);
         assert_eq!(viewport.physical_position, UVec2::new(936, 24));
         assert_eq!(viewport.physical_size, UVec2::new(320, 180));
     }
 
-    /// 窗口小于占位尺寸时，视口应钳制到可用区域，不溢出。
+    /// 设计像素乘 UiScale 与 DPR 得物理像素；锚点距右/上缘的边距同样换算。
+    #[test]
+    fn pip_viewport_scales_by_uiscale_and_dpr() {
+        // UiScale 0.75 × DPR 1：320×180 → 240×135，边距 24 → 18。
+        let viewport = pip_viewport(UVec2::new(1280, 720), 0.75, 1.0);
+        assert_eq!(viewport.physical_size, UVec2::new(240, 135));
+        assert_eq!(viewport.physical_position, UVec2::new(1022, 18));
+        // UiScale 1 × DPR 2：320×180 → 640×360，边距 24 → 48。
+        let viewport = pip_viewport(UVec2::new(1280, 720), 1.0, 2.0);
+        assert_eq!(viewport.physical_size, UVec2::new(640, 360));
+        assert_eq!(viewport.physical_position, UVec2::new(592, 48));
+        // UiScale 0.75 × DPR 2：320×180 → 480×270，边距 24 → 36。
+        let viewport = pip_viewport(UVec2::new(1280, 720), 0.75, 2.0);
+        assert_eq!(viewport.physical_size, UVec2::new(480, 270));
+        assert_eq!(viewport.physical_position, UVec2::new(764, 36));
+    }
+
+    /// 窗口不足以容纳完整副窗时，尺寸钳制到可用区域（保留右上边距），不溢出。
     #[test]
     fn pip_viewport_clamps_to_small_window() {
-        let viewport = pip_viewport(UVec2::new(400, 200));
-        assert_eq!(viewport.physical_size, UVec2::new(320, 176));
-        assert_eq!(viewport.physical_position, UVec2::new(56, 24));
+        let viewport = pip_viewport(UVec2::new(300, 200), 1.0, 1.0);
+        assert_eq!(viewport.physical_size, UVec2::new(276, 176));
+        assert_eq!(viewport.physical_position, UVec2::new(0, 24));
     }
 
     /// 同步系统：炮管 GlobalTransform 变化后，炮镜相机位姿当帧跟随。
@@ -236,7 +339,7 @@ mod tests {
         app.add_plugins(MinimalPlugins)
             .init_resource::<ButtonInput<KeyCode>>()
             .init_resource::<ViewMode>()
-            .add_systems(Update, switch_view);
+            .add_systems(Update, update_view_slots);
         let follow = app
             .world_mut()
             .spawn((
@@ -321,5 +424,78 @@ mod tests {
             .get::<crate::tank::articulation::TankAim>(tank)
             .unwrap();
         assert_eq!((aim.yaw, aim.pitch), (0.3, 0.1), "切换视角前后炮塔/炮管角度必须保持不动");
+    }
+
+    /// resize/DPR 重算：副槽视口矩形与副窗边框随窗口换算，两套坐标系保持对齐。
+    #[test]
+    fn update_view_slots_recomputes_on_window_change() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .init_resource::<ButtonInput<KeyCode>>()
+            .init_resource::<ViewMode>()
+            .add_systems(Update, update_view_slots);
+        let window = app
+            .world_mut()
+            .spawn(Window {
+                resolution: WindowResolution::new(1280, 720),
+                ..default()
+            })
+            .id();
+        let follow = app
+            .world_mut()
+            .spawn((FollowCamera, Camera::default()))
+            .id();
+        let gunner = app
+            .world_mut()
+            .spawn((GunnerCamera, Camera::default()))
+            .id();
+        let frame = app
+            .world_mut()
+            .spawn((PipFrame, Node::default()))
+            .id();
+        app.update();
+        // 基线 1280×720、DPR 1、UiScale 1：炮镜占副槽 320×180、距右/上缘 24px。
+        let pip = app
+            .world()
+            .get::<Camera>(gunner)
+            .unwrap()
+            .viewport
+            .clone()
+            .unwrap();
+        assert_eq!(pip.physical_position, UVec2::new(936, 24));
+        assert_eq!(pip.physical_size, UVec2::new(320, 180));
+        assert_eq!(app.world().get::<Camera>(gunner).unwrap().order, SUB_ORDER);
+        assert!(app.world().get::<Camera>(follow).unwrap().viewport.is_none());
+        assert_eq!(app.world().get::<Camera>(follow).unwrap().order, MAIN_ORDER);
+        let node = app.world().get::<Node>(frame).unwrap();
+        assert_eq!(node.top, px(dimens::pip::INSET));
+        assert_eq!(node.width, px(dimens::pip::WIDTH));
+        assert_eq!(node.border.left, px(dimens::pip::BORDER_WIDTH));
+        // resize 到 960×540：UiScale 0.75，视口与边框同步缩小。
+        app.world_mut()
+            .get_mut::<Window>(window)
+            .unwrap()
+            .resolution = WindowResolution::new(960, 540);
+        app.update();
+        let pip = app.world().get::<Camera>(gunner).unwrap().viewport.clone().unwrap();
+        assert_eq!(pip.physical_position, UVec2::new(702, 18));
+        assert_eq!(pip.physical_size, UVec2::new(240, 135));
+        let node = app.world().get::<Node>(frame).unwrap();
+        assert_eq!(node.width, px(240.0));
+        assert_eq!(node.border.top, px(0.75));
+        // DPR 2（逻辑宽 480 → UiScale 0.375）：物理视口不变，边框逻辑像素减半，
+        // 两套坐标系换算后仍对齐同一矩形。
+        app.world_mut()
+            .get_mut::<Window>(window)
+            .unwrap()
+            .resolution
+            .set_scale_factor_override(Some(2.0));
+        app.update();
+        let pip = app.world().get::<Camera>(gunner).unwrap().viewport.clone().unwrap();
+        assert_eq!(pip.physical_position, UVec2::new(702, 18));
+        assert_eq!(pip.physical_size, UVec2::new(240, 135));
+        let node = app.world().get::<Node>(frame).unwrap();
+        assert_eq!(node.width, px(120.0));
+        assert_eq!(node.top, px(9.0));
     }
 }
