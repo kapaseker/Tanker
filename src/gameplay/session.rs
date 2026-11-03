@@ -64,7 +64,7 @@ pub(crate) fn setup(
             steps: 1,
             quality: bevy::pbr::ScreenSpaceTransmissionQuality::High,
         },
-        camera::camera_transform(&tank_transform, 0.0, 0.0),
+        camera::camera_transform(&tank_transform, 0.0),
         bevy::core_pipeline::tonemapping::Tonemapping::BlenderFilmic,
         bevy::post_process::bloom::Bloom {
             intensity: 0.3,

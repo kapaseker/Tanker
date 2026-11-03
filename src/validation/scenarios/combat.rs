@@ -4,10 +4,6 @@ use super::*;
 
 /// 将真实敌人调整为战斗测试布局；仍保留原有动态刚体、碰撞体和资源层级。
 pub(super) fn arrange_combat(world: &mut World) {
-    // 相机默认水平，向下瞄准平地靶车后再等待炮口实际会聚。
-    if let Ok(mut view) = world.query_filtered::<&mut crate::gameplay::camera::PlayerView, With<crate::gameplay::player::Tank>>().single_mut(world) {
-        view.0.pitch = -5_f32.to_radians();
-    }
     // 新敌人与玩家同高，在真实平地直接验证水平命中。
     let mut query = world.query_filtered::<Entity, With<crate::gameplay::enemy::EnemyTank>>();
     let mut enemies: Vec<_> = query.iter(world).collect();

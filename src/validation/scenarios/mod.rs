@@ -1,6 +1,5 @@
 //! 场景帧表、输入脚本与公共预热/计帧流程；各场景保留原有断言。
 
-mod aiming;
 pub(super) mod articulation;
 mod combat;
 mod detail;
@@ -31,8 +30,6 @@ use scene::{subject_state, validate_scene};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Scenario {
     Scene,
-    /// 实际射击、预测接触及最终准星布局的确定性验收。
-    Aiming,
     /// 玩家炮塔、炮管与多发弹丸的世界姿态验证。
     Articulation,
     /// 驾驶、调炮、开火与退出重进的完整瞄准集成验收。
@@ -58,7 +55,6 @@ impl Scenario {
     pub(super) fn frames(self) -> &'static [u32] {
         match self {
             Self::Scene => &[0],
-            Self::Aiming => &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
             Self::Articulation => &[
                 0, 1, 2, 3, 30, 31, 36, 120, 210, 211, 420, 421, 450, 749, 750, 809, 869, 870, 871,
                 877, 880, 887,
@@ -131,8 +127,7 @@ impl Scenario {
             (Self::Articulation, 212..=420) => &[KeyCode::KeyD, KeyCode::KeyS],
             (Self::Detail, 100..=279) => &[KeyCode::KeyA, KeyCode::KeyW],
             (Self::Detail, 280..=489) => &[KeyCode::KeyD, KeyCode::KeyS],
-            (Self::Hud | Self::Aiming, 1) => &[KeyCode::Space],
-            (Self::Aiming, 2) => &[KeyCode::KeyW],
+            (Self::Hud, 1) => &[KeyCode::Space],
             (Self::Wheels, 1..=30) => &[KeyCode::ArrowUp],
             (Self::Wheels, 31..=60) => &[KeyCode::ArrowDown],
             (Self::Wheels, 61..=90) => &[KeyCode::ArrowLeft],
@@ -214,11 +209,6 @@ pub(super) fn run_scenario(
         let world = app.world_mut();
         let obstacles: Vec<_> = world.query_filtered::<Entity, With<crate::gameplay::obstacle::Concrete>>().iter(world).collect();
         for obstacle in obstacles { world.despawn(obstacle); }
-        // 视线目标变化后给真实炮管受限会聚时间，不在开火帧瞬间转炮。
-        for _ in 0..120 { update(app, STEP, None)?; }
-    }
-    if options.scenario == Scenario::Aiming {
-        return aiming::run(app, options, report);
     }
     if options.scenario == Scenario::Integrated {
         return integrated::run(app, options, report);

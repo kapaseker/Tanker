@@ -486,11 +486,11 @@ pub(super) fn run_detail_scenario(
     super::gallery::finish_gallery_transition(app, options, 2, "aim-game", GameState::InGame)?;
     let aim = app
         .world_mut()
-        .query_filtered::<&crate::gameplay::camera::PlayerView, With<crate::gameplay::player::Tank>>(
+        .query_filtered::<&crate::tank::articulation::TankAim, With<crate::gameplay::player::Tank>>(
         )
         .single(app.world())
         .map_err(|e| e.to_string())?;
-    ensure(aim.0.yaw == 0.0 && aim.0.pitch == 0.0, "详情角度污染了新对局")?;
-    report.push_str("详情返回后进入真实对局：玩家视角复位，不继承预览角度；炮管可进行视差修正\n");
+    ensure(aim.yaw == 0.0 && aim.pitch == 0.0, "详情角度污染了新对局")?;
+    report.push_str("详情返回后进入真实对局：炮塔/炮管角度复位，不继承预览角度\n");
     Ok(())
 }

@@ -23,9 +23,6 @@ struct FollowSample {
 /// 上一帧姿态，用于检查真实关节的逐帧速度。
 #[derive(Resource)]
 struct PreviousAim(TankAim);
-/// 前一帧玩家视角，用于区分松键与必要的视差修正。
-#[derive(Resource)]
-struct PreviousView(TankAim);
 /// 前三次实际发射方向。
 #[derive(Resource, Default)]
 struct FiredDirections(Vec<Vec3>);
@@ -45,14 +42,6 @@ pub(super) fn prepare(world: &mut World, frame: u32) -> Result<(), String> {
             .query_filtered::<&mut TankAim, With<Tank>>()
             .single_mut(world)
             .map_err(|e| e.to_string())?
-            .pitch = 0.0;
-    }
-    if frame == 872 {
-        world
-            .query_filtered::<&mut crate::gameplay::camera::PlayerView, With<Tank>>()
-            .single_mut(world)
-            .map_err(|e| e.to_string())?
-            .0
             .pitch = 0.0;
     }
     if frame == 884 {
@@ -86,9 +75,9 @@ pub(super) fn prepare(world: &mut World, frame: u32) -> Result<(), String> {
     }
     if matches!(frame, 750 | 810 | 871) {
         let (aim, body) = world
-            .query_filtered::<(&crate::gameplay::camera::PlayerView, &Transform), With<Tank>>()
+            .query_filtered::<(&TankAim, &Transform), With<Tank>>()
             .single(world)
-            .map(|(a, b)| (a.0, *b))
+            .map(|(a, b)| (*a, *b))
             .map_err(|e| e.to_string())?;
         let camera = world
             .query_filtered::<&Transform, With<crate::gameplay::camera::FollowCamera>>()
@@ -107,14 +96,6 @@ pub(super) fn prepare(world: &mut World, frame: u32) -> Result<(), String> {
             .map_err(|e| e.to_string())?
             .yaw = 359.99_f32.to_radians();
     }
-    if frame == 870 {
-        world
-            .query_filtered::<&mut crate::gameplay::camera::PlayerView, With<Tank>>()
-            .single_mut(world)
-            .map_err(|e| e.to_string())?
-            .0
-            .yaw = 359.99_f32.to_radians();
-    }
     let angles = match frame {
         1 => Some((90.0_f32, 20.0_f32)),
         2 => Some((-90.0, 5.0)),
@@ -126,14 +107,6 @@ pub(super) fn prepare(world: &mut World, frame: u32) -> Result<(), String> {
         *aims
             .single_mut(world)
             .map_err(|e| format!("炮塔状态异常：{e}"))? = TankAim {
-            yaw: yaw.to_radians(),
-            pitch: pitch.to_radians(),
-        };
-        world
-            .query_filtered::<&mut crate::gameplay::camera::PlayerView, With<Tank>>()
-            .single_mut(world)
-            .map_err(|e| e.to_string())?
-            .0 = TankAim {
             yaw: yaw.to_radians(),
             pitch: pitch.to_radians(),
         };
@@ -179,14 +152,8 @@ pub(super) fn check(world: &mut World, frame: u32, report: &mut String) -> Resul
             "真实炮管未跟随输入姿态",
         )?;
     }
-    let view = world
-        .query_filtered::<&crate::gameplay::camera::PlayerView, With<Tank>>()
-        .single(world)
-        .map_err(|e| e.to_string())?
-        .0;
     if (878..=887).contains(&frame) {
-        let previous = world.resource::<PreviousView>().0;
-        let aim = view;
+        let previous = world.resource::<PreviousAim>().0;
         let yaw_delta = (aim.yaw - previous.yaw + std::f32::consts::PI)
             .rem_euclid(std::f32::consts::TAU)
             - std::f32::consts::PI;
@@ -221,18 +188,15 @@ pub(super) fn check(world: &mut World, frame: u32, report: &mut String) -> Resul
             report.push_str("断言通过：单轴松键、反向、抵消、失焦及锁定后低速恢复\n");
         }
     }
-    let prior_view = world
-        .get_resource::<PreviousView>()
-        .map(|previous| previous.0);
-    if (211..=211).contains(&frame) || (421..=450).contains(&frame) {
+    if frame == 211 || (421..=450).contains(&frame) {
         ensure(
-            prior_view.is_some_and(|previous| (view.pitch - previous.pitch).abs() < 1e-6),
-            "松键后视角仍有俯仰输入",
+            world
+                .get_resource::<PreviousAim>()
+                .is_some_and(|previous| (aim.pitch - previous.0.pitch).abs() < 1e-6),
+            "松键后仍有俯仰输入尾巴",
         )?;
     }
     world.insert_resource(PreviousAim(aim));
-    world.insert_resource(PreviousView(view));
-    let aim = view;
     if frame == 31 {
         ensure(
             (aim.yaw.to_degrees() - 45.02778).abs() < 0.001,
@@ -245,11 +209,6 @@ pub(super) fn check(world: &mut World, frame: u32, report: &mut String) -> Resul
         report.push_str("断言通过：双轴首帧微调小于恒速，真实炮管方向与关节一致\n");
     }
     if matches!(frame, 210 | 211 | 420 | 421 | 450) {
-        let (aim, body) = world
-            .query_filtered::<(&crate::gameplay::camera::PlayerView, &Transform), With<Tank>>()
-            .single(world)
-            .map(|(aim, body)| (aim.0, *body))
-            .map_err(|e| e.to_string())?;
         let expected_yaw: f32 = if frame <= 211 { 132.75 } else { 30.5 };
         ensure(
             (aim.yaw.to_degrees() - expected_yaw).abs() < 0.01,
@@ -258,21 +217,15 @@ pub(super) fn check(world: &mut World, frame: u32, report: &mut String) -> Resul
                 aim.yaw.to_degrees()
             ),
         )?;
-        let actual_pitch = world.resource::<PreviousAim>().0.pitch.to_degrees();
+        let actual_pitch = aim.pitch.to_degrees();
         let limit_ok = match frame {
-            210 => {
-                (actual_pitch - 20.0).abs() < 0.01 || (aim.pitch.to_degrees() - 20.0).abs() < 0.01
-            }
-            420 => (actual_pitch + 9.0).abs() < 0.01 || (aim.pitch.to_degrees() + 9.0).abs() < 0.01,
+            210 => (actual_pitch - 20.0).abs() < 0.01,
+            420 => (actual_pitch + 9.0).abs() < 0.01,
             _ => (-9.01..=20.01).contains(&actual_pitch),
         };
         ensure(
             limit_ok,
-            &format!(
-                "WASD 俯仰限位异常：视角 {}°，实际 {}°",
-                aim.pitch.to_degrees(),
-                actual_pitch
-            ),
+            &format!("WASD 俯仰限位异常：帧{frame}，实际 {actual_pitch}°"),
         )?;
         ensure(
             (body.rotation * Vec3::NEG_X - Vec3::NEG_X).length() > 0.5,
@@ -303,14 +256,9 @@ pub(super) fn check(world: &mut World, frame: u32, report: &mut String) -> Resul
                 "按键和车体转向后的炮口世界发射方向不符",
             )?;
         }
-        report.push_str(&format!("断言通过：WASD 帧{frame}，视角偏航{expected_yaw}°、实际俯仰{actual_pitch:.2}°，车体转向后保持相对角度，炮口发射方向正确\n"));
+        report.push_str(&format!("断言通过：WASD 帧{frame}，炮塔偏航{expected_yaw}°、俯仰{actual_pitch:.2}°，车体转向后保持相对角度，炮口发射方向正确\n"));
     }
     if (750..=869).contains(&frame) || frame == 871 {
-        let (aim, body) = world
-            .query_filtered::<(&crate::gameplay::camera::PlayerView, &Transform), With<Tank>>()
-            .single(world)
-            .map(|(a, b)| (a.0, *b))
-            .map_err(|e| e.to_string())?;
         let camera = *world
             .query_filtered::<&Transform, With<crate::gameplay::camera::FollowCamera>>()
             .single(world)
@@ -352,11 +300,6 @@ pub(super) fn check(world: &mut World, frame: u32, report: &mut String) -> Resul
         }
     }
     if frame == 749 {
-        let aim = &world
-            .query_filtered::<&crate::gameplay::camera::PlayerView, With<Tank>>()
-            .single(world)
-            .map_err(|e| e.to_string())?
-            .0;
         ensure(
             (aim.yaw.to_degrees() - 177.75).abs() < 0.02,
             "真实输入未转到朝后",
@@ -411,28 +354,18 @@ pub(super) fn check_step_sizes(app: &mut App, report: &mut String) -> Result<(),
             .query_filtered::<&mut TankAim, With<Tank>>()
             .single_mut(app.world_mut())
             .map_err(|e| e.to_string())? = TankAim::default();
-        app.world_mut()
-            .query_filtered::<&mut crate::gameplay::camera::PlayerView, With<Tank>>()
-            .single_mut(app.world_mut())
-            .map_err(|e| e.to_string())?
-            .0 = TankAim::default();
         for _ in 0..steps {
             update(app, std::time::Duration::from_secs_f64(dt), Some(872))?;
         }
-        let aim = app
+        let aim = *app
             .world_mut()
-            .query_filtered::<&crate::gameplay::camera::PlayerView, With<Tank>>()
+            .query_filtered::<&TankAim, With<Tank>>()
             .single(app.world())
-            .map_err(|e| e.to_string())?
-            .0;
+            .map_err(|e| e.to_string())?;
         angles.push(aim);
         update(app, STEP, Some(888))?;
-        let stopped = app
-            .world_mut()
-            .query_filtered::<&crate::gameplay::camera::PlayerView, With<Tank>>()
-            .single(app.world())
-            .map_err(|e| e.to_string())?
-            .0;
+        let stopped = app.world_mut().query_filtered::<&TankAim, With<Tank>>()
+            .single(app.world()).map_err(|e| e.to_string())?;
         ensure(
             (stopped.yaw - aim.yaw).abs() < 1e-6 && (stopped.pitch - aim.pitch).abs() < 1e-6,
             "松键后仍有角度尾巴",
