@@ -49,8 +49,9 @@ pub(super) enum Scenario {
     Detail,
     /// 战斗 HUD：开火后装填条按真实冷却推进、满格常驻，生命条满血。
     Hud,
-    /// 炮镜分划抽查（工单 04）：Shift 切换后的显隐翻转与读数格式；
-    /// 完整 gunner_sight 预设断言由工单 05 扩充。
+    /// 炮镜视角全量行为断言（工单 05）：Shift 槽位互换与长按过滤、炮镜相机
+    /// 位姿逐帧同步、副窗视口矩形换算、第三人称无准星哨兵、弹丸沿炮口方向、
+    /// 切换前后调炮角不变，以及分划显隐与读数抽查。
     GunnerSight,
 }
 
@@ -69,8 +70,9 @@ impl Scenario {
             Self::Combat => &[0, 1, 6, 24, 48, 60, 120],
             // 开火 1 秒后看装填中段；330 帧（5.5 秒）超过 5 秒冷却，看满格常驻。
             Self::Hud => &[0, 60, 330],
-            // 帧 0 第三人称基准；Shift 后 30/90 帧读分划显隐与调炮后的读数，
-            // 帧 91 再按 Shift 退回第三人称，帧 120 断言分划整体隐藏无残影。
+            // 帧 0 第三人称基准；帧 1..=5 按住 Shift 进炮镜主槽（验证长按不连发）；
+            // 30/60/90 帧读分划显隐与调炮后的读数，帧 91 再按 Shift 退回第三人称，
+            // 帧 101 开火验证弹道沿炮口，帧 120 断言分划整体隐藏且槽位复原。
             Self::GunnerSight => &[0, 30, 60, 90, 120],
             Self::Wheels => &[
                 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 75, 90, 105, 120, 130, 240, 250,
@@ -135,11 +137,13 @@ impl Scenario {
             (Self::Detail, 100..=279) => &[KeyCode::KeyA, KeyCode::KeyW],
             (Self::Detail, 280..=489) => &[KeyCode::KeyD, KeyCode::KeyS],
             (Self::Hud, 1) => &[KeyCode::Space],
-            // 单按 Shift 进炮镜主槽；随后左调炮抬炮管、再右调炮回正，供读数抽查。
-            (Self::GunnerSight, 1) => &[KeyCode::ShiftLeft],
+            // 单按 Shift 进炮镜主槽；按住 5 帧验证长按不连发；随后左调炮抬
+            // 炮管、再右调炮，供读数抽查；帧 91 单按退回，帧 101 开火。
+            (Self::GunnerSight, 1..=5) => &[KeyCode::ShiftLeft],
             (Self::GunnerSight, 11..=40) => &[KeyCode::KeyA, KeyCode::KeyW],
             (Self::GunnerSight, 41..=90) => &[KeyCode::KeyD],
             (Self::GunnerSight, 91) => &[KeyCode::ShiftLeft],
+            (Self::GunnerSight, 101) => &[KeyCode::Space],
             (Self::Wheels, 1..=30) => &[KeyCode::ArrowUp],
             (Self::Wheels, 31..=60) => &[KeyCode::ArrowDown],
             (Self::Wheels, 61..=90) => &[KeyCode::ArrowLeft],
@@ -250,6 +254,11 @@ pub(super) fn run_scenario(
         "模拟帧：0；图片：{}\n",
         options.image_path(0).display()
     ));
+    if options.scenario == Scenario::GunnerSight {
+        // 帧 0 为动作前基准：槽位归属、准星哨兵与调炮角基线在进入循环前断言
+        // （模拟循环从帧 1 开始，帧 0 断言无法在循环内覆盖）。
+        sight::check(app, 0, report, &mut failures)?;
+    }
     if options.scenario == Scenario::Scene && !options.single_image {
         capture_concrete(app, &options.output.join("concrete.png"))?;
         report.push_str("混凝土墩近景：concrete.png（截图等待不推进模拟时间）\n");
