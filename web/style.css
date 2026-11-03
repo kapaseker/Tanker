@@ -929,25 +929,41 @@
     white-space: nowrap;
   }
 
-  /* ---------- 战斗 HUD：游戏内场景 ---------- */
-  /* 底图取自游戏实际开局画面（离屏 1280×720），HUD 叠加在真实构图上：
-     棕色地形、暗天空与第三人称车尾视角都和进入对局后的观感一致 */
-  .battle {
+  /* ---------- 战斗 HUD：双视角（第三人称 / 炮镜） ---------- */
+  /* 第三人称底图取自游戏实际开局画面（离屏 1280×720），炮镜底图取自
+     docs/references/gunner-sight-2026-11-03 概念图。两个视图共用同一套
+     槽位机制：主视图铺满窗口，副视图钉在任务区右上，单按 Shift 互换 */
+  .view {
     position: fixed;
-    inset: 0;
-    z-index: 0;
     overflow: hidden;
     background: #241f1b;
     pointer-events: none;
   }
 
-  .battle__shake {
+  .view.is-main {
+    inset: 0;
+    z-index: 0;
+  }
+
+  /* 副视图 320×180（参考分辨率 1280×720 的 1/4）：固定锚定窗口右上，
+     与窗口的间距不随宽高比变化；24px 取 hud.safe-inset。
+     与左下状态簇对角平衡，不压住中央瞄准视线 */
+  .view.is-pip {
+    top: 24px;
+    right: 24px;
+    width: 320px;
+    height: 180px;
+    z-index: 2;
+    border: 1px solid rgba(200, 219, 177, 0.38);
+  }
+
+  .view__shake {
     position: absolute;
     inset: 0;
   }
 
-  /* 开火下坐：整幅画面短促下沉，模拟相机后坐；动画结束由脚本移除类 */
-  .battle__shake.is-kick {
+  /* 开火下坐：主视图整幅画面短促下沉，模拟相机后坐；动画结束由脚本移除类 */
+  .view__shake.is-kick {
     animation: scene-kick 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 
@@ -956,16 +972,17 @@
     22% { transform: translate3d(0, 4px, 0) scale(1.014); }
   }
 
-  /* 截图铺满窗口并略放大，主体（坦克）居中；多余边缘被裁切不影响 HUD */
-  .battle__scene {
+  /* 截图铺满槽位并略放大，主体（坦克）居中；多余边缘被裁切不影响 HUD */
+  .view__scene {
     width: 100%;
     height: 100%;
     object-fit: cover;
     transform: scale(1.012);
   }
 
-  /* 炮口火光锚在截图炮管末端（水平 50%、垂直 46.9%） */
-  .battle__flash {
+  /* 炮口火光锚在第三人称截图炮管末端（水平 50%、垂直 46.9%），
+     百分比定位使其在小窗内同样成立 */
+  .view__flash {
     position: absolute;
     left: 50%;
     top: 46.9%;
@@ -973,7 +990,7 @@
     height: 0;
   }
 
-  .battle__flash::before {
+  .view__flash::before {
     content: "";
     position: absolute;
     left: -30px;
@@ -985,7 +1002,7 @@
     transform: scale(0.4);
   }
 
-  .battle__flash.is-firing::before {
+  .view__flash.is-firing::before {
     animation: muzzle-flash 180ms ease-out;
   }
 
@@ -995,24 +1012,105 @@
     100% { opacity: 0; transform: scale(1.5); }
   }
 
-  /* 画面暗角与扫描线沿用站点氛围，同时提升 HUD 对比度 */
-  .battle__vignette {
+  /* 画面暗角沿用站点氛围，同时提升 HUD 对比度 */
+  .view__vignette {
     position: absolute;
     inset: 0;
     background: radial-gradient(120% 90% at 50% 46%, transparent 48%, rgba(0, 0, 0, 0.5));
   }
 
-  .battle__scan {
+  /* 炮镜暗角按概念图为四角柔和渐晕、向中心淡出，保留周边视野 */
+  .view--gunner .view__vignette {
+    background: radial-gradient(115% 95% at 50% 50%, transparent 55%, rgba(15, 14, 12, 0.6));
+  }
+
+  /* 扫描线只用于第三人称 */
+  .view__scan {
     position: absolute;
     inset: 0;
     background-image: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.16) 0 1px, transparent 1px 3px);
     opacity: 0.16;
   }
 
+  /* ---------- 炮镜分划与读数 ---------- */
+  /* 分划固定屏幕中心，尺寸为 1280×720 设计常量；配色遵循 design.md
+     「第一人称炮镜」：十字暖白、角度读数浅绿、倍率淡蓝、距离琥珀，
+     统一带暖黑投影保证亮天空与复杂地形上的可读性 */
+  .sight {
+    position: absolute;
+    inset: 0;
+  }
+
+  .sight__reticle {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 440px;
+    height: 460px;
+    transform: translate(-50%, -50%);
+    filter: drop-shadow(0 1px 1px rgba(15, 14, 12, 0.8));
+  }
+
+  .sight__readout {
+    position: absolute;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 1px;
+    white-space: nowrap;
+    text-shadow: 0 1px 2px rgba(15, 14, 12, 0.9);
+  }
+
+  /* 俯仰角读数：竖刻度左侧，垂直居中对齐刻度中线 */
+  .sight__pitch {
+    left: calc(50% - 184px);
+    top: 50%;
+    transform: translate(-100%, -50%);
+    color: #b9d6ad;
+  }
+
+  /* 炮塔旋转角读数：横刻度下方居中 */
+  .sight__turret {
+    left: 50%;
+    top: calc(50% - 154px);
+    transform: translateX(-50%);
+    color: #b9d6ad;
+  }
+
+  /* 倍率：十字正右侧垂直居中，左缘距中心 92px，
+     与距离读数顶边距中心的距离一致 */
+  .sight__zoom {
+    left: calc(50% + 92px);
+    top: 50%;
+    transform: translateY(-50%);
+    color: #a9c9e7;
+  }
+
+  /* 距离：中央短分划下方 */
+  .sight__range {
+    left: 50%;
+    top: calc(50% + 92px);
+    transform: translateX(-50%);
+    color: #e7bc78;
+  }
+
+  /* 小窗内只保留中央十字与分划：角度刻度按外移布局会超出 180px 窗高，
+     文字读数在 320px 宽下不可读，一并隐藏 */
+  .view.is-pip .sight__reticle {
+    transform: translate(-50%, -50%) scale(0.55);
+  }
+
+  .view.is-pip .sight__scale {
+    display: none;
+  }
+
+  .view.is-pip .sight__readout {
+    display: none;
+  }
+
   /* ---------- 战斗 HUD：左下状态簇 ---------- */
-  /* 取景盒铺满整个窗口（inset:0，与 .battle 同机制）。不用 vw/vh：
-     根元素 zoom < 1 时不同引擎对视口单位与 zoom 的叠加不一致，
-     固定 px 偏移 + 脚本计算的 CSS 变量在所有引擎下行为一致 */
+  /* 取景盒铺满整个窗口（inset:0，与 .view 同机制），状态簇在其中
+     以固定 px 偏移锚定窗口边缘。不用 vw/vh：根元素 zoom < 1 时
+     不同引擎对视口单位与 zoom 的叠加不一致，固定 px 行为一致 */
   .hudbox {
     position: fixed;
     inset: 0;
@@ -1022,12 +1120,11 @@
 
   /* 生命（上）与装填（下）聚合成一簇：同一左对齐、同宽轨道，
      低位单调变化不会带动整组位移；两块轨道共用一个暗底板保证可读。
-     水平锚定居中 16:9 任务区左缘（--task-left 由 gameplay.html 脚本
-     按窗口尺寸计算，超宽窗口不贴画面最外侧），垂直贴住窗口底边；
+     固定锚定窗口左缘与底边，与窗口的间距不随宽高比变化；
      24px 取 hud.safe-inset */
   .status {
     position: absolute;
-    left: calc(var(--task-left, 0px) + 24px);
+    left: 24px;
     bottom: 24px;
     /* 内宽 222px：16px 图标 + 8px 间距 + 198px 轨道 */
     width: 240px;
@@ -1116,6 +1213,6 @@
     .exit-dialog { animation: none; }
     .exit-dialog__btn,
     .exit-dialog__btn kbd { transition: none; }
-    .battle__shake.is-kick,
-    .battle__flash.is-firing::before { animation: none; }
+    .view__shake.is-kick,
+    .view__flash.is-firing::before { animation: none; }
   }

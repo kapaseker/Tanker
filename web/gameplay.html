@@ -3,27 +3,67 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>战斗 HUD · 装填 · V-Tank</title>
-<meta name="description" content="V-Tank 游戏内战斗 HUD 设计稿：空格开火触发后坐与炮口火光，左下状态簇显示生命与弹药配置驱动的装填进度。">
+<meta name="description" content="V-Tank 游戏内战斗 HUD 设计稿：第三人称与炮镜双视角，Shift 互换主副视图；空格开火触发后坐与炮口火光，左下状态簇显示生命与弹药配置驱动的装填进度。">
 <meta name="theme-color" content="#0f0e0c">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230f0e0c'/%3E%3Cpath d='M16 5l11 6-11 6-11-6z' fill='%23e2edcf'/%3E%3Cpath d='M5 11v9l11 6v-9z' fill='%23b7cb9f'/%3E%3Cpath d='M27 11v9l-11 6v-9z' fill='%2391a97a'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
 <script src="scale.js"></script>
 </head>
 <body>
-  <!-- 底图为游戏实际开局画面（离屏 1280×720 截取），HUD 直接叠加在真实构图上验证可读性 -->
-  <div class="battle" aria-hidden="true">
-    <div class="battle__shake" id="scene">
-      <img class="battle__scene" src="scene-combat.webp" alt="">
+  <!-- 双视角：第三人称底图为游戏实际开局画面（离屏 1280×720 截取），
+       炮镜底图为概念图（docs/references/gunner-sight-2026-11-03）。
+       主视图铺满窗口，副视图钉在任务区右上，单按 Shift 互换槽位 -->
+  <div class="view view--third is-main" id="view-third" aria-hidden="true">
+    <div class="view__shake">
+      <img class="view__scene" src="scene-combat.webp" alt="">
       <!-- 炮口火光锚在截图中的炮管末端 -->
-      <div class="battle__flash" id="muzzle"></div>
+      <div class="view__flash" id="muzzle"></div>
     </div>
-    <div class="battle__vignette"></div>
-    <div class="battle__scan"></div>
+    <div class="view__vignette"></div>
+    <div class="view__scan"></div>
   </div>
+
+  <div class="view view--gunner is-pip" id="view-gunner" aria-hidden="true">
+    <div class="view__shake">
+      <img class="view__scene" src="scene-gunner.png" alt="">
+    </div>
+    <!-- 分划与读数按 design.md「第一人称炮镜」布局；角度与距离为示例值，
+         接入玩法后由实际炮管俯仰、炮塔旋转与命中测距驱动 -->
+    <div class="sight">
+      <svg class="sight__reticle" viewBox="0 0 440 460" aria-hidden="true">
+        <!-- 中央十字：四臂、12px 中央空隙，暖白（保持居中，是瞄准主参考） -->
+        <g stroke="#ebe8df" stroke-width="2" fill="none">
+          <path d="M180 230h34M226 230h34M220 190v34M220 236v20"/>
+        </g>
+        <!-- 十字下方四条短分划：对应弹道数据待校准 -->
+        <g stroke="#ebe8df" stroke-width="2" fill="none">
+          <path d="M211 268h18M211 284h18M211 300h18M211 316h18"/>
+        </g>
+        <!-- 角度刻度与读数整体外移到距中心约 170px，远离中央瞄准视线；
+             小窗内隐藏（.sight__scale） -->
+        <g class="sight__scale" stroke="#b9d6ad" stroke-width="1.5" fill="none">
+          <!-- 左侧竖刻度：炮管俯仰角 -->
+          <path d="M50 174v112"/>
+          <path d="M43 230h14M46 174h8M46 194h8M46 214h8M46 246h8M46 266h8M46 286h8"/>
+          <!-- 上方横刻度：炮塔旋转角 -->
+          <path d="M126 60h188"/>
+          <path d="M220 53v14M140 56v8M160 56v8M180 56v8M200 56v8M240 56v8M260 56v8M280 56v8M300 56v8"/>
+        </g>
+      </svg>
+      <span class="sight__readout sight__pitch">+02.4°</span>
+      <span class="sight__readout sight__turret">+016.0°</span>
+      <span class="sight__readout sight__zoom">×4</span>
+      <span class="sight__readout sight__range">420 m</span>
+    </div>
+    <div class="view__vignette"></div>
+  </div>
+
+  <!-- 视角切换的屏幕阅读器播报 -->
+  <p class="sr-only" id="view-state" role="status"></p>
 
   <!-- 左下固定状态簇：上为车体生命（连续条），下为配置驱动的装填分格。
        两块轨道同宽同左对齐，用线性图标代替文字标签；
-       外层取景盒取居中的 16:9 任务区，状态簇锚定其左下安全边距 -->
+       状态簇固定锚定窗口左下安全边距，间距不随窗口宽高比变化 -->
   <div class="hudbox">
     <section class="status" aria-label="车体状态">
       <!-- 生命条：静态 76% 仅用于设计稿展示，接入玩法后由真实生命值驱动 -->
@@ -59,17 +99,26 @@
   <script src="ammunition.js"></script>
   <script>
     (async () => {
-      // ---------- 16:9 任务区水平锚点 ----------
-      // clientWidth/clientHeight 不随根元素 zoom 变化（见 scale.js 实测注释），
-      // 据此计算居中 16:9 任务区左缘写入 CSS 变量；不在 CSS 中用 vw/vh，
-      // 避免 zoom < 1 时视口单位被二次缩放导致锚点漂移
-      const root = document.documentElement;
-      const layoutTaskArea = () => {
-        const left = Math.max(0, (root.clientWidth - root.clientHeight * 16 / 9) / 2);
-        root.style.setProperty('--task-left', `${left.toFixed(2)}px`);
-      };
-      layoutTaskArea();
-      addEventListener('resize', layoutTaskArea);
+      // ---------- 视角切换 ----------
+      // 单按 Shift 在主视图（铺满窗口）与副视图（右上小窗）间互换两个视角
+      const viewThird = document.getElementById('view-third');
+      const viewGunner = document.getElementById('view-gunner');
+      const viewState = document.getElementById('view-state');
+      let gunnerMain = false;
+
+      function setView(gunner) {
+        gunnerMain = gunner;
+        viewThird.classList.toggle('is-main', !gunner);
+        viewThird.classList.toggle('is-pip', gunner);
+        viewGunner.classList.toggle('is-main', gunner);
+        viewGunner.classList.toggle('is-pip', !gunner);
+        viewState.textContent = gunner ? '主视图已切换为炮镜' : '主视图已切换为第三人称';
+      }
+
+      document.addEventListener('keydown', (event) => {
+        if ((event.code !== 'ShiftLeft' && event.code !== 'ShiftRight') || event.repeat) return;
+        setView(!gunnerMain);
+      });
 
       // ---------- 装填状态 ----------
       // 配置读取成功前不注册开火输入，也不以默认数值掩盖配置错误。
@@ -89,7 +138,6 @@
 
       const reloadBar = document.getElementById('reload');
       const fill = document.getElementById('reload-fill');
-      const scene = document.getElementById('scene');
       const muzzle = document.getElementById('muzzle');
       reloadBar.setAttribute('aria-busy', 'false');
       const ticks = reloadBar.querySelector('.bar__ticks');
@@ -147,14 +195,16 @@
         reloadBar.setAttribute('aria-valuenow', '100');
       }
 
-      // 开火反馈：截图画面的短促下坐 + 炮口火光；减少动态偏好下只保留状态簇
+      // 开火反馈：当前主视图短促下坐 + 炮口火光（火光锚在第三人称视图内，
+      // 该视图退居小窗时同样生效）；减少动态偏好下只保留状态簇
       function shoot() {
         if (reduceMotion) return;
         clearTimeout(kickTimer);
-        scene.classList.add('is-kick');
+        const shake = document.querySelector('.view.is-main .view__shake');
+        shake.classList.add('is-kick');
         muzzle.classList.add('is-firing');
         kickTimer = setTimeout(() => {
-          scene.classList.remove('is-kick');
+          shake.classList.remove('is-kick');
           muzzle.classList.remove('is-firing');
         }, 260);
       }
