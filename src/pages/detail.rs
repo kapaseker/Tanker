@@ -489,17 +489,17 @@ fn spawn_ui(
                     ..default()
                 }))
                 .with_children(|hint| {
-                    for (first, second, label) in [
+                    for (keycaps, label) in [
                         (
-                            strings::KEY_W,
-                            strings::KEY_S,
+                            [strings::KEY_W, strings::KEY_S].as_slice(),
                             strings_cn::detail::GUN_ELEVATION,
                         ),
                         (
-                            strings::KEY_A,
-                            strings::KEY_D,
+                            [strings::KEY_A, strings::KEY_D].as_slice(),
                             strings_cn::detail::TURRET_TRAVERSE,
                         ),
+                        ([strings::KEY_R].as_slice(), strings_cn::detail::TURRET_RESET),
+                        ([strings::KEY_F].as_slice(), strings_cn::detail::GUN_RESET),
                     ] {
                         hint.spawn((Node {
                             align_items: AlignItems::Center,
@@ -508,8 +508,9 @@ fn spawn_ui(
                             ..default()
                         }, BackgroundColor(plate)))
                         .with_children(|group| {
-                            widgets::spawn_keycap(group, &font, first, ());
-                            widgets::spawn_keycap(group, &font, second, ());
+                            for key in keycaps {
+                                widgets::spawn_keycap(group, &font, key, ());
+                            }
                             group.spawn((
                                 Text::new(label),
                                 text_font(&font, dims::AIM_HELP_SIZE, 400.0),
@@ -879,7 +880,11 @@ fn control_aim(
     windows: Query<&Window>,
     fade: Res<Fade>,
     previews: Res<Previews>,
-    mut aims: Query<(&mut crate::tank::articulation::TankAim, &crate::tank::articulation::AimSpec)>,
+    mut aims: Query<(
+        &mut crate::tank::articulation::TankAim,
+        &crate::tank::articulation::AimSpec,
+        &mut crate::tank::articulation::AimReset,
+    )>,
 ) {
     let preview = &previews.items[0];
     if !fade.accepts_input()
@@ -889,12 +894,26 @@ fn control_aim(
     {
         return;
     }
-    if let Ok((mut aim, spec)) = aims.get_mut(preview.content) {
+    if let Ok((mut aim, spec, mut reset)) = aims.get_mut(preview.content) {
         let yaw =
             (i32::from(keys.pressed(KeyCode::KeyA)) - i32::from(keys.pressed(KeyCode::KeyD))) as f32;
         let pitch =
             (i32::from(keys.pressed(KeyCode::KeyW)) - i32::from(keys.pressed(KeyCode::KeyS))) as f32;
+        // 单按 R/F 触发对应轴回正；对应轴有主动输入时输入优先，取消回正。
+        if keys.just_pressed(KeyCode::KeyR) {
+            reset.yaw = true;
+        }
+        if keys.just_pressed(KeyCode::KeyF) {
+            reset.pitch = true;
+        }
+        if yaw != 0.0 {
+            reset.yaw = false;
+        }
+        if pitch != 0.0 {
+            reset.pitch = false;
+        }
         spec.advance(&mut aim, yaw, pitch, time.delta_secs());
+        spec.reset_step(&mut aim, &mut reset, time.delta_secs());
     }
 }
 

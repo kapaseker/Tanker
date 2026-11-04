@@ -54,6 +54,32 @@ impl AimSpec {
             self.max_elevation_deg.to_radians(),
         );
     }
+
+    /// 按车型角速度推进进行中的回正：炮塔取含绕圈的最短路径，炮管直线回到零位；
+    /// 到达零位即清除对应标记。dt 单位秒。
+    pub(crate) fn reset_step(&self, aim: &mut TankAim, reset: &mut AimReset, dt: f32) {
+        if reset.yaw {
+            let step = self.traverse_speed_deg_s.to_radians() * dt;
+            // yaw 已被 advance 归一到 [0, 全圈)；偏移折算到 (−半圈, 半圈] 取最短回零方向。
+            let full = self.traverse_range_deg.to_radians();
+            let offset = (aim.yaw + full * 0.5).rem_euclid(full) - full * 0.5;
+            if offset.abs() <= step {
+                aim.yaw = 0.0;
+                reset.yaw = false;
+            } else {
+                aim.yaw = (aim.yaw - offset.signum() * step).rem_euclid(full);
+            }
+        }
+        if reset.pitch {
+            let step = self.elevation_speed_deg_s.to_radians() * dt;
+            if aim.pitch.abs() <= step {
+                aim.pitch = 0.0;
+                reset.pitch = false;
+            } else {
+                aim.pitch -= aim.pitch.signum() * step;
+            }
+        }
+    }
 }
 
 /// 炮塔相对车体的偏航和炮管相对炮塔的俯仰，单位弧度；默认朝前水平。
@@ -63,6 +89,15 @@ pub(crate) struct TankAim {
     pub(crate) yaw: f32,
     /// 正值抬高炮口；绕炮管局部 −Z 旋转。
     pub(crate) pitch: f32,
+}
+
+/// R/F 触发的两轴回正进行标记；由 [`AimSpec::reset_step`] 消费清除。
+#[derive(Component, Default, Clone, Copy)]
+pub(crate) struct AimReset {
+    /// 炮塔水平轴正在回正。
+    pub(crate) yaw: bool,
+    /// 炮管俯仰轴正在回正。
+    pub(crate) pitch: bool,
 }
 
 /// 活动节点所属的整车根，避免多个预览或车辆共享角度。
@@ -161,5 +196,41 @@ mod tests {
         }
         assert!((smooth.yaw.to_degrees() - 40.0).abs() < 1e-3);
         assert!((smooth.pitch.to_degrees() - 20.0).abs() < 1e-3);
+    }
+
+    /// 回正按车型角速度渐进到零：炮塔走含绕圈的最短路径，炮管直线返回，到达即停。
+    #[test]
+    fn reset_step_returns_along_shortest_path_at_spec_speed() {
+        let spec = AimSpec {
+            traverse_range_deg: 360.0,
+            traverse_speed_deg_s: 30.0,
+            elevation_speed_deg_s: 9.0,
+            min_elevation_deg: -9.0,
+            max_elevation_deg: 20.0,
+        };
+        let mut reset = AimReset::default();
+        // 350° 的炮塔回正应向前绕过零位（10° 路径），而不是倒转 350°。
+        let mut aim = TankAim {
+            yaw: 350_f32.to_radians(),
+            pitch: 0.0,
+        };
+        reset.yaw = true;
+        spec.reset_step(&mut aim, &mut reset, 0.1);
+        assert!(
+            ((aim.yaw.to_degrees() - 353.0).abs() < 1e-3),
+            "350° 应沿最短路径前进到 353°：{}",
+            aim.yaw.to_degrees()
+        );
+        for _ in 0..5 {
+            spec.reset_step(&mut aim, &mut reset, 0.1);
+        }
+        assert_eq!(aim.yaw, 0.0, "绕圈回正应到达零位");
+        assert!(!reset.yaw, "到达零位后应清除回正标记");
+        // 负俯仰直线回升；步长大于剩余角度时直接落在零位。
+        let mut aim = TankAim { yaw: 0.0, pitch: -4_f32.to_radians() };
+        reset.pitch = true;
+        spec.reset_step(&mut aim, &mut reset, 1.0);
+        assert_eq!(aim.pitch, 0.0, "步长覆盖剩余角度时应停在零位");
+        assert!(!reset.pitch);
     }
 }

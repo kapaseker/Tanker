@@ -123,6 +123,7 @@ pub(crate) fn spawn(
             } else {
                 commands.entity(content).insert((
                     crate::tank::articulation::TankAim::default(),
+                    crate::tank::articulation::AimReset::default(),
                     tanks.player.articulation.expect("启动已校验豹 2A6 炮塔配置"),
                 ));
                 crate::tank::articulation::mount_player(commands, assets, content);

@@ -1,14 +1,14 @@
 //! 玩家身份标记与方向键输入；过渡未放行时不写驾驶意图。
 
 use crate::app::transition::Fade;
-use crate::tank::articulation::{AimSpec, TankAim};
+use crate::tank::articulation::{AimReset, AimSpec, TankAim};
 use crate::tank::driving::{self, DrivingInput};
 use avian3d::prelude::PhysicsSystems;
 use bevy::prelude::*;
 
 /// 标记玩家控制的坦克根实体；驾驶、射击、相机与验证入口以它定位唯一玩家。
 #[derive(Component)]
-#[require(AimInputSpeed)]
+#[require(AimInputSpeed, AimReset)]
 pub(crate) struct Tank;
 
 /// 对局中两轴的主动输入速度，按车型最高速度归一化。
@@ -57,21 +57,23 @@ impl Plugin for PlayerPlugin {
     }
 }
 
-/// 双轴同时响应 WASD；失焦和页面过渡保持原角度，不累计待执行输入。
+/// 双轴同时响应 WASD，R/F 单按进入回正、按车型角速度转回零位；
+/// 失焦和页面过渡保持原角度并取消回正，不累计待执行输入。
 fn read_aim_input(
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
     windows: Query<&Window>,
     fade: Option<Res<Fade>>,
-    mut players: Query<(&mut TankAim, &AimSpec, &mut AimInputSpeed), With<Tank>>,
+    mut players: Query<(&mut TankAim, &AimSpec, &mut AimInputSpeed, &mut AimReset), With<Tank>>,
 ) {
     if !time.delta_secs().is_finite()
         || time.delta_secs() < 0.0
         || windows.iter().any(|window| !window.focused)
         || fade.as_ref().is_some_and(|fade| !fade.accepts_input())
     {
-        for (_, _, mut speed) in &mut players {
+        for (_, _, mut speed, mut reset) in &mut players {
             *speed = AimInputSpeed::default();
+            *reset = AimReset::default();
         }
         return;
     }
@@ -79,16 +81,32 @@ fn read_aim_input(
         (i32::from(keys.pressed(KeyCode::KeyA)) - i32::from(keys.pressed(KeyCode::KeyD))) as f32;
     let pitch =
         (i32::from(keys.pressed(KeyCode::KeyW)) - i32::from(keys.pressed(KeyCode::KeyS))) as f32;
-    for (mut aim, spec, mut speed) in &mut players {
+    for (mut aim, spec, mut speed, mut reset) in &mut players {
         if !aim.yaw.is_finite() || !aim.pitch.is_finite() {
             speed.yaw = 0.0;
             speed.pitch = 0.0;
+            *reset = AimReset::default();
             continue;
+        }
+        // 单按 R/F 触发对应轴回正；对应轴有主动输入时输入优先，取消回正。
+        if keys.just_pressed(KeyCode::KeyR) {
+            reset.yaw = true;
+        }
+        if keys.just_pressed(KeyCode::KeyF) {
+            reset.pitch = true;
+        }
+        if yaw != 0.0 {
+            reset.yaw = false;
+        }
+        if pitch != 0.0 {
+            reset.pitch = false;
         }
         let yaw_step = aim_input_step(&mut speed.yaw, yaw, time.delta_secs());
         let pitch_step = aim_input_step(&mut speed.pitch, pitch, time.delta_secs());
         // 玩家输入直接积分炮塔/炮管角；触限即止，不积压待执行角度。
         spec.advance(&mut aim, yaw_step, pitch_step, 1.0);
+        // 回正按车型角速度渐进转回零位，到达即止。
+        spec.reset_step(&mut aim, &mut reset, time.delta_secs());
     }
 }
 
@@ -193,6 +211,105 @@ mod tests {
             .begin(crate::app::state::GameState::Index, false);
         app.update();
         assert_eq!(app.world().get::<TankAim>(player).unwrap().pitch, aim.pitch);
+    }
+
+    /// R/F 单按进入回正，炮塔/炮管按车型角速度渐进转回零位；敌车不受影响。
+    #[test]
+    fn reset_keys_return_aim_axes_gradually() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .init_resource::<ButtonInput<KeyCode>>()
+            .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
+                100,
+            )))
+            .add_systems(Update, read_aim_input);
+        let spec = AimSpec {
+            traverse_range_deg: 360.0,
+            traverse_speed_deg_s: 30.0,
+            elevation_speed_deg_s: 9.0,
+            min_elevation_deg: -9.0,
+            max_elevation_deg: 20.0,
+        };
+        let player = app.world_mut().spawn((Tank, TankAim::default(), spec)).id();
+        let enemy = app
+            .world_mut()
+            .spawn((EnemyTank, TankAim::default(), spec))
+            .id();
+        // 先转出非零姿态。
+        {
+            let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.press(KeyCode::KeyA);
+            keys.press(KeyCode::KeyW);
+        }
+        for _ in 0..10 {
+            app.update();
+        }
+        let aimed = *app.world().get::<TankAim>(player).unwrap();
+        assert!(aimed.yaw > 0.0 && aimed.pitch > 0.0);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        app.update();
+        // 单按 R：一帧只前进一步（30°/s × 0.1s = 3°），不瞬移。
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyR);
+        app.update();
+        let stepping = *app.world().get::<TankAim>(player).unwrap();
+        assert!(
+            ((aimed.yaw - stepping.yaw).to_degrees() - 3.0).abs() < 1e-3,
+            "R 后一帧应按 3°/帧 渐进：{}",
+            (aimed.yaw - stepping.yaw).to_degrees()
+        );
+        assert_eq!(stepping.pitch, aimed.pitch, "R 不应改动炮管俯仰");
+        // 持续回正到零位。
+        for _ in 0..20 {
+            app.update();
+        }
+        let yaw_done = *app.world().get::<TankAim>(player).unwrap();
+        assert_eq!(yaw_done.yaw, 0.0, "回正应在有限帧内到零");
+        assert_eq!(yaw_done.pitch, aimed.pitch, "回正水平轴不影响俯仰");
+        // 单按 F：同理渐进回正俯仰。
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyF);
+        app.update();
+        let pitch_stepping = *app.world().get::<TankAim>(player).unwrap();
+        assert!(
+            pitch_stepping.pitch > 0.0 && pitch_stepping.pitch < aimed.pitch,
+            "F 后俯仰应渐进下降而非瞬移"
+        );
+        for _ in 0..20 {
+            app.update();
+        }
+        let pitch_done = *app.world().get::<TankAim>(player).unwrap();
+        assert_eq!(pitch_done.pitch, 0.0, "俯仰回正应在有限帧内到零");
+        assert_eq!(pitch_done.yaw, 0.0, "F 不应改动炮塔水平角");
+        // 回正途中按对应轴 WASD 立即取消回正，输入优先。
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyA);
+        app.update();
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyR);
+        app.update();
+        let cancelled = *app.world().get::<TankAim>(player).unwrap();
+        assert!(cancelled.yaw > 0.0, "回正途中输入 A 应取消回正并正常转动");
+        {
+            let reset = app
+                .world()
+                .get::<crate::tank::articulation::AimReset>(player)
+                .unwrap();
+            assert!(!reset.yaw, "输入后回正标记应被清除");
+        }
+        // 敌车姿态始终为零，不接玩家快捷键。
+        let enemy_aim = *app.world().get::<TankAim>(enemy).unwrap();
+        assert_eq!(
+            (enemy_aim.yaw, enemy_aim.pitch),
+            (0.0, 0.0),
+            "敌车不应受玩家 R/F 快捷键影响"
+        );
     }
 
     /// 机械上限处按住抬炮不会积累角度；反向则可立即离开限位。

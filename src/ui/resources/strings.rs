@@ -15,6 +15,10 @@ pub(crate) const KEY_S: &str = "S";
 pub(crate) const KEY_A: &str = "A";
 pub(crate) const KEY_D: &str = "D";
 
+/// 炮塔回正与炮管回正的键帽标识，不随语言翻译。
+pub(crate) const KEY_R: &str = "R";
+pub(crate) const KEY_F: &str = "F";
+
 /// 键帽提示：确认。英文白名单内的按键标识，不随语言翻译。
 pub(crate) const KEY_ENTER: &str = "ENTER";
 

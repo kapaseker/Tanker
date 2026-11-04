@@ -18,7 +18,7 @@
 | 模型详情、规格、预览交互 | `detail` | 模型详情输入、资源生命周期、失败返回与对局状态隔离 |
 | 田园测试场景、自由相机 | `pastoral` | 田园画面、自由相机输入与页面往返 |
 
-从工程根目录运行，将 `<预设>` 替换为表中名称，并为每次运行选择没有同名产物的新目录：
+从工程根目录运行，将 `<预设>` 替换为表中名称，并换用没有同名产物的新目录：
 
 ```text
 cargo run -- --offscreen-test <预设> --output .scratch/offscreen/<本次目录>
@@ -26,4 +26,4 @@ cargo run -- --offscreen-test <预设> --output .scratch/offscreen/<本次目录
 
 例如，炮镜与 HUD 可能分别需要 `gunner_sight` 和 `hud`；共享对局控制改动还应检查 `articulation`、`integrated` 及受影响的详情行为。`wheels` 另有仅用于离屏实验的 `--lighting candidate`，与 `--model enemy` 均为单独可选参数。
 
-检查进程退出码和输出目录内的 `report.txt`，并按改动读取关键帧；有失败或缺少 GPU 能力时按工程规则保留证据并报告，不以截图生成或资源加载成功代替断言通过。预设具体脚本以 `src/validation/scenarios/` 和命令解析 `src/validation/cli.rs` 为准。
+检查退出码和输出目录内的 `report.txt`，并按改动读取关键帧；失败或缺 GPU 能力时按工程规则保留证据并报告。预设具体脚本以 `src/validation/scenarios/` 和命令解析 `src/validation/cli.rs` 为准。

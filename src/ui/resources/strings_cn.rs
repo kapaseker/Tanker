@@ -36,6 +36,9 @@ pub(crate) mod detail {
     /// 只在豹 2A6 详情显示的操作说明。
     pub(crate) const GUN_ELEVATION: &str = "炮管俯仰";
     pub(crate) const TURRET_TRAVERSE: &str = "炮塔旋转";
+    /// 单键回正说明：重置炮塔水平角 / 炮管俯仰角为零。
+    pub(crate) const TURRET_RESET: &str = "炮塔回正";
+    pub(crate) const GUN_RESET: &str = "炮管回正";
     pub(crate) const DIMENSIONS: [&str; 3] = ["长度", "宽度", "高度"];
     /// 弹药规格：初速与射速。
     pub(crate) const MUZZLE_VELOCITY: &str = "初速";

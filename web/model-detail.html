@@ -44,10 +44,12 @@
           <div class="specs__rows" id="spec-rows"></div>
         </div>
 
-        <!-- 玩家坦克专属操作提示：底部居中，两组 24px 间距，与游戏一致 -->
+        <!-- 玩家坦克专属操作提示：底部居中，组间 24px 间距，与游戏一致 -->
         <p class="aim-help" id="aim-help" hidden>
           <span class="aim-help__group"><kbd>W</kbd><kbd>S</kbd> 炮管俯仰</span>
           <span class="aim-help__group"><kbd>A</kbd><kbd>D</kbd> 炮塔旋转</span>
+          <span class="aim-help__group"><kbd>R</kbd> 炮塔回正</span>
+          <span class="aim-help__group"><kbd>F</kbd> 炮管回正</span>
         </p>
 
         <!-- 尺寸轴为纯图形标注，同步提供文字替代 -->
@@ -142,19 +144,37 @@
         let turretYaw = 0;
         let barrelElev = 0;
         const held = new Set();
-        const AIM_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD']);
+        const AIM_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyR', 'KeyF']);
+        // R/F 触发的两轴回正进行标记；对应轴有主动输入时取消，输入优先
+        const resetting = { yaw: false, pitch: false };
         document.addEventListener('keydown', (event) => {
           if (AIM_KEYS.has(event.code)) held.add(event.code);
+          // 单按 R/F 进入回正，按车型角速度渐进转回零位，与游戏实现一致
+          if (event.code === 'KeyR') resetting.yaw = true;
+          if (event.code === 'KeyF') resetting.pitch = true;
         });
         document.addEventListener('keyup', (event) => held.delete(event.code));
         let last = performance.now();
         requestAnimationFrame(function aimLoop(now) {
           const dt = Math.min(0.05, (now - last) / 1000);
           last = now;
-          if (held.has('KeyA')) turretYaw = (turretYaw + spec.traverse * dt) % 360;
-          if (held.has('KeyD')) turretYaw = (turretYaw - spec.traverse * dt) % 360;
           if (held.has('KeyW')) barrelElev = Math.min(spec.maxElevation, barrelElev + spec.elevation * dt);
           if (held.has('KeyS')) barrelElev = Math.max(spec.minElevation, barrelElev - spec.elevation * dt);
+          // 回正按车型角速度渐进转回零位；对应轴有主动输入时输入优先取消回正
+          if (resetting.yaw) {
+            // 当前车型固定 360° 连续旋转，与游戏配置校验一致
+            const full = 360;
+            const offset = ((turretYaw + full / 2) % full + full) % full - full / 2;
+            if (Math.abs(offset) <= spec.traverse * dt) { turretYaw = 0; resetting.yaw = false; }
+            else turretYaw = ((turretYaw - Math.sign(offset) * spec.traverse * dt) % full + full) % full;
+          }
+          if (resetting.pitch) {
+            if (Math.abs(barrelElev) <= spec.elevation * dt) { barrelElev = 0; resetting.pitch = false; }
+            else barrelElev -= Math.sign(barrelElev) * spec.elevation * dt;
+          }
+          if (held.has('KeyA')) { turretYaw = (turretYaw + spec.traverse * dt) % 360; resetting.yaw = false; }
+          if (held.has('KeyD')) { turretYaw = (turretYaw - spec.traverse * dt) % 360; resetting.yaw = false; }
+          if (held.has('KeyW') || held.has('KeyS')) resetting.pitch = false;
           detailModel.turretGroup.style.transform = `rotateY(${turretYaw}deg)`;
           detailModel.barrelPivot.style.transform =
             `${detailModel.barrelBase} rotateZ(${-barrelElev}deg)`;
