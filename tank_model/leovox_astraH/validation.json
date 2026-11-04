@@ -54,12 +54,12 @@
     "烟幕筒: side=1, x=143, z=117",
     "六邻接几何连续，没有悬空碎块"
   ],
-  "sha256": "764b4415fb9aca9f6ea2a70bda8c0ce1898a60036c4dc632ff72ef60b2f426d8",
-  "voxel_count": 5205391,
+  "sha256": "7c561ee9dd6448b77a176e8ef141d7f640b11e2c8d671841629c0ffd98f8ea80",
+  "voxel_count": 5153529,
   "named_parts": 34,
   "connected_components": 1,
   "component_sizes_desc": [
-    5205391
+    5153529
   ],
   "bounds_cells": [
     [

@@ -14,7 +14,7 @@
   "parts": [
     {
       "name": "hull",
-      "voxels": 3198592,
+      "voxels": 3169262,
       "bounds_cells": [
         [
           0,
@@ -31,7 +31,7 @@
     },
     {
       "name": "right_roadwheel_1",
-      "voxels": 23022,
+      "voxels": 20834,
       "bounds_cells": [
         [
           38,
@@ -48,7 +48,7 @@
     },
     {
       "name": "right_roadwheel_2",
-      "voxels": 23022,
+      "voxels": 20834,
       "bounds_cells": [
         [
           83,
@@ -65,7 +65,7 @@
     },
     {
       "name": "right_roadwheel_3",
-      "voxels": 23022,
+      "voxels": 20834,
       "bounds_cells": [
         [
           127,
@@ -82,7 +82,7 @@
     },
     {
       "name": "right_roadwheel_4",
-      "voxels": 23022,
+      "voxels": 20834,
       "bounds_cells": [
         [
           172,
@@ -99,7 +99,7 @@
     },
     {
       "name": "right_roadwheel_5",
-      "voxels": 23022,
+      "voxels": 20834,
       "bounds_cells": [
         [
           216,
@@ -116,7 +116,7 @@
     },
     {
       "name": "right_roadwheel_6",
-      "voxels": 23022,
+      "voxels": 20834,
       "bounds_cells": [
         [
           261,
@@ -133,7 +133,7 @@
     },
     {
       "name": "right_roadwheel_7",
-      "voxels": 23022,
+      "voxels": 20834,
       "bounds_cells": [
         [
           305,
@@ -184,7 +184,7 @@
     },
     {
       "name": "right_suspension",
-      "voxels": 6935,
+      "voxels": 6955,
       "bounds_cells": [
         [
           44,
@@ -201,7 +201,7 @@
     },
     {
       "name": "right_track",
-      "voxels": 44862,
+      "voxels": 48892,
       "bounds_cells": [
         [
           0,
@@ -211,14 +211,14 @@
         [
           383,
           -64,
-          47
+          48
         ]
       ],
       "tiles": 2
     },
     {
       "name": "left_roadwheel_1",
-      "voxels": 23022,
+      "voxels": 20834,
       "bounds_cells": [
         [
           38,
@@ -235,7 +235,7 @@
     },
     {
       "name": "left_roadwheel_2",
-      "voxels": 23022,
+      "voxels": 20834,
       "bounds_cells": [
         [
           83,
@@ -252,7 +252,7 @@
     },
     {
       "name": "left_roadwheel_3",
-      "voxels": 23022,
+      "voxels": 20834,
       "bounds_cells": [
         [
           127,
@@ -269,7 +269,7 @@
     },
     {
       "name": "left_roadwheel_4",
-      "voxels": 23022,
+      "voxels": 20834,
       "bounds_cells": [
         [
           172,
@@ -286,7 +286,7 @@
     },
     {
       "name": "left_roadwheel_5",
-      "voxels": 23022,
+      "voxels": 20834,
       "bounds_cells": [
         [
           216,
@@ -303,7 +303,7 @@
     },
     {
       "name": "left_roadwheel_6",
-      "voxels": 23022,
+      "voxels": 20834,
       "bounds_cells": [
         [
           261,
@@ -320,7 +320,7 @@
     },
     {
       "name": "left_roadwheel_7",
-      "voxels": 23022,
+      "voxels": 20834,
       "bounds_cells": [
         [
           305,
@@ -371,7 +371,7 @@
     },
     {
       "name": "left_suspension",
-      "voxels": 6935,
+      "voxels": 6955,
       "bounds_cells": [
         [
           44,
@@ -388,7 +388,7 @@
     },
     {
       "name": "left_track",
-      "voxels": 44862,
+      "voxels": 48892,
       "bounds_cells": [
         [
           0,
@@ -398,7 +398,7 @@
         [
           383,
           94,
-          47
+          48
         ]
       ],
       "tiles": 2
@@ -592,7 +592,7 @@
     }
   ],
   "models": 42,
-  "voxel_count": 5205391,
-  "sha256": "764b4415fb9aca9f6ea2a70bda8c0ce1898a60036c4dc632ff72ef60b2f426d8",
-  "bytes": 20834538
+  "voxel_count": 5153529,
+  "sha256": "7c561ee9dd6448b77a176e8ef141d7f640b11e2c8d671841629c0ffd98f8ea80",
+  "bytes": 20627090
 }

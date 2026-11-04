@@ -564,22 +564,25 @@ fn spawn_axes(
             })),
             Transform::from_xyz(0.0, bounds.0.y - p.pivot.y - 0.002, 0.0),
         ));
-        // 摄影棚主光在车身附近形成暖色光区，地面亮度随距离衰减。
-        commands.spawn((
-            DetailEntity,
-            RenderLayers::layer(1),
-            SpotLight {
-                color: Color::srgb(1.0, 0.91, 0.80),
-                intensity: 22_000_000.0,
-                range: 34.0,
-                radius: 1.25,
-                inner_angle: 0.30,
-                outer_angle: 1.05,
-                shadow_maps_enabled: true,
-                ..default()
-            },
-            Transform::from_xyz(-3.0, 11.0, -7.0).looking_at(Vec3::ZERO, Vec3::Y),
-        ));
+        // 三盏小幅错开的暖光近似同一块柔光箱，投影边缘错开而接地处仍重合。
+        for (offset, intensity) in [(-0.8, 6_000_000.0), (0.0, 10_000_000.0), (0.8, 6_000_000.0)] {
+            commands.spawn((
+                DetailEntity,
+                RenderLayers::layer(1),
+                SpotLight {
+                    color: Color::srgb(1.0, 0.91, 0.80),
+                    intensity,
+                    range: 34.0,
+                    radius: 1.25,
+                    inner_angle: 0.30,
+                    outer_angle: 1.05,
+                    shadow_maps_enabled: true,
+                    ..default()
+                },
+                Transform::from_xyz(-3.0 + offset, 11.0, -7.0)
+                    .looking_at(Vec3::ZERO, Vec3::Y),
+            ));
+        }
         // 冷色补光保留阴影中的装甲、轮组与尾部格栅细节。
         commands.spawn((
             DetailEntity,
@@ -590,6 +593,17 @@ fn spawn_axes(
                 ..default()
             },
             Transform::from_xyz(5.0, 3.0, 6.0).looking_at(Vec3::ZERO, Vec3::Y),
+        ));
+        // 车尾上方的弱暖轮廓光勾出格栅框和裙甲折边。
+        commands.spawn((
+            DetailEntity,
+            RenderLayers::layer(1),
+            DirectionalLight {
+                color: Color::srgb(1.0, 0.85, 0.67),
+                illuminance: 1000.0,
+                ..default()
+            },
+            Transform::from_xyz(7.0, 4.0, -2.0).looking_at(Vec3::ZERO, Vec3::Y),
         ));
         if let Ok(mut environment) = environment_maps.get_mut(p.camera) {
             environment.intensity = 85.0;

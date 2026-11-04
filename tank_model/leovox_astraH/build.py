@@ -153,9 +153,13 @@ def hull():
             top = min(77,math.floor(80-max(0,b-291)*21/92))
             bottom = 49 if j < 7 else 46
             box((a,ya,bottom),(b,yb,top),LIGHT_OLIVE if j%3==1 else OLIVE)
-            # 重装甲前段多一层阶梯折边。
-            if j >= 6:
-                box((a+2,ya,bottom),(b-2,yb,bottom+2),DARK_OLIVE)
+            # 每块裙甲的外沿保留原包络，中间下沉 4 cm，低机位可读出板边与接缝。
+            outer_lo,outer_hi=sorted([side*92,side*94])
+            box((a+2,outer_lo,bottom+3),(b-2,outer_hi,top-3),0)
+            lip_lo,lip_hi=sorted([side*93,side*94])
+            box((a+2,lip_lo,bottom+1),(b-2,lip_hi,bottom+3),DARK_OLIVE)
+            for x in [a+5,b-7]:
+                box((x,outer_lo,bottom+4),(x+2,outer_hi,bottom+6),METAL)
             for x in [a+3,b-5]:
                 box((x,ya,top-5),(x+3,yb,top+1),STEEL)
                 y = side*93
@@ -205,16 +209,22 @@ def running_gear():
             # 双胎中央窄缝、层叠轮辋、八颗紧固件。
             cylinder(1,(cx,21),ya,yb,20,RUBBER)
             cylinder(1,(cx,21),(ya+yb)//2-1,(ya+yb)//2+1,20,BLACK,inner=18)
-            for face,recess in [(ya,ya+2),(yb-2,yb-4)]:
-                # 轮辋凹入两格，轮缘、轮毂和紧固件保持外凸，避免平面彩色圆片。
-                cylinder(1,(cx,21),face,face+2,16.8,0)
+            for face,inner in [(ya,1),(yb-2,-1)]:
+                # 四格深的凹盘、两级轮缘与外凸轮毂共用原轮胎包络。
+                recess=face+4*inner
+                low,high=sorted([face,recess])
+                cylinder(1,(cx,21),low,high+2,16.8,0)
                 cylinder(1,(cx,21),recess,recess+2,16.8,DARK_OLIVE,sides=16)
-                cylinder(1,(cx,21),recess,recess+2,13.5,OLIVE)
+                cylinder(1,(cx,21),recess,recess+2,12.8,OLIVE)
+                cylinder(1,(cx,21),low,high+2,6,OLIVE,sides=8)
+                rim=face+2*inner
+                cylinder(1,(cx,21),rim,rim+2,16.8,OLIVE,inner=14.1,sides=16)
                 cylinder(1,(cx,21),face,face+2,16.8,LIGHT_OLIVE,inner=15.2,sides=16)
                 for k in range(8):
                     t=2*math.pi*k/8
-                    cylinder(1,(cx+10.2*math.cos(t),21+10.2*math.sin(t)),face,face+2,1.2,METAL)
-                    beam((cx+5*math.cos(t),face+1,21+5*math.sin(t)),(cx+13*math.cos(t),face+1,21+13*math.sin(t)),1.2,OLIVE)
+                    spoke=face+2*inner+1
+                    cylinder(1,(cx+10.2*math.cos(t),21+10.2*math.sin(t)),spoke-1,spoke+1,1.3,METAL)
+                    beam((cx+5*math.cos(t),spoke,21+5*math.sin(t)),(cx+15*math.cos(t),spoke,21+15*math.sin(t)),1.4,OLIVE)
                 cylinder(1,(cx,21),face,face+2,6,LIGHT_OLIVE,sides=8)
                 cylinder(1,(cx,21),face,face+2,3.2,STEEL,sides=8)
                 cylinder(1,(cx,21),face,face+2,1.5,METAL)
@@ -259,13 +269,13 @@ def running_gear():
             for i in range(count):
                 c=a+d*(i+0.5)/count
                 # 预留齿距间隙；板体包络不超车体前后端。
-                def tread(depth, width, ca,cb,color):
-                    ps=[c-tangent*width+normal*(depth-1),c+tangent*width+normal*(depth-1),c+tangent*width+normal*depth,c-tangent*width+normal*depth]
+                def tread(depth, width, ca,cb,color, thickness=1):
+                    ps=[c-tangent*width+normal*(depth-thickness),c+tangent*width+normal*(depth-thickness),c+tangent*width+normal*depth,c-tangent*width+normal*depth]
                     ps=[(float(np.clip(p[0],0,383)),float(max(0,p[1]))) for p in ps]
                     polygon(ps,ca,cb,color,axis=1)
-                tread(1.4,2.9,ya,yb,METAL)
-                tread(2,2.5,ya+3,ya+13,RUBBER)
-                tread(2,2.5,ya+17,yb-3,RUBBER)
+                tread(1.4,2.75,ya,yb,METAL,1.6)
+                tread(2.55,2.05,ya+3,ya+13,RUBBER,1.65)
+                tread(2.55,2.05,ya+17,yb-3,RUBBER,1.65)
                 tread(-1.2,1.5,ya+13,ya+17,STEEL)
 
 

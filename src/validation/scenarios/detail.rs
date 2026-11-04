@@ -222,7 +222,8 @@ pub(super) fn run_detail_scenario(
             {
                 let mut view = app.world_mut().resource_mut::<View>();
                 view.yaw = -135.0;
-                view.pitch = -22.0;
+                view.pitch = -16.0;
+                view.zoom = 1.20;
             }
             update(app, STEP, None)?;
             let preview = &app.world().resource::<Previews>().items[0];
@@ -240,6 +241,7 @@ pub(super) fn run_detail_scenario(
                 let mut view = app.world_mut().resource_mut::<View>();
                 view.yaw = yaw;
                 view.pitch = pitch;
+                view.zoom = 1.0;
             }
             update(app, STEP, None)?;
             use crate::tank::articulation::TankAim;

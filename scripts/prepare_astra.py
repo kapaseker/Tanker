@@ -216,7 +216,7 @@ def verify(source, output, assignments, wheel_info):
         expected = list(group_cells(source, groups(source)[original]))
         assert digest(expected) == digest(restored), f'外观变化：{original}'
         count += len(expected)
-    assert count == 5_205_391, f'原装配组丢失或重复：{count}'
+    assert count == sum(model.voxel_count for model in source.models), f'原装配组丢失或重复：{count}'
     palette = [c for c in source.raw_chunks if c[0] in {'RGBA', 'MATL'}]
     assert all([c for c in out.raw_chunks if c[0] in {'RGBA', 'MATL'}] == palette for out in output.values())
     tracks = output['track']
