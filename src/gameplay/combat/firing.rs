@@ -49,6 +49,8 @@ pub(crate) struct Bullet {
 pub(crate) struct Gun {
     /// 预加载并由各颗子弹复用的场景句柄，保持资源存活。
     bullet_scene: Handle<WorldAsset>,
+    /// 玩家开炮音效；无音频插件的离屏环境不加载。
+    fire_sound: Option<Handle<AudioSource>>,
     /// 本次进程加载的弹药性能。
     spec: AmmunitionSpec,
     /// 每次发射后的剩余冷却时间，松开空格或资源未就绪也继续计时。
@@ -90,10 +92,16 @@ impl Plugin for FiringPlugin {
 }
 
 /// 启动时预加载子弹场景；加载完成前由发射系统忽略开火输入。
-fn load_bullet(mut commands: Commands, assets: Res<AssetServer>, spec: Res<AmmunitionSpec>) {
+fn load_bullet(
+    mut commands: Commands,
+    assets: Res<AssetServer>,
+    spec: Res<AmmunitionSpec>,
+    audio: Option<Res<Assets<AudioSource>>>,
+) {
     commands.insert_resource(Gun {
         spec: *spec,
         bullet_scene: assets.load(crate::tank::visual::PLAYER_BULLET),
+        fire_sound: audio.map(|_| assets.load("sounds/player-cannon.mp3")),
         cadence: default(),
     });
 }
@@ -251,6 +259,9 @@ fn fire_bullets(
     // 位置和方向均为世界空间数据，子弹不成为坦克的子实体。
     let (position, direction) = muzzle_pose(barrel, &gun.spec);
     debug!("发射子弹：位置={position:?}，方向={direction:?}");
+    if let Some(sound) = &gun.fire_sound {
+        commands.spawn((AudioPlayer::new(sound.clone()), PlaybackSettings::DESPAWN));
+    }
     let transform = Transform::from_translation(position).with_rotation(barrel.rotation());
     commands.spawn((
         crate::gameplay::session::SessionEntity,
