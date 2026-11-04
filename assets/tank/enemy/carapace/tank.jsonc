@@ -1,4 +1,6 @@
 {
+  // 直行速度单位为米/秒，车体转向速度单位为度/秒。
+  "driving": { "forward_speed": 0.0, "reverse_speed": 0.0, "turn_speed_deg_s": 90.0 },
   // 碰撞外部尺寸按长、高、宽排列，单位：米。
   "collision": { "size": [6.6, 2.6, 3.4], "rounding_radius": 0.2 }
 }

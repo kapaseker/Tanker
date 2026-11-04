@@ -6,7 +6,6 @@ use crate::{
         transition::{Fade, SceneTarget},
     },
     pages::index::{IndexBackground, IndexPalette},
-    tank::track,
     ui::{
         font::UiFont,
         resources::{
@@ -136,12 +135,12 @@ fn specs_for(
             vec![
                 Spec {
                     label: strings_cn::detail::FORWARD_SPEED,
-                    value: track::PLAYER_TRACKS.forward_speed.to_string(),
+                    value: tanks.player.driving.forward_speed.to_string(),
                     unit: strings::UNIT_METERS_PER_SECOND,
                 },
                 Spec {
                     label: strings_cn::detail::REVERSE_SPEED,
-                    value: track::PLAYER_TRACKS.reverse_speed.to_string(),
+                    value: tanks.player.driving.reverse_speed.to_string(),
                     unit: strings::UNIT_METERS_PER_SECOND,
                 },
                 Spec {
@@ -1080,6 +1079,8 @@ mod tests {
         ammo.rate_of_fire = 30.0;
         let mut tanks =
             crate::tank::driving::TankConfigs::load(std::path::Path::new("assets")).unwrap();
+        tanks.player.driving.forward_speed = 21.0;
+        tanks.player.driving.reverse_speed = 5.0;
         let aim = tanks.player.articulation.as_mut().unwrap();
         aim.traverse_speed_deg_s = 25.0;
         aim.elevation_speed_deg_s = 8.0;
@@ -1091,6 +1092,8 @@ mod tests {
         assert_eq!(rows[1].value, "30");
         let rows = specs_for(ENTRIES[1], &ammo, &tanks);
         assert_eq!(rows.len(), 6);
+        assert_eq!(rows[0].value, "21");
+        assert_eq!(rows[1].value, "5");
         assert_eq!(rows[2].value, "全圈");
         assert!(rows[2].unit.is_empty());
         assert_eq!(rows[3].value, "-5°～+15°");

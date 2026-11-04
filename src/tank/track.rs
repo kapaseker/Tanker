@@ -29,10 +29,6 @@ pub(crate) struct TrackSpec {
     pivot: (f32, f32, f32),
     /// 内腔竖直开区间，单位体素格；完整旋转包络必须在其中。
     clearance: (f32, f32),
-    /// 履带驱动的前进速度，单位：米/秒；驾驶系统按此换算水平推力。
-    pub(crate) forward_speed: f32,
-    /// 履带驱动的倒车速度，单位：米/秒。
-    pub(crate) reverse_speed: f32,
 }
 
 impl TrackSpec {
@@ -43,7 +39,7 @@ impl TrackSpec {
     }
 }
 
-/// astraH 整车履带，沿用前进 16 米/秒、倒车 8 米/秒。
+/// astraH 整车履带。
 pub(crate) const PLAYER_TRACKS: TrackSpec = TrackSpec {
     path: crate::tank::model::astra::TRACK_PATH,
     phase_step: crate::tank::model::astra::TRACK_PHASE_STEP,
@@ -54,12 +50,9 @@ pub(crate) const PLAYER_TRACKS: TrackSpec = TrackSpec {
     ],
     pivot: crate::tank::model::astra::CANVAS_PIVOT,
     clearance: crate::tank::model::astra::WHEEL_CLEARANCE,
-    forward_speed: 16.0,
-    reverse_speed: 8.0,
 };
 /// 默认敌人底盘适配的 crawl 履带，左右各四个负重轮和两个端轮。
 /// 尺寸与敌人生成同源：直接推导自敌人模型契约，不依赖敌人生成模块。
-/// 敌人当前零输入不驾驶，速度为未设定占位值，接入敌方 AI 前需赋真实数值。
 pub(crate) const ENEMY_TRACKS: TrackSpec = TrackSpec {
     path: "tank/enemy/carapace/track.vox",
     phase_step: TRACK_PHASE_STEP,
@@ -70,8 +63,6 @@ pub(crate) const ENEMY_TRACKS: TrackSpec = TrackSpec {
     ],
     pivot: crate::tank::model::enemy::CANVAS_PIVOT,
     clearance: crate::tank::model::enemy::WHEEL_CLEARANCE,
-    forward_speed: 0.0,
-    reverse_speed: 0.0,
 };
 /// 相位变体节点名，顺序 [左, 右] × [0, 1, 2]，与履带包场景图一致。
 const VARIANT_NAMES: [[&str; TRACK_PHASES as usize]; 2] = [

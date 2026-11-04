@@ -14,7 +14,7 @@ pub(crate) struct Health {
 }
 
 impl Health {
-    /// 满血状态；上限取 100 点，与设计稿百分比进度条一一对应。
+    /// 按车型配置的生命上限初始化满血状态。
     pub(crate) fn full(max: u32) -> Self {
         Self { current: max, max }
     }

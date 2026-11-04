@@ -146,6 +146,7 @@ fn spawn_enemies(
             track::ENEMY_TRACKS.with_size(enemy_size),
             WorldAssetRoot(scene.clone()),
             driving::body_for_collision(tanks.enemy.collision),
+            tanks.enemy.driving,
             transform,
         ));
     }

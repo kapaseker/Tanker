@@ -150,7 +150,8 @@ pub(crate) fn setup(
         tank::driving::body_for_collision(tanks.player.collision),
         tank_transform,
         // 生命上限 100 点；当前无伤害系统，固定满血，HUD 由此读出比例。
-        health::Health::full(100),
+        tanks.player.driving,
+        health::Health::full(tanks.player.max_health.expect("启动已校验玩家生命上限").get()),
     ));
     commands.insert_resource(VoxScene(scene));
 

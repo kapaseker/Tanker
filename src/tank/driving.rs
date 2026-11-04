@@ -12,10 +12,26 @@ use std::path::Path;
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct TankConfig {
+    /// 车体驾驶性能。
+    pub(crate) driving: DrivingSpec,
+    /// 玩家生命上限，采用直接击毁规则的敌车可省略。
+    pub(crate) max_health: Option<std::num::NonZeroU32>,
     /// 整车圆角碰撞体。
     pub(crate) collision: TankCollision,
     /// 仅有独立炮塔控制的车型提供；玩家豹 2A6 必填。
     pub(crate) articulation: Option<super::articulation::AimSpec>,
+}
+
+/// 驾驶系统逐车读取的车型性能。
+#[derive(Component, Clone, Copy, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DrivingSpec {
+    /// 最大前进速度，单位米/秒。
+    pub(crate) forward_speed: f32,
+    /// 最大倒车速度的绝对值，单位米/秒。
+    pub(crate) reverse_speed: f32,
+    /// 最大车体转向速度，单位度/秒。
+    turn_speed_deg_s: f32,
 }
 
 /// 整车碰撞体的外部尺寸与圆角半径。
@@ -47,25 +63,35 @@ impl TankConfigs {
         if configs.player.articulation.is_none() {
             return Err("坦克配置非法 tank/player/leopard2_a6/tank.jsonc：缺少 articulation 炮塔参数".into());
         }
+        if configs.player.max_health.is_none() {
+            return Err("坦克配置非法 tank/player/leopard2_a6/tank.jsonc：缺少 max_health 生命上限".into());
+        }
         Ok(configs)
     }
 }
 
 impl TankConfig {
-    /// 从车型目录读取并校验碰撞参数。
+    /// 从车型目录读取并校验配置。
     pub(crate) fn load(root: &Path, path: &str) -> Result<Self, String> {
         let path = root.join(path);
         let bytes = std::fs::read(&path).map_err(|e| format!("坦克配置读取失败 {}：{e}", path.display()))?;
         Self::parse(&bytes).map_err(|e| format!("坦克配置非法 {}：{e}", path.display()))
     }
 
-    /// 校验 JSONC 及圆角盒的几何范围。
+    /// 校验 JSONC、碰撞几何和车型性能。
     fn parse(bytes: &[u8]) -> Result<Self, String> {
         let config: Self = serde_json::from_reader(json_comments::StripComments::with_settings(
             json_comments::CommentSettings::c_style(), bytes)).map_err(|e| e.to_string())?;
         let radius = config.collision.rounding_radius;
         if !radius.is_finite() || radius <= 0.0 || config.collision.size.iter().any(|v| !v.is_finite() || *v <= 2.0 * radius) {
             return Err("尺寸和圆角必须为有限正数，且尺寸大于圆角直径".into());
+        }
+        let driving = config.driving;
+        if [driving.forward_speed, driving.reverse_speed, driving.turn_speed_deg_s]
+            .iter()
+            .any(|speed| !speed.is_finite() || *speed < 0.0)
+        {
+            return Err("驾驶速度必须为有限非负数".into());
         }
         if let Some(spec) = config.articulation {
             spec.validate()?;
@@ -76,8 +102,6 @@ impl TankConfig {
 
 /// 玩家车身与履带的单一碰撞框（X 长、Y 高、Z 宽），不包含伸出的炮管，单位米。
 pub(crate) const TANK_SIZE: Vec3 = Vec3::from_array(crate::tank::model::astra::COLLISION_SIZE);
-/// 转向速度与前进/倒车无关，由车体统一设定，单位：弧度/秒（90°/秒）。
-const TURN_SPEED: f32 = std::f32::consts::FRAC_PI_2;
 
 /// 转向平滑时间，单位：秒。数值越小响应越硬，越大越"绵"
 const TURN_SMOOTH_TIME: f32 = 0.15;
@@ -115,7 +139,8 @@ impl Plugin for DrivingPlugin {
 /// 避免体素台阶的接触冲量把直线行驶扭成蛇形。
 #[cfg(test)]
 pub(crate) fn tank_body() -> impl Bundle {
-    body_for_size(TANK_SIZE)
+    let driving = TankConfigs::load(Path::new("assets")).unwrap().player.driving;
+    (body_for_size(TANK_SIZE), driving)
 }
 
 /// 坦克碰撞体的圆角半径，单位：米。
@@ -159,13 +184,11 @@ pub(crate) fn body_for_collision(collision: TankCollision) -> impl Bundle {
 }
 
 /// 根据车头方向写入水平速度，保留重力及接触求解产生的竖直速度；
-/// 车头朝向由本函数独占：转向角速度按固定步长 dt 向目标（±TURN_SPEED 或 0）
+/// 车头朝向由本函数独占：转向角速度按固定步长 dt 向车型设定的目标角速度
 /// 指数渐近后直接积分进 heading，绕世界 Y 旋转。物理不参与偏航。
-/// 前进/倒车速度来自履带装备（cleat 等），换装备时速度随之改变。
 fn apply_input(
     input: &DrivingInput,
-    forward_speed: f32,
-    reverse_speed: f32,
+    driving: &DrivingSpec,
     dt: f32,
     current_turn: &mut f32,
     linear: &mut Vec3,
@@ -174,15 +197,15 @@ fn apply_input(
     let throttle = input.throttle.clamp(-1.0, 1.0);
     let speed = throttle
         * if throttle >= 0.0 {
-            forward_speed
+            driving.forward_speed
         } else {
-            reverse_speed
+            driving.reverse_speed
         };
     let forward = *heading * Vec3::NEG_X;
     linear.x = forward.x * speed;
     linear.z = forward.z * speed;
     // +Y 为车头左转；倒车不反转转向，相反方向同时按下时抵消。
-    let target = input.turn.clamp(-1.0, 1.0) * TURN_SPEED;
+    let target = input.turn.clamp(-1.0, 1.0) * driving.turn_speed_deg_s.to_radians();
     // 帧率无关的指数渐近：按住时逼近目标角速度，松键时渐降到 0。
     let smooth = 1.0 - (-dt / TURN_SMOOTH_TIME).exp();
     *current_turn += (target - *current_turn) * smooth;
@@ -191,23 +214,21 @@ fn apply_input(
 }
 
 /// 在物理准备完成后逐车应用输入，避免共享转向状态或渲染姿态滞后一帧。
-/// 前进/倒车速度按每辆车的履带装备（[`TrackSpec`]）读取。
 /// `pub(crate)` 仅供 `gameplay::player` 的输入系统声明"输入先于驾驶"的调度边。
 pub(crate) fn drive_tank(
     time: Res<Time>,
     mut tanks: Query<(
         &DrivingInput,
-        &super::track::TrackSpec,
+        &DrivingSpec,
         &mut TurnRate,
         &mut Rotation,
         &mut LinearVelocity,
     )>,
 ) {
-    for (input, tracks, mut turn_rate, mut rotation, mut linear) in &mut tanks {
+    for (input, driving, mut turn_rate, mut rotation, mut linear) in &mut tanks {
         apply_input(
             input,
-            tracks.forward_speed,
-            tracks.reverse_speed,
+            driving,
             time.delta_secs(),
             &mut turn_rate.0,
             &mut linear.0,
@@ -227,24 +248,26 @@ mod tests {
         assert_eq!(tanks.player.collision.size, [7.68, 2.68, 3.76]);
         assert_eq!(tanks.enemy.collision.size, [6.6, 2.6, 3.4]);
         assert!(TankConfig::load(Path::new("assets"), "missing-tank.jsonc").unwrap_err().contains("missing-tank.jsonc"));
-        assert!(TankConfig::parse(br#"{/*comment*/"collision":{"size":[1,2,3],"rounding_radius":0.2}}"#).is_ok());
+        assert!(TankConfig::parse(br#"{/*comment*/"driving":{"forward_speed":0,"reverse_speed":0,"turn_speed_deg_s":0},"collision":{"size":[1,2,3],"rounding_radius":0.2}}"#).is_ok());
         for input in [
-            r#"{"collision":{"size":[0.4,2,3],"rounding_radius":0.2}}"#,
-            r#"{"collision":{"size":[1,2,3],"rounding_radius":0}}"#,
-            r#"{"collision":{"size":[1e99,2,3],"rounding_radius":0.2}}"#,
-            r#"{"collision":{"size":[1,2,3],"rounding_radius":0.2,"extra":1}}"#,
-            r#"{"collision":{"size":[1,2,3],"rounding_radius":0.2,}}"#,
+            r#"{"driving":{"forward_speed":0,"reverse_speed":0,"turn_speed_deg_s":0},"collision":{"size":[0.4,2,3],"rounding_radius":0.2}}"#,
+            r#"{"driving":{"forward_speed":0,"reverse_speed":0,"turn_speed_deg_s":0},"collision":{"size":[1,2,3],"rounding_radius":0}}"#,
+            r#"{"driving":{"forward_speed":0,"reverse_speed":0,"turn_speed_deg_s":0},"collision":{"size":[1e99,2,3],"rounding_radius":0.2}}"#,
+            r#"{"driving":{"forward_speed":0,"reverse_speed":0,"turn_speed_deg_s":0},"collision":{"size":[1,2,3],"rounding_radius":0.2,"extra":1}}"#,
+            r#"{"driving":{"forward_speed":0,"reverse_speed":0,"turn_speed_deg_s":0},"collision":{"size":[1,2,3],"rounding_radius":0.2,}}"#,
         ] {
             assert!(TankConfig::parse(input.as_bytes()).is_err(), "{input}");
         }
     }
 
-    /// 角速度、俯仰范围与未知字段在启动边界校验，不能降级成静默默认值。
+    /// 车型性能的非法值或未知字段必须在加载时被拒绝。
     #[test]
-    fn tank_config_rejects_invalid_articulation() {
+    fn tank_config_rejects_invalid_performance() {
         let source = std::fs::read_to_string("assets/tank/player/leopard2_a6/tank.jsonc").unwrap();
         assert!(TankConfig::parse(source.as_bytes()).unwrap().articulation.is_some());
         for (old, new) in [
+            (r#""forward_speed": 16.0"#, r#""forward_speed": -1.0"#),
+            (r#""max_health": 100"#, r#""max_health": 0"#),
             ("\"traverse_range_deg\": 360.0", "\"traverse_range_deg\": 180.0"),
             ("\"traverse_speed_deg_s\": 30.0", "\"traverse_speed_deg_s\": 0.0"),
             ("\"elevation_speed_deg_s\": 9.0", "\"elevation_speed_deg_s\": -1.0"),
@@ -300,8 +323,8 @@ mod tests {
     #[test]
     fn inputs_control_speed_and_zero_input_stops() {
         const DT: f32 = 1.0 / 64.0;
-        let forward = crate::tank::track::PLAYER_TRACKS.forward_speed;
-        let reverse = crate::tank::track::PLAYER_TRACKS.reverse_speed;
+        let driving = TankConfigs::load(Path::new("assets")).unwrap().player.driving;
+        let reverse = driving.reverse_speed;
         let mut current_turn = 0.0_f32;
         let mut linear = Vec3::new(1.0, -0.4, 1.0);
         let mut heading = Quat::IDENTITY;
@@ -310,8 +333,7 @@ mod tests {
                 throttle: -1.0,
                 turn: 0.0,
             },
-            forward,
-            reverse,
+            &driving,
             DT,
             &mut current_turn,
             &mut linear,
@@ -325,8 +347,7 @@ mod tests {
                 throttle: 0.0,
                 turn: 0.0,
             },
-            forward,
-            reverse,
+            &driving,
             DT,
             &mut current_turn,
             &mut linear,
@@ -340,8 +361,7 @@ mod tests {
                 throttle: 0.0,
                 turn: 0.0,
             },
-            forward,
-            reverse,
+            &driving,
             DT,
             &mut current_turn,
             &mut linear,
@@ -357,8 +377,8 @@ mod tests {
     #[test]
     fn movement_follows_heading_and_turning_does_not_reverse_when_backing() {
         const DT: f32 = 1.0 / 64.0;
-        let forward = crate::tank::track::PLAYER_TRACKS.forward_speed;
-        let reverse = crate::tank::track::PLAYER_TRACKS.reverse_speed;
+        let driving = TankConfigs::load(Path::new("assets")).unwrap().player.driving;
+        let reverse = driving.reverse_speed;
         let mut current_turn = 0.0_f32;
         let mut linear = Vec3::ZERO;
         let mut heading = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
@@ -367,14 +387,13 @@ mod tests {
                 throttle: 1.0,
                 turn: 1.0,
             },
-            forward,
-            reverse,
+            &driving,
             DT,
             &mut current_turn,
             &mut linear,
             &mut heading,
         );
-        assert!(linear.abs_diff_eq(Vec3::Z * forward, 1e-5));
+        assert!(linear.abs_diff_eq(Vec3::Z * driving.forward_speed, 1e-5));
         assert!(yaw(heading) > std::f32::consts::FRAC_PI_2);
         // 速度取积分前的朝向（本步先算速度、后积分偏航），车头略微越过 +Z。
         let forward_dir = heading * Vec3::NEG_X;
@@ -383,8 +402,7 @@ mod tests {
                 throttle: -1.0,
                 turn: 1.0,
             },
-            forward,
-            reverse,
+            &driving,
             DT,
             &mut current_turn,
             &mut linear,
@@ -401,8 +419,7 @@ mod tests {
                     throttle: -1.0,
                     turn: -1.0,
                 },
-                forward,
-                reverse,
+                &driving,
                 DT,
                 &mut current_turn,
                 &mut linear,
@@ -492,9 +509,11 @@ mod tests {
             app.update();
         }
         // 转向平滑后 1 秒按住的累计转角略小于 90°，用指数渐近的解析积分算期望值：
-        // θ = TURN_SPEED × (T − TURN_SMOOTH_TIME × (1 − e^(−T/TURN_SMOOTH_TIME)))。
+        // θ = turn_speed × (T − TURN_SMOOTH_TIME × (1 − e^(−T/TURN_SMOOTH_TIME)))。
         let t = 1.0_f32;
-        let theta = TURN_SPEED * (t - TURN_SMOOTH_TIME * (1.0 - (-t / TURN_SMOOTH_TIME).exp()));
+        let driving = app.world().get::<DrivingSpec>(tank).unwrap();
+        let turn_speed = driving.turn_speed_deg_s.to_radians();
+        let theta = turn_speed * (t - TURN_SMOOTH_TIME * (1.0 - (-t / TURN_SMOOTH_TIME).exp()));
         let heading = app.world().get::<Transform>(tank).unwrap().rotation;
         // 车头局部 −X 绕 +Y 左转 θ 后指向 (−cosθ, 0, sinθ)。
         let expected = Vec3::new(-theta.cos(), 0.0, theta.sin());

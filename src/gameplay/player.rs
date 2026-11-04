@@ -297,9 +297,15 @@ mod tests {
                 1.0 / 64.0,
             )))
             .add_systems(Update, (read_player_input, driving::drive_tank).chain());
+        // 使用同一车型参数，单独验证每个实体的驾驶意图和转向状态。
+        let driving_spec = driving::TankConfigs::load(std::path::Path::new("assets"))
+            .unwrap()
+            .player
+            .driving;
         let mut spawn = |player| {
             let mut entity = app.world_mut().spawn((
                 DrivingInput::default(),
+                driving_spec,
                 TurnRate::default(),
                 avian3d::prelude::Rotation::default(),
                 avian3d::prelude::LinearVelocity(Vec3::new(0.0, -0.4, 0.0)),

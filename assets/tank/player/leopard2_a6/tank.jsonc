@@ -1,4 +1,8 @@
 {
+  // 直行速度单位为米/秒，车体转向速度单位为度/秒。
+  "driving": { "forward_speed": 16.0, "reverse_speed": 8.0, "turn_speed_deg_s": 90.0 },
+  // 玩家出生时的满血点数。
+  "max_health": 100,
   // 碰撞外部尺寸按长、高、宽排列，单位：米。
   "collision": { "size": [7.68, 2.68, 3.76], "rounding_radius": 0.2 },
   // 豹 2A6 / L55 主炮公开俯仰范围：−9°～+20°。
