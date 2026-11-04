@@ -30,7 +30,7 @@ impl Plugin for GalleryPlugin {
             )
             // 场景实例在 Update 与 PostUpdate 之间的 SpawnScene 才生成，放在 Last 才能
             // 给同帧新出现的网格补渲染层，避免测量/验收时遇到未分层实体。
-            .add_systems(Last, (prepare_previews, spin).chain().run_if(in_gallery))
+            .add_systems(Last, (prepare_previews, preview::light_gallery, spin).chain().run_if(in_gallery))
             .add_systems(
                 Update,
                 (

@@ -772,17 +772,21 @@
     cursor: grabbing;
   }
 
-  /* 三维尺寸读数：左上角浮层，与标题栏左内边距对齐；不拦截拖拽 */
+  /* 规格面板距查看区左上各 24px，与战斗 HUD 安全边距一致。 */
   .specs {
     position: absolute;
-    top: 32px;
-    left: 64px;
+    top: 24px;
+    left: 24px;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     gap: 16px;
+    padding: 12px;
+    background: rgba(15, 14, 13, 0.86);
     pointer-events: none;
   }
+
+  .specs[hidden] { display: none; }
 
   .specs__id {
     flex: none;
@@ -791,11 +795,13 @@
   /* 规格行两列网格：与游戏详情页一致，玩家坦克 6 项排两列，弹药 2 项排一行 */
   .specs__rows {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, auto));
-    column-gap: 48px;
+    grid-template-columns: repeat(2, 156px);
+    column-gap: 24px;
     row-gap: 16px;
     justify-content: start;
   }
+
+  .specs__rows--single { grid-template-columns: 156px; }
 
   /* WASD 瞄准提示（仅玩家坦克）：底部居中，两组间 24px，组内键帽间距统一 */
   .aim-help {
@@ -823,6 +829,8 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
+    padding: 4px 8px;
+    background: rgba(15, 14, 13, 0.86);
   }
 
   .spec {

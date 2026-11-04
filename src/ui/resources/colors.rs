@@ -40,13 +40,9 @@ pub(crate) mod gallery {
     pub(crate) const NAME_ACTIVE: Color = Color::srgb_u8(234, 244, 218);
 }
 
-/// 详情平面网格配色，在背景材质的 sRGB 混色中使用。
+/// 详情尺寸轴与标签配色。
 pub(crate) mod detail {
     use super::*;
-
-    /// 原型 rgba(200,219,177,0.05)，低对比避免干扰模型轮廓。
-    pub(crate) const GRID: bevy::prelude::Color =
-        bevy::prelude::Color::srgba(200.0 / 255.0, 219.0 / 255.0, 177.0 / 255.0, 0.05);
 
     /// 以下为尺寸轴与标签配色。CSS 的透明合成在 sRGB 空间进行，而 Bevy 的
     /// UI/材质都在线性空间混合；与 index::SEPARATOR 同理，alpha 需按暗底

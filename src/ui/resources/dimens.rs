@@ -219,16 +219,10 @@ pub(crate) mod index {
 
 /// 详情查看区与浮层的逻辑像素，取自 model-detail.html。
 pub(crate) mod detail {
-    /// 炮塔按键提示沿用菜单页脚的底部留白与提示字号，单位：逻辑像素。
-    pub(crate) const AIM_HELP_BOTTOM: f32 = 30.0;
+    /// 炮塔按键提示字号，单位：逻辑像素。
     pub(crate) const AIM_HELP_SIZE: f32 = 12.0;
     /// 炮管与炮塔两组键帽提示之间的留白，单位：逻辑像素。
     pub(crate) const AIM_HELP_GROUP_GAP: f32 = 24.0;
-    /// 平面网格间距；从标题栏底部开始计格。
-    pub(crate) const GRID: f32 = 48.0;
-    /// 左上角分类眉题相对查看区的位置。
-    pub(crate) const SPECS_LEFT: f32 = 64.0;
-    pub(crate) const SPECS_TOP: f32 = 32.0;
     /// 眉题字号与字距（网页 .eyebrow 的 18px / 4px）。
     pub(crate) const EYEBROW_SIZE: f32 = 18.0;
     pub(crate) const EYEBROW_SPACING: f32 = 4.0;
@@ -239,7 +233,7 @@ pub(crate) mod detail {
     /// 以及标签/数值/单位的字号与字距。
     pub(crate) const SPECS_GAP: f32 = 16.0;
     /// 玩家六项参数使用两列，避免超宽矮视口下挤出页脚；单位：逻辑像素。
-    pub(crate) const SPEC_COLUMN_WIDTH: f32 = 190.0;
+    pub(crate) const SPEC_COLUMN_WIDTH: f32 = 156.0;
     pub(crate) const SPEC_COLUMN_GAP: f32 = 24.0;
     pub(crate) const SPEC_LABEL_GAP: f32 = 8.0;
     pub(crate) const SPEC_LABEL_SIZE: f32 = 18.0;

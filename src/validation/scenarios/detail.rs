@@ -6,7 +6,7 @@ use crate::{
         transition::{Fade, SceneTarget},
     },
     pages::{
-        detail::{SelectedModel, SpecRow, View},
+        detail::{AimHelp, SelectedModel, SpecRow, SpecsPanel, View},
         gallery,
         model_preview::{self as preview, Previews},
     },
@@ -122,6 +122,19 @@ fn assert_specs(app: &mut App, index: usize) -> Result<(), String> {
         .query_filtered::<(), With<SpecRow>>()
         .iter(world)
         .count();
+    let panels = world.query_filtered::<&Node, With<SpecsPanel>>().iter(world).collect::<Vec<_>>();
+    ensure(panels.len() == usize::from(index != 2), "无装备参数时不得显示详情面板")?;
+    if let Some(panel) = panels.first() {
+        let inset = crate::ui::resources::dimens::hud::INSET;
+        ensure(panel.left == px(inset) && panel.top == px(crate::ui::resources::dimens::title_bar::HEIGHT + inset),
+            "详情面板应使用 HUD 安全边距")?;
+    }
+    let hints = world.query_filtered::<&Node, With<AimHelp>>().iter(world).collect::<Vec<_>>();
+    ensure(hints.len() == usize::from(index == 1), "仅玩家坦克显示按键提示")?;
+    if let Some(hint) = hints.first() {
+        ensure(hint.bottom == px(crate::ui::resources::dimens::hud::INSET),
+            "按键提示应使用 HUD 底部安全边距")?;
+    }
     let expected = match index { 0 => 2, 1 => 6, _ => 0 };
     ensure(
         rows == expected,
@@ -197,7 +210,7 @@ pub(super) fn run_detail_scenario(
             "详情标题不是实际型号",
         )?;
         let view = app.world().resource::<View>();
-        let (yaw, pitch) = if index == 1 { (135.0, -22.0) } else { (-28.0, -14.0) };
+        let (yaw, pitch) = (135.0, -22.0);
         ensure(
             view.yaw == yaw && view.pitch == pitch && view.zoom == 1.0 && !view.dragging,
             "进入详情未重置视角",
@@ -213,6 +226,29 @@ pub(super) fn run_detail_scenario(
         )?;
         assert_dims(app)?;
         assert_specs(app, index)?;
+        let preview = &app.world().resource::<Previews>().items[0];
+        let bottom = preview.bounds.unwrap().0.y - preview.pivot.y;
+        let floor = app.world_mut()
+            .query_filtered::<&Transform, With<crate::pages::detail::StudioFloor>>()
+            .single(app.world())
+            .map_err(|error| error.to_string())?.translation.y;
+        ensure(if index == 0 { bottom - floor > 0.01 } else { (bottom - floor).abs() < 0.01 },
+            "弹丸应悬浮，坦克应贴近展示地面")?;
+        // 三种模型都通过真实鼠标输入检查环绕方向和地面上方的俯仰限位。
+        pointer(app, Some(Vec2::new(650.0, 400.0)));
+        app.world_mut().resource_mut::<MenuMouse>().0 = true;
+        update(app, STEP, None)?;
+        pointer(app, Some(Vec2::new(650.0, 460.0)));
+        update(app, STEP, None)?;
+        ensure(app.world().resource::<View>().pitch < pitch, "向下拖拽应抬高环绕相机")?;
+        pointer(app, Some(Vec2::new(650.0, 200.0)));
+        update(app, STEP, None)?;
+        ensure(app.world().resource::<View>().pitch == -8.0, "环绕相机不得进入地面")?;
+        app.world_mut().resource_mut::<MenuMouse>().0 = false;
+        update(app, STEP, None)?;
+        app.world_mut().resource_mut::<View>().pitch = pitch;
+        pointer(app, None);
+        update(app, STEP, None)?;
         capture(
             app,
             &options.output.join(format!("detail-{index}-initial.png")),

@@ -35,9 +35,9 @@
         <div class="viewer" id="viewer" aria-label="模型查看区，按住鼠标拖拽可旋转模型"></div>
 
         <!-- 三维尺寸改由模型边沿的三条尺寸轴标注（见下方脚本）；
-             左侧保留分类眉题，规格行由本页脚本按模型参数生成（两列网格，与游戏一致）；
+             有参数时显示分类眉题和规格行，无参数时隐藏整块面板；
              玩家坦克追加 WASD 瞄准提示行，占位模型可实际驱动 -->
-        <div class="specs">
+        <div class="specs" hidden>
           <div class="specs__id">
             <p class="eyebrow" id="detail-cat">坦克</p>
           </div>
@@ -93,6 +93,7 @@
       const specs = document.querySelector('.specs');
       const specRows = document.getElementById('spec-rows');
       function appendSpecs(rows) {
+        if (rows.length) specs.hidden = false;
         for (const { label, value, unit } of rows) {
           const spec = document.createElement('div');
           spec.className = 'spec';
@@ -104,6 +105,8 @@
         }
       }
       if (ci === 0) {
+        specRows.classList.add('specs__rows--single');
+        specs.hidden = false;
         specs.setAttribute('aria-busy', 'true');
         Ammunition.load().then(config => appendSpecs([
           { label: '初速', value: config.muzzle_velocity, unit: 'm/s' },

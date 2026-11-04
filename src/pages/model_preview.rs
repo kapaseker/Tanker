@@ -183,6 +183,85 @@ pub(crate) fn spawn(
     });
 }
 
+/// 为独占渲染层创建暖主光和冷补光；灯具距离与光通量随模型尺寸缩放。
+pub(crate) fn spawn_studio_lights(
+    commands: &mut Commands,
+    layer: usize,
+    scale: f32,
+    detail: bool,
+) {
+    let lights: &[(f32, f32)] = if detail {
+        &[(-0.8, 6_000_000.0), (0.0, 10_000_000.0), (0.8, 6_000_000.0)]
+    } else {
+        &[(0.0, 22_000_000.0)]
+    };
+    for &(offset, intensity) in lights {
+        commands.spawn((
+            PreviewEntity,
+            RenderLayers::layer(layer),
+            SpotLight {
+                color: Color::srgb(1.0, 0.91, 0.80),
+                intensity: intensity * scale * scale,
+                range: 34.0 * scale,
+                radius: 1.25 * scale,
+                inner_angle: 0.30,
+                outer_angle: 1.05,
+                shadow_maps_enabled: true,
+                ..default()
+            },
+            Transform::from_translation(Vec3::new(-3.0 + offset, 11.0, -7.0) * scale)
+                .looking_at(Vec3::ZERO, Vec3::Y),
+        ));
+    }
+    for (color, illuminance, position) in [
+        (Color::srgb(0.86, 0.91, 1.0), 3300.0, Vec3::new(5.0, 3.0, 6.0)),
+        (Color::srgb(1.0, 0.85, 0.67), 1000.0, Vec3::new(7.0, 4.0, -2.0)),
+    ] {
+        commands.spawn((
+            PreviewEntity,
+            RenderLayers::layer(layer),
+            DirectionalLight { color, illuminance, ..default() },
+            Transform::from_translation(position * scale).looking_at(Vec3::ZERO, Vec3::Y),
+        ));
+    }
+}
+
+/// 待网格测量完成后为画廊卡片安装独立摄影灯。
+pub(crate) fn light_gallery(
+    mut commands: Commands,
+    previews: Res<Previews>,
+    installed: Query<(), With<GalleryStudio>>,
+    mut cameras: Query<&mut EnvironmentMapLight>,
+) {
+    if !installed.is_empty() || previews.items.iter().any(|p| p.size.is_none() && p.error.is_none()) {
+        return;
+    }
+    commands.spawn((PreviewEntity, GalleryStudio));
+    for (index, preview) in previews.items.iter().enumerate() {
+        if preview.error.is_some() {
+            continue;
+        }
+        let scale = (preview.size.unwrap().max_element() / 11.0).max(0.03);
+        spawn_studio_lights(&mut commands, index + 1, scale, false);
+        if let Ok(mut environment) = cameras.get_mut(preview.camera) {
+            environment.intensity = 85.0;
+        }
+        if index == 0 {
+            commands.entity(preview.camera).insert(bevy::camera::ShadowLodOrigin);
+        }
+        commands.entity(preview.camera).insert((
+            bevy::camera::Hdr,
+            bevy::light::ShadowFilteringMethod::Gaussian,
+            bevy::pbr::ScreenSpaceAmbientOcclusion::default(),
+            AmbientLight { color: Color::srgb(0.82, 0.87, 1.0), brightness: 260.0, ..default() },
+        ));
+    }
+}
+
+/// 画廊灯光已安装标记，与预览资源一起清理。
+#[derive(Component)]
+pub(crate) struct GalleryStudio;
+
 /// 层级展开时累计局部变换与显隐；返回 (实体, 局部仿射, 是否可见)。
 pub(crate) fn model_nodes(world: &World, content: Entity) -> Vec<(Entity, Affine3A, bool)> {
     let mut result = Vec::new();

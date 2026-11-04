@@ -46,6 +46,19 @@ pub(super) fn run_gallery_scenario(
         finish_gallery_transition(app, options, cycle, "enter", GameState::Gallery)?;
         report.push_str(&format!("第{cycle}次进入画廊：过渡完成，alpha=0\n"));
         report.push_str(&crate::pages::gallery::validate(app.world())?);
+        // 每个预览只拥有自己渲染层上的一盏投影主光。
+        let lights: Vec<_> = app.world_mut()
+            .query::<(&SpotLight, &bevy::camera::visibility::RenderLayers)>()
+            .iter(app.world())
+            .filter(|(light, _)| light.shadow_maps_enabled)
+            .map(|(_, layer)| layer.clone())
+            .collect();
+        ensure(lights.len() == 3, "画廊应为三个预览分别创建主光")?;
+        for index in 0..3 {
+            let expected = bevy::camera::visibility::RenderLayers::layer(index + 1);
+            ensure(lights.iter().filter(|layer| **layer == expected).count() == 1,
+                "画廊主光渲染层应互相隔离")?;
+        }
         ensure(
             app.world_mut()
                 .query_filtered::<(), With<crate::pages::index::IndexRoot>>()
