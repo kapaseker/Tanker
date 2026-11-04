@@ -5,13 +5,16 @@
 //! 本模块生成的实体不带任何物理组件，纯表现。
 
 use crate::gameplay::enemy::EnemyDestroyed;
-use bevy::{asset::LoadState, prelude::*, world_serialization::WorldAsset};
+use bevy::{asset::LoadState, audio::{AudioSinkPlayback, SpatialAudioSink, SpatialScale}, prelude::*, world_serialization::WorldAsset};
 use bevy_vox_scene::{FlipbookFrame, FlipbookPlayer, FlipbookRepeatMode};
 use flipbook::FlipbookSpeed;
 use std::time::Duration;
 
 /// 爆炸场景资源路径（相对 assets/）。
 const EXPLOSION_PATH: &str = "effects/explosion.vox";
+/// 击毁音效及其空间距离比例：约 50 米对应音频空间的一单位。
+const EXPLOSION_SOUND_PATH: &str = "sounds/enemy-explosion.mp3";
+const EXPLOSION_SOUND_SCALE: f32 = 0.02;
 /// 单帧显示时长，单位：秒；12 帧 × 1/12 ≈ 1 秒，与 scripts/generate_explosion.py 对齐。
 const EXPLOSION_FRAME_RATE: f32 = 1.0 / 12.0;
 /// 原始动画直径4米，整体放大至8米以覆盖现有6.6米敌方车体；不改变播放时长。
@@ -28,6 +31,14 @@ struct ExplosionLifetime(Timer);
 /// 预加载的爆炸场景句柄：只加载一次，各次命中克隆复用（句柄为引用计数）。
 #[derive(Resource)]
 struct ExplosionAssets(Option<Handle<WorldAsset>>);
+
+/// 音频插件启用时预加载的击毁音效。
+#[derive(Resource)]
+struct ExplosionSound(Handle<AudioSource>);
+
+/// 击毁音效排队状态，用于定位未能建立播放对象的问题。
+#[derive(Component)]
+struct ExplosionSoundDiagnostic(Timer);
 
 /// 离屏战斗开始前预热爆炸资源，命中帧不能因异步加载跳过表现。
 pub(crate) fn assets_ready(world: &World) -> bool {
@@ -53,6 +64,8 @@ impl Plugin for ExplosionPlugin {
                 (
                     spawn_explosions,
                     report_explosion,
+                    report_explosion_sound,
+                    report_sound_playback,
                     arm_explosion_lifetime,
                     despawn_finished_explosions,
                 ),
@@ -61,8 +74,47 @@ impl Plugin for ExplosionPlugin {
 }
 
 /// 启动时预加载爆炸场景，存入资源供各次命中复用。
-fn load_explosion(mut commands: Commands, assets: Res<AssetServer>) {
+fn load_explosion(mut commands: Commands, assets: Res<AssetServer>, audio: Option<Res<Assets<AudioSource>>>) {
     commands.insert_resource(ExplosionAssets(Some(assets.load(EXPLOSION_PATH))));
+    if audio.is_some() {
+        commands.insert_resource(ExplosionSound(assets.load(EXPLOSION_SOUND_PATH)));
+        info!("击毁音效：请求加载 assets/{EXPLOSION_SOUND_PATH}");
+    } else {
+        info!("击毁音效：音频资源未启用，跳过加载（离屏模式属于正常情况）");
+    }
+}
+
+/// 资源加载成功或失败各记录一次。
+fn report_explosion_sound(sound: Option<Res<ExplosionSound>>, server: Res<AssetServer>, mut reported: Local<bool>) {
+    if *reported { return; }
+    let Some(sound) = sound else { return; };
+    match server.get_load_state(&sound.0) {
+        Some(LoadState::Failed(error)) => {
+            error!("击毁音效：资源加载失败：{error}");
+            *reported = true;
+        }
+        Some(LoadState::Loaded) => {
+            info!("击毁音效：资源加载完成：assets/{EXPLOSION_SOUND_PATH}");
+            *reported = true;
+        }
+        _ => {}
+    }
+}
+
+/// 每个音效只记录一次播放对象建立，或排队超过一秒仍未建立。
+fn report_sound_playback(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut sounds: Query<(Entity, &mut ExplosionSoundDiagnostic, Option<&SpatialAudioSink>)>,
+) {
+    for (entity, mut diagnostic, sink) in &mut sounds {
+        if let Some(sink) = sink {
+            info!("击毁音效：播放对象已建立 entity={entity:?} volume={:?} paused={} empty={}；不代表已听到声音", sink.volume(), sink.is_paused(), sink.empty());
+            commands.entity(entity).remove::<ExplosionSoundDiagnostic>();
+        } else if diagnostic.0.tick(time.delta()).just_finished() {
+            warn!("击毁音效：排队超过一秒仍未建立播放对象 entity={entity:?}，请检查资源加载及音频设备日志");
+        }
+    }
 }
 
 /// 成功或失败各只汇报一次；成功须等待依赖资源一并就绪。
@@ -95,8 +147,25 @@ fn spawn_explosions(
     mut commands: Commands,
     mut destroyed: MessageReader<EnemyDestroyed>,
     assets: Res<ExplosionAssets>,
+    sound: Option<Res<ExplosionSound>>,
+    listeners: Query<&GlobalTransform, With<SpatialListener>>,
 ) {
     for event in destroyed.read() {
+        if let Some(sound) = &sound {
+            let entity = commands.spawn((
+                crate::gameplay::session::SessionEntity,
+                ExplosionSoundDiagnostic(Timer::from_seconds(1.0, TimerMode::Once)),
+                Transform::from_translation(event.position),
+                AudioPlayer::new(sound.0.clone()),
+                PlaybackSettings::DESPAWN.with_spatial(true)
+                    .with_spatial_scale(SpatialScale::new(EXPLOSION_SOUND_SCALE)),
+            )).id();
+            let positions: Vec<_> = listeners.iter().map(|listener| listener.translation()).collect();
+            let distance = positions.first().map(|position| position.distance(event.position));
+            info!("击毁音效：已排队 entity={entity:?} 声源={:?} 听者={positions:?} 距离米={distance:?} 空间比例={EXPLOSION_SOUND_SCALE}", event.position);
+        } else {
+            warn!("击毁音效：未加载音频资源，无法排队；离屏禁用音频时属于正常情况");
+        }
         let Some(handle) = assets.0.as_ref() else {
             warn!("爆炸资源尚未就绪，跳过本次爆炸");
             continue;
@@ -186,6 +255,55 @@ mod tests {
     };
     use bevy_vox_scene::VoxScenePlugin;
     use std::time::Instant;
+
+    /// 真实音频设备上的无窗口链路检查；播放对象建立不等于人耳已听到声音。
+    #[test]
+    #[ignore = "需要可用的系统音频设备，会播放爆炸声"]
+    fn headless_explosion_audio_reaches_device_and_finishes() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default(), TransformPlugin, bevy::audio::AudioPlugin::default()))
+            .add_message::<EnemyDestroyed>()
+            .insert_resource(ExplosionAssets(None))
+            .add_systems(Update, spawn_explosions);
+        let handle = app.world().resource::<AssetServer>().load(EXPLOSION_SOUND_PATH);
+        app.insert_resource(ExplosionSound(handle));
+        app.world_mut().spawn((SpatialListener::default(), Transform::default()));
+        app.world_mut().write_message(EnemyDestroyed { position: Vec3::new(40.0, 0.0, 0.0) });
+        let start = Instant::now();
+        let mut heard_by_backend = false;
+        while start.elapsed() < Duration::from_secs(8) {
+            app.update();
+            let world = app.world_mut();
+            heard_by_backend |= world.query::<&SpatialAudioSink>().iter(world).next().is_some();
+            if heard_by_backend && world.query::<&AudioPlayer>().iter(world).next().is_none() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("无窗口音效检查超时：播放对象曾建立={heard_by_backend}；请检查音频设备和资源加载日志");
+    }
+
+    /// 每次击毁独立生成空间音频，音频不依赖动画根的寿命。
+    #[test]
+    fn destruction_spawns_independent_spatial_sounds() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins).add_message::<EnemyDestroyed>()
+            .insert_resource(ExplosionAssets(Some(Handle::default())))
+            .insert_resource(ExplosionSound(Handle::default()))
+            .add_systems(Update, spawn_explosions);
+        app.world_mut().write_message(EnemyDestroyed { position: Vec3::X });
+        app.world_mut().write_message(EnemyDestroyed { position: Vec3::Z });
+        app.update();
+        let world = app.world_mut();
+        let sounds: Vec<_> = world.query::<(&Transform, &PlaybackSettings, &AudioPlayer)>()
+            .iter(world).map(|(transform, settings, _)| {
+                assert!(settings.spatial);
+                assert!(matches!(settings.mode, bevy::audio::PlaybackMode::Despawn));
+                transform.translation
+            }).collect();
+        assert_eq!(sounds.len(), 2);
+        assert!(sounds.contains(&Vec3::X) && sounds.contains(&Vec3::Z));
+    }
 
     /// 返回唯一可见帧，重叠显示多帧也视为动画回归。
     fn visible_frame(world: &World, player: Entity) -> usize {

@@ -50,6 +50,7 @@ pub(crate) fn setup(
     // 每局固定从「第三人称主槽」开始，清除上一局可能残留的视角状态。
     commands.insert_resource(gunner::ViewMode::default());
     commands.insert_resource(gunner::GunnerOptics::default());
+    commands.spawn((SessionEntity, gunner::ExplosionListener, SpatialListener::default()));
     let size = Vec3::from_array(tanks.player.collision.size);
     let tank_transform = Transform::from_xyz(0.0, size.y / 2.0, 0.0);
     commands.spawn((

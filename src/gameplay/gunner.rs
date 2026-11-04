@@ -25,6 +25,10 @@ use bevy::{
 #[derive(Component)]
 pub(crate) struct GunnerCamera;
 
+/// 跟随当前主视角的唯一空间音频听者。
+#[derive(Component)]
+pub(crate) struct ExplosionListener;
+
 /// 视角槽位状态：哪台相机占据主槽（全屏）。
 #[derive(Resource, Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub(crate) enum ViewMode {
@@ -132,10 +136,29 @@ impl Plugin for GunnerCameraPlugin {
             .init_resource::<GunnerOptics>()
             .add_systems(
                 PostUpdate,
-                (sync_gunner_camera.after(TransformSystems::Propagate), measure_range.after(sync_gunner_camera)),
+                (sync_gunner_camera.after(TransformSystems::Propagate), measure_range.after(sync_gunner_camera),
+                 sync_explosion_listener.after(sync_gunner_camera)),
             )
             .add_systems(Update, (update_view_slots, update_zoom.run_if(in_state(GameState::InGame))))
             .add_systems(OnEnter(GameState::InGame), spawn_pip_frame);
+    }
+}
+
+/// 复制主相机世界位姿，切换视角时不创建第二个听者。
+fn sync_explosion_listener(
+    mode: Res<ViewMode>,
+    follow: Query<&GlobalTransform, (With<FollowCamera>, Without<ExplosionListener>)>,
+    gunner: Query<&GlobalTransform, (With<GunnerCamera>, Without<ExplosionListener>)>,
+    mut listener: Query<&mut GlobalTransform, With<ExplosionListener>>,
+) {
+    let camera = match *mode {
+        ViewMode::ThirdPersonMain => follow.single(),
+        ViewMode::GunnerMain => gunner.single(),
+    };
+    if let (Ok(camera), Ok(mut listener)) = (camera, listener.single_mut()) {
+        if *listener != *camera {
+            *listener = *camera;
+        }
     }
 }
 
@@ -324,6 +347,28 @@ fn update_view_slots(
 mod tests {
     use super::*;
     use bevy::window::WindowResolution;
+
+    /// 听者随主视角切换，并继续跟踪相机移动。
+    #[test]
+    fn listener_tracks_the_main_camera() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins).init_resource::<ViewMode>()
+            .add_systems(Update, sync_explosion_listener);
+        let follow = GlobalTransform::from(Transform::from_xyz(10.0, 2.0, 3.0));
+        let gunner = GlobalTransform::from(Transform::from_xyz(-4.0, 1.0, 8.0).with_rotation(Quat::from_rotation_y(1.0)));
+        app.world_mut().spawn((FollowCamera, follow));
+        let camera = app.world_mut().spawn((GunnerCamera, gunner)).id();
+        let listener = app.world_mut().spawn((ExplosionListener, GlobalTransform::default())).id();
+        app.update();
+        assert_eq!(*app.world().get::<GlobalTransform>(listener).unwrap(), follow);
+        *app.world_mut().resource_mut::<ViewMode>() = ViewMode::GunnerMain;
+        app.update();
+        assert_eq!(*app.world().get::<GlobalTransform>(listener).unwrap(), gunner);
+        let moved = GlobalTransform::from(Transform::from_xyz(3.0, 4.0, 5.0));
+        *app.world_mut().get_mut::<GlobalTransform>(camera).unwrap() = moved;
+        app.update();
+        assert_eq!(*app.world().get::<GlobalTransform>(listener).unwrap(), moved);
+    }
 
     /// 倍率变化按三秒走完全程，投影须对应真实透视放大倍数。
     #[test]
