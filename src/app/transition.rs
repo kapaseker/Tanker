@@ -347,7 +347,7 @@ pub(crate) fn content_ready(world: &mut World) -> bool {
 }
 
 /// 全黑交接后至少等待八个稳定渲染帧，避免把上一页面的 GPU 就绪值当成新页面。
-fn advance(world: &mut World) {
+pub(super) fn advance(world: &mut World) {
     let delta = world.resource::<Time>().delta_secs();
     let change = world.resource_mut::<Fade>().tick(delta);
     if change {

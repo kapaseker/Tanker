@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 # 基于 crates.io 的 bevy 0.20（不使用父目录源码）。
 # 与 bevy_vox_scene 0.23、轨道相机 0.36 和 Avian 0.8 同步升级。
-bevy = "0.20"
+bevy = { version = "0.20", features = ["mp3"] }
 
 # MagicaVoxel .vox 场景加载（场景图 + 材质/玻璃/云体素），兼容表：bevy 0.20 <-> 0.23
 bevy_vox_scene = "0.23"

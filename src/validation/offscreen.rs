@@ -38,6 +38,7 @@ pub(crate) fn configure(app: &mut App, options: &Options) {
                 ..default()
             })
             .disable::<WinitPlugin>()
+            .disable::<bevy::audio::AudioPlugin>()
             .disable::<PipelinedRenderingPlugin>(),
     );
 }

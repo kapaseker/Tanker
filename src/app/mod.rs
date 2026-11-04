@@ -1,6 +1,7 @@
 //! 应用组装、页面状态与过渡流程。
 
 pub(crate) mod chrome;
+mod music;
 pub(crate) mod state;
 pub(crate) mod transition;
 pub(crate) mod vox_meta;
@@ -49,6 +50,7 @@ pub(super) fn run(options: Option<validation::Options>) -> Result<(), String> {
             }),
             ..default()
         }));
+        app.add_plugins(music::MusicPlugin);
     }
     app.add_plugins((
         // 每份 VOX 的单位（米/格）来自资产旁的 .vox.meta；global_settings 必须保持
