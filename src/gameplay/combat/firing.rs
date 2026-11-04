@@ -82,11 +82,20 @@ impl Plugin for FiringPlugin {
         app.add_message::<ShotImpact>()
             .add_plugins(crate::tank::articulation::ArticulationPlugin)
             .add_systems(Startup, load_bullet)
-            .add_systems(Update, (spawn_barrels, move_bullets, report_bullet))
+            // 弹框打开期间暂停对局：子弹飞行与开火输入一并冻结，取消后继续。
+            .add_systems(
+                Update,
+                (
+                    spawn_barrels,
+                    move_bullets.run_if(not(any_with_component::<crate::ui::widgets::Dialog>)),
+                    report_bullet,
+                ),
+            )
             .add_systems(
                 PostUpdate,
                 fire_bullets
-                    .after(TransformSystems::Propagate),
+                    .after(TransformSystems::Propagate)
+                    .run_if(not(any_with_component::<crate::ui::widgets::Dialog>)),
             );
     }
 }

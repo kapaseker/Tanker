@@ -139,7 +139,16 @@ impl Plugin for GunnerCameraPlugin {
                 (sync_gunner_camera.after(TransformSystems::Propagate), measure_range.after(sync_gunner_camera),
                  sync_explosion_listener.after(sync_gunner_camera)),
             )
-            .add_systems(Update, (update_view_slots, update_zoom.run_if(in_state(GameState::InGame))))
+            // 弹框打开期间暂停对局：视角切换与变焦冻结（物理由 sync_physics 暂停）。
+            .add_systems(
+                Update,
+                (
+                    update_view_slots.run_if(not(any_with_component::<crate::ui::widgets::Dialog>)),
+                    update_zoom
+                        .run_if(in_state(GameState::InGame))
+                        .run_if(not(any_with_component::<crate::ui::widgets::Dialog>)),
+                ),
+            )
             .add_systems(OnEnter(GameState::InGame), spawn_pip_frame);
     }
 }

@@ -11,7 +11,7 @@ use crate::{
     ui::resources::{
         colors::index as palette, dimens::index as dims, strings, strings_cn::index as labels,
     },
-    ui::widgets::{self, text_font},
+    ui::widgets::{self},
 };
 use bevy::{
     camera::RenderTarget,
@@ -42,6 +42,7 @@ pub(crate) struct MenuItem {
     pub order: usize,
 }
 /// UI 布局角色，使窗口尺寸变化时更新已有节点而不重建实体。
+/// 退出确认弹框由统一控件 widgets::dialog 承担，本页只负责打开与回调。
 #[derive(Component, Clone, Copy)]
 enum Part {
     Title,
@@ -52,65 +53,6 @@ enum Part {
     Arrow(usize),
     Hint,
     Background,
-    /// 退出确认弹框：遮罩、面板、标题、按钮与按钮内文字/键帽（按角色着色）。
-    DialogOverlay,
-    DialogPanel,
-    DialogTitle,
-    DialogButton(ExitDialogSelection),
-    DialogLabel(ExitDialogSelection),
-    DialogKey(ExitDialogSelection),
-}
-
-/// 退出确认弹框的选中按钮；打开时默认确认（打开即 Enter 可退出，与设计稿一致）。
-#[derive(Component, Clone, Copy, PartialEq, Eq, Default, Debug)]
-pub(crate) enum ExitDialogSelection {
-    #[default]
-    Confirm,
-    Cancel,
-}
-
-/// 首页退出确认弹框状态：遮罩 + 居中面板 + 取消/确认按钮（design.md 退出链路）。
-/// 弹框存在期间独占全部键鼠输入；选中态由本组件维护，确认后淡出黑场退出。
-#[derive(Component)]
-pub(crate) struct ExitDialog {
-    /// 当前选中按钮；←→/Tab/Y/N 切换，Enter 触发。
-    pub(crate) selection: ExitDialogSelection,
-    /// 遮罩与面板的淡入进度秒数（120ms ease-out）。
-    pub(crate) elapsed: f32,
-    /// [取消, 确认] 两个按钮的选中过渡进度 0..=1（220ms 连续过渡）。
-    pub(crate) select: [f32; 2],
-    /// 左键按下的按钮；按下与松开都落在同一按钮内才触发（与网页原生点击一致）。
-    pub(crate) pressed: Option<ExitDialogSelection>,
-}
-
-/// 弹框面板与 [取消, 确认] 按钮的固定矩形；输入命中与视觉布局共用同一来源。
-/// 面板水平垂直居中，最小宽 880px；按钮行右对齐、gap 32px、贴面板右下。
-fn exit_dialog_rects(viewport: Vec2) -> (Rect, [Rect; 2]) {
-    let button_height = dims::EXIT_BUTTON_HEIGHT;
-    let panel_height = dims::EXIT_TITLE_PAD_TOP + dims::EXIT_TITLE_SIZE * dims::EXIT_TITLE_LINE_HEIGHT
-        + dims::EXIT_TITLE_PAD_BOTTOM
-        + button_height
-        + dims::EXIT_ACTIONS_PAD_BOTTOM;
-    let panel = Rect::from_center_size(
-        viewport * 0.5,
-        Vec2::new(dims::EXIT_PANEL_WIDTH, panel_height),
-    );
-    let bottom = panel.max.y - dims::EXIT_ACTIONS_PAD_BOTTOM;
-    let confirm = Rect::from_corners(
-        Vec2::new(
-            panel.max.x - dims::EXIT_ACTIONS_PAD_RIGHT - dims::EXIT_BUTTON_WIDTH,
-            bottom - button_height,
-        ),
-        Vec2::new(panel.max.x - dims::EXIT_ACTIONS_PAD_RIGHT, bottom),
-    );
-    let cancel = Rect::from_corners(
-        Vec2::new(
-            confirm.min.x - dims::EXIT_ACTIONS_GAP - dims::EXIT_BUTTON_WIDTH,
-            bottom - button_height,
-        ),
-        Vec2::new(confirm.min.x - dims::EXIT_ACTIONS_GAP, bottom),
-    );
-    (panel, [cancel, confirm])
 }
 
 /// 焦点与鼠标悬停互相独立，初始没有焦点；点击不把展示馆变成游戏入口。
@@ -186,8 +128,6 @@ fn css_viewport(pixels: Vec2, scale_factor: f32) -> Vec2 {
 /// scale_factor 乘以 zoom 统一处理，本结构只按 CSS 视口决定整体居中位置。
 #[derive(Resource, Clone, Copy)]
 pub(crate) struct Layout {
-    /// 整体缩放后的 CSS 视口；弹框等居中浮层的矩形按此计算。
-    pub viewport: Vec2,
     pub hero: Vec2,
     pub menu_y: f32,
     pub menu_width: f32,
@@ -219,7 +159,6 @@ impl Layout {
         );
         let cube_height = cube_width * dims::CUBE_VIEWBOX_HEIGHT / dims::CUBE_VIEWBOX_WIDTH;
         Self {
-            viewport: size,
             hero,
             menu_y: hero.y + menu_y_offset,
             menu_width: hero_width.min(dims::MENU_MAX_WIDTH),
@@ -329,8 +268,12 @@ impl Plugin for IndexPlugin {
                 Update,
                 // 输入先于视觉；menu_input 必须在标题栏 interaction 之后：弹框打开
                 // 期间要吞掉它记下的 Tab 焦点，取消后再把焦点归还电源框。
+                // 同时必须在 widgets::dialog_input 之前：弹框打开期间由 menu_input
+                // 先行让出输入（控件在其后取消时，本系统已经返回，不会 Esc 重开）。
                 (
-                    menu_input.after(crate::ui::widgets::title_bar::interaction),
+                    menu_input
+                        .after(crate::ui::widgets::title_bar::interaction)
+                        .before(crate::ui::widgets::dialog_input),
                     update_visual,
                 )
                     .chain()
@@ -531,123 +474,32 @@ fn spawn_index(
         });
 }
 
-/// 生成退出确认弹框：全屏遮罩 + 居中面板 + 取消/确认按钮（含键帽提示）。
-/// 坐标由 update_visual 按 exit_dialog_rects 逐帧更新，这里只建结构与静态样式。
+/// 生成退出确认弹框：复用统一对话框控件；标题与按钮文案取自页面文案，
+/// 确认走 ContentOnly 淡出（标题栏/直角常驻），取消把焦点归还电源框。
+/// 输入状态机、淡入与选中过渡均由 widgets::dialog 内建。
 fn spawn_exit_dialog(commands: &mut Commands, root: Entity, font: &UiFont) {
-    commands.entity(root).with_children(|parent| {
-        parent
-            .spawn((
-                ExitDialog {
-                    selection: ExitDialogSelection::default(),
-                    elapsed: 0.0,
-                    // 初始选中确认：确认按钮直接呈现薄荷态（打开即 Enter 可退出）。
-                    select: [0.0, 1.0],
-                    pressed: None,
-                },
-                Part::DialogOverlay,
-                Node {
-                    position_type: PositionType::Absolute,
-                    width: percent(100),
-                    height: percent(100),
-                    ..default()
-                },
-                BackgroundColor(Color::NONE),
-            ))
-            .with_children(|overlay| {
-                overlay
-                    .spawn((
-                        Part::DialogPanel,
-                        Node {
-                            position_type: PositionType::Absolute,
-                            border: UiRect::all(px(dimens::BORDER_WIDTH)),
-                            ..default()
-                        },
-                        BackgroundColor(Color::NONE),
-                        BorderColor::all(Color::NONE),
-                    ))
-                    .with_children(|panel| {
-                        panel.spawn((
-                            Part::DialogTitle,
-                            Text::new(labels::EXIT_TITLE),
-                            text_font(font, dims::EXIT_TITLE_SIZE, 700.0),
-                            LineHeight::RelativeToFont(dims::EXIT_TITLE_LINE_HEIGHT),
-                            TextColor(Color::NONE),
-                            Node {
-                                position_type: PositionType::Absolute,
-                                ..default()
-                            },
-                        ));
-                        // 取消在左、确认在右；标签与键帽颜色随选中态过渡。
-                        for (role, label, key) in [
-                            (ExitDialogSelection::Cancel, labels::EXIT_CANCEL, strings::KEY_N),
-                            (
-                                ExitDialogSelection::Confirm,
-                                labels::EXIT_CONFIRM,
-                                strings::KEY_Y,
-                            ),
-                        ] {
-                            panel
-                                .spawn((
-                                    Part::DialogButton(role),
-                                    Node {
-                                        position_type: PositionType::Absolute,
-                                        // 1px 四边描边；内容弹性居中（网页 padding 8px 16px）。
-                                        border: UiRect::all(px(dimens::BORDER_WIDTH)),
-                                        display: Display::Flex,
-                                        align_items: AlignItems::Center,
-                                        justify_content: JustifyContent::Center,
-                                        column_gap: px(dims::EXIT_BUTTON_GAP),
-                                        ..default()
-                                    },
-                                    BorderColor::all(Color::NONE),
-                                ))
-                                .with_children(|button| {
-                                    button.spawn((
-                                        Part::DialogLabel(role),
-                                        Text::new(label),
-                                        text_font(font, dims::EXIT_BUTTON_SIZE, 700.0),
-                                        TextColor(Color::NONE),
-                                    ));
-                                    // 弹框键帽复用统一控件；Part 标记让本页按选中态驱动
-                                    // 文字与边框色（标题栏 interaction 只重着色自己的键帽）。
-                                    widgets::spawn_keycap(
-                                        button,
-                                        font,
-                                        key,
-                                        Part::DialogKey(role),
-                                    );
-                                });
-                        }
-                    });
-            });
-    });
-}
-
-/// 取消路径：移除弹框并把焦点归还电源框（对齐 transition.js closeDialog 与 design.md 退出链路）。
-/// 焦点是单资源：同时清除菜单的键盘高亮，避免电源框与菜单项双选中。
-fn close_exit_dialog(
-    commands: &mut Commands,
-    entity: Entity,
-    title_bar: &mut crate::ui::widgets::TitleBarState,
-    input: &mut MenuInput,
-) {
-    commands.entity(entity).despawn();
-    input.keyboard_focus = false;
-    title_bar.set_focus(true);
-}
-
-/// 确认路径：移除弹框并沿用切页节奏淡出，黑场后退出进程（见 transition 的 ToExit）。
-fn confirm_exit(
-    commands: &mut Commands,
-    entity: Entity,
-    fade: &mut Fade,
-    next: &mut NextState<GameState>,
-) {
-    commands.entity(entity).despawn();
-    // 退出淡出对齐设计稿：标题栏/直角常驻，仅内容压黑（ContentOnly）。
-    if fade.begin(GameState::ToExit, true) {
-        next.set(GameState::ToExit);
-    }
+    widgets::spawn_dialog(
+        commands,
+        Some(root),
+        font,
+        labels::EXIT_TITLE,
+        labels::EXIT_CANCEL,
+        labels::EXIT_CONFIRM,
+        // 首页 UI 挂在内容相机上，弹框随 zoom 整体缩放（CSS 像素视口）。
+        true,
+        // 确认路径：沿用切页节奏淡出，黑场后退出进程（见 transition 的 ToExit）。
+        |world: &mut World| {
+            if world.resource_mut::<Fade>().begin(GameState::ToExit, true) {
+                world.resource_mut::<NextState<GameState>>().set(GameState::ToExit);
+            }
+        },
+        // 取消路径：焦点归还电源框（对齐 transition.js closeDialog 与 design.md 退出链路）。
+        // 焦点是单资源：同时清除菜单的键盘高亮，避免电源框与菜单项双选中。
+        |world: &mut World| {
+            world.resource_mut::<widgets::TitleBarState>().set_focus(true);
+            world.resource_mut::<MenuInput>().keyboard_focus = false;
+        },
+    );
 }
 
 /// 屏幕坐标命中测试显式支持内部纹理相机；Bevy 默认 UI 拾取只接受窗口相机。
@@ -663,7 +515,7 @@ fn menu_input(
     mut commands: Commands,
     mut title_bar: ResMut<crate::ui::widgets::TitleBarState>,
     mut activated: MessageReader<crate::ui::widgets::TitleBarBackActivated>,
-    mut dialogs: Query<(Entity, &mut ExitDialog)>,
+    dialogs: Query<(), With<widgets::Dialog>>,
     roots: Query<Entity, With<IndexRoot>>,
     font: Res<UiFont>,
 ) {
@@ -675,69 +527,13 @@ fn menu_input(
     if !fade.accepts_input() {
         return;
     }
-    // 退出确认弹框独占输入：导航与确认只作用于最上层界面（design.md 导航与焦点归属）。
-    if let Ok((entity, mut dialog)) = dialogs.single_mut() {
-        // 吞掉标题栏 interaction 为本帧 Esc/点击写下的激活消息：否则关闭弹框后
-        // 残留消息会在下一帧重新打开弹框。
+    // 退出确认弹框独占输入：导航与确认只作用于最上层界面；弹框的按键、指针、
+    // 选中态与回调全部由 widgets::dialog 处理，本页只负责打开（design.md 导航与焦点归属）。
+    // 在 dialog_input 之前运行：取消当帧仍能看到弹框，避免 Esc 关闭后同帧重开。
+    // 必须消费本帧标题栏激活消息（各系统 reader 游标独立）：否则 Esc 关闭弹框后
+    // 残留消息会在下一帧被本系统读到并重新打开弹框。
+    if !dialogs.is_empty() {
         activated.read().for_each(drop);
-        // ←→/Tab/Y/N 仅切换选中；Enter 触发选中按钮；Esc 取消；其余按键一律吞掉。
-        if keys.just_pressed(KeyCode::KeyY) {
-            dialog.selection = ExitDialogSelection::Confirm;
-        } else if keys.just_pressed(KeyCode::KeyN) {
-            dialog.selection = ExitDialogSelection::Cancel;
-        } else if keys.any_just_pressed([KeyCode::ArrowLeft, KeyCode::ArrowRight, KeyCode::Tab]) {
-            dialog.selection = match dialog.selection {
-                ExitDialogSelection::Confirm => ExitDialogSelection::Cancel,
-                ExitDialogSelection::Cancel => ExitDialogSelection::Confirm,
-            };
-        } else if keys.just_pressed(KeyCode::Escape) {
-            close_exit_dialog(&mut commands, entity, &mut title_bar, &mut input);
-            return;
-        } else if keys.just_pressed(KeyCode::Enter) {
-            match dialog.selection {
-                ExitDialogSelection::Confirm => {
-                    confirm_exit(&mut commands, entity, &mut fade, &mut next);
-                }
-                ExitDialogSelection::Cancel => {
-                    close_exit_dialog(&mut commands, entity, &mut title_bar, &mut input);
-                }
-            }
-            return;
-        }
-        // 鼠标：按下与松开都落在同一按钮内才触发；松开在面板外取消（含拖出）。
-        let point = input.pointer.filter(|_| mouse.just_released(MouseButton::Left));
-        if let Some(point) = point {
-            let (panel, buttons) = exit_dialog_rects(layout.viewport);
-            let hit = buttons
-                .iter()
-                .position(|rect| rect.contains(point))
-                .map(|i| if i == 0 { ExitDialogSelection::Cancel } else { ExitDialogSelection::Confirm });
-            let pressed = dialog.pressed.take();
-            if pressed.is_some() && pressed == hit {
-                match hit.unwrap() {
-                    ExitDialogSelection::Confirm => {
-                        confirm_exit(&mut commands, entity, &mut fade, &mut next);
-                    }
-                    ExitDialogSelection::Cancel => {
-                        close_exit_dialog(&mut commands, entity, &mut title_bar, &mut input);
-                    }
-                }
-            } else if !panel.contains(point) {
-                close_exit_dialog(&mut commands, entity, &mut title_bar, &mut input);
-            }
-            return;
-        }
-        // 弹框期间按下按钮记录目标；标题栏 Tab 焦点被吞掉。
-        if mouse.just_pressed(MouseButton::Left) {
-            if let Some(point) = input.pointer {
-                let (_, buttons) = exit_dialog_rects(layout.viewport);
-                dialog.pressed = buttons
-                    .iter()
-                    .position(|rect| rect.contains(point))
-                    .map(|i| if i == 0 { ExitDialogSelection::Cancel } else { ExitDialogSelection::Confirm });
-            }
-        }
-        title_bar.set_focus(false);
         return;
     }
     // 稳态点击电源框或 Esc → 打开退出确认弹框；已存在时为空操作。
@@ -822,7 +618,6 @@ fn update_visual(
         Option<&mut BorderColor>,
         Option<&mut BackgroundColor>,
     )>,
-    mut dialogs: Query<&mut ExitDialog>,
     mut materials: ResMut<Assets<IndexBackground>>,
 ) {
     // 窗口模式取窗口物理尺寸与缩放系数；离屏无窗口时纹理尺寸即物理尺寸、缩放系数为 1。
@@ -848,25 +643,7 @@ fn update_visual(
     }
     // CSS 在 sRGB 中做透明合成；线性渲染器需降低 alpha 才得到相同的细线亮度。
     let line = palette::SEPARATOR;
-    // 弹框淡入与选中态进度；无弹框时使用中性值（弹框 Part 也不存在）。
-    let mut dialog_fade = 1.0;
-    let mut dialog_select = [0.0f32, 1.0];
-    if let Ok(mut dialog) = dialogs.single_mut() {
-        dialog.elapsed = (dialog.elapsed + time.delta_secs()).min(dims::EXIT_FADE_IN);
-        // 120ms ease-out：用 easeOutCubic 近似 CSS cubic-bezier(0,0,0.58,1)。
-        let t = dialog.elapsed / dims::EXIT_FADE_IN;
-        dialog_fade = 1.0 - (1.0 - t).powi(3);
-        // 选中态 220ms 连续过渡，移入移出从当前进度继续。
-        let step = time.delta_secs() / 0.22;
-        for (i, role) in
-            [ExitDialogSelection::Cancel, ExitDialogSelection::Confirm].into_iter().enumerate()
-        {
-            let target = f32::from(dialog.selection == role);
-            dialog.select[i] += (target - dialog.select[i]).clamp(-step, step);
-        }
-        dialog_select = dialog.select;
-    }
-    for (part, mut node, color, font, spacing, border, bg) in &mut nodes {
+    for (part, mut node, color, font, spacing, border, _bg) in &mut nodes {
         let mut rect = None;
         match *part {
             Part::Background => {}
@@ -955,71 +732,6 @@ fn update_visual(
                 node.top =
                     px(l.menu_y + dimens::BORDER_WIDTH + l.row_height * labels::ACTIONS.len() as f32 + dims::HINT_GAP);
             }
-            Part::DialogOverlay => {
-                rect = Some((0.0, 0.0, l.viewport.x, l.viewport.y));
-                if let Some(mut bg) = bg {
-                    bg.0 = palette::EXIT_OVERLAY
-                        .with_alpha(palette::EXIT_OVERLAY.alpha() * dialog_fade);
-                }
-            }
-            Part::DialogPanel => {
-                let (panel, _) = exit_dialog_rects(l.viewport);
-                rect = Some((panel.min.x, panel.min.y, panel.width(), panel.height()));
-                if let Some(mut bg) = bg {
-                    bg.0 = palette::EXIT_PANEL.with_alpha(dialog_fade);
-                }
-                if let Some(mut border) = border {
-                    *border = BorderColor::all(palette::EXIT_OUTLINE.with_alpha(dialog_fade));
-                }
-            }
-            Part::DialogTitle => {
-                let (panel, _) = exit_dialog_rects(l.viewport);
-                // 标题是面板子节点：绝对定位坐标相对面板左上角。
-                rect = Some((
-                    dims::EXIT_TITLE_PAD_X,
-                    dims::EXIT_TITLE_PAD_TOP,
-                    panel.width() - dims::EXIT_TITLE_PAD_X * 2.0,
-                    dims::EXIT_TITLE_SIZE * dims::EXIT_TITLE_LINE_HEIGHT,
-                ));
-                if let Some(mut color) = color {
-                    color.0 = colors::ON_SURFACE.with_alpha(dialog_fade);
-                }
-            }
-            Part::DialogButton(role) => {
-                let (panel, buttons) = exit_dialog_rects(l.viewport);
-                let i = usize::from(role == ExitDialogSelection::Confirm);
-                let r = &buttons[i];
-                // 按钮同样是面板子节点：换算为面板内相对坐标。
-                rect = Some((r.min.x - panel.min.x, r.min.y - panel.min.y, r.width(), r.height()));
-                let p = dialog_select[i];
-                if let Some(mut bg) = bg {
-                    // 透明底过渡到薄荷填充：sRGB 分量插值，与网页一致。
-                    bg.0 = Color::NONE.mix(&colors::PRIMARY, p).with_alpha(p * dialog_fade);
-                }
-                if let Some(mut border) = border {
-                    *border = BorderColor::all(
-                        palette::EXIT_OUTLINE
-                            .mix(&colors::PRIMARY, p)
-                            .with_alpha(dialog_fade),
-                    );
-                }
-            }
-            Part::DialogLabel(role) | Part::DialogKey(role) => {
-                let i = usize::from(role == ExitDialogSelection::Confirm);
-                let p = dialog_select[i];
-                if let Some(mut color) = color {
-                    color.0 = colors::ON_SURFACE
-                        .mix(&colors::ON_PRIMARY, p)
-                        .with_alpha(dialog_fade);
-                }
-                if let Some(mut border) = border {
-                    *border = BorderColor::all(
-                        colors::KBD_BORDER
-                            .mix(&colors::KBD_BORDER_ACTIVE, p)
-                            .with_alpha(dialog_fade),
-                    );
-                }
-            }
         }
         if let Some((x, y, w, h)) = rect {
             node.left = px(x);
@@ -1059,7 +771,7 @@ pub(crate) fn assets_ready(world: &mut World) -> bool {
 mod tests {
     use super::*;
     use crate::app::transition::Phase;
-    use crate::ui::widgets::TitleBarState;
+    use crate::ui::widgets::{Dialog, TitleBarState};
     use bevy::ecs::system::RunSystemOnce;
 
     /// 弹框输入测试的公共场景：布局、输入资源、返回框状态与一个 IndexRoot 实体。
@@ -1081,16 +793,26 @@ mod tests {
         world
     }
 
-    /// 以“仅该键刚按下”的输入运行一次菜单输入系统。
+    /// 以“仅该键刚按下”的输入依序运行菜单输入与弹框输入系统（与调度序一致）。
     fn press(world: &mut World, key: KeyCode) {
         let mut keys = ButtonInput::default();
         keys.press(key);
         world.insert_resource(keys);
         world.insert_resource(ButtonInput::<MouseButton>::default());
         world.run_system_once(menu_input).unwrap();
+        world.run_system_once(widgets::dialog_input).unwrap();
+        world.flush();
+        // 离屏无窗口：手动推进弹框计时并固定视口，模拟已淡入一帧后的稳定态。
+        if let Some(entity) = dialog_entity(world) {
+            let mut dialog = world.get_mut::<Dialog>(entity).unwrap();
+            dialog.elapsed = 0.1;
+            dialog.viewport = Vec2::new(1280.0, 720.0);
+        }
     }
 
-    /// 在指定 CSS 坐标完成一次按下与松开（两次系统运行）。
+    /// 在指定 CSS 坐标完成一次按下与松开：menu_input（弹框打开时让出）后，
+    /// 弹框输入按“先按下帧、再松开帧”各跑一次，与真实调度序一致。
+    /// release 必须落在同一个 ButtonInput 实例内，just_released 才会生效。
     fn click(world: &mut World, point: Vec2) {
         world.resource_mut::<MenuInput>().pointer = Some(point);
         let mut mouse = ButtonInput::default();
@@ -1098,18 +820,33 @@ mod tests {
         world.insert_resource(mouse);
         world.insert_resource(ButtonInput::<KeyCode>::default());
         world.run_system_once(menu_input).unwrap();
-        world.resource_mut::<MenuInput>().pointer = Some(point);
-        world.resource_mut::<ButtonInput<MouseButton>>().clear();
+        if let Some(entity) = dialog_entity(world) {
+            world.get_mut::<Dialog>(entity).unwrap().pointer = Some(point);
+        }
+        world.run_system_once(widgets::dialog_input).unwrap();
+        if let Some(entity) = dialog_entity(world) {
+            world.get_mut::<Dialog>(entity).unwrap().pointer = Some(point);
+        }
+        let mut mouse = ButtonInput::default();
+        mouse.press(MouseButton::Left);
+        mouse.release(MouseButton::Left);
+        world.insert_resource(mouse);
+        world.run_system_once(widgets::dialog_input).unwrap();
+        world.flush();
+    }
+
+    /// 当前弹框实体；None 表示弹框不存在。
+    fn dialog_entity(world: &mut World) -> Option<Entity> {
         world
-            .resource_mut::<ButtonInput<MouseButton>>()
-            .release(MouseButton::Left);
-        world.run_system_once(menu_input).unwrap();
+            .query_filtered::<Entity, With<Dialog>>()
+            .iter(world)
+            .next()
     }
 
     /// 当前弹框选中值；None 表示弹框不存在。
-    fn dialog(world: &mut World) -> Option<ExitDialogSelection> {
+    fn dialog(world: &mut World) -> Option<widgets::DialogSelection> {
         world
-            .query::<&ExitDialog>()
+            .query::<&Dialog>()
             .iter(world)
             .next()
             .map(|d| d.selection)
@@ -1127,15 +864,14 @@ mod tests {
     fn exit_dialog_opens_on_escape_with_confirm_selected() {
         let mut world = dialog_world();
         press(&mut world, KeyCode::Escape);
-        assert_eq!(dialog(&mut world), Some(ExitDialogSelection::Confirm));
+        assert_eq!(dialog(&mut world), Some(widgets::DialogSelection::Confirm));
         // 电源框激活（点击返回框）同样打开；已打开时不重复生成。
         world.resource_mut::<ButtonInput<KeyCode>>().clear();
         world
             .resource_mut::<Messages<crate::ui::widgets::TitleBarBackActivated>>()
             .write(crate::ui::widgets::TitleBarBackActivated);
         world.run_system_once(menu_input).unwrap();
-        let count = world.query::<&ExitDialog>().iter(&world).count();
-        assert_eq!(count, 1);
+        assert_eq!(dialog_entity(&mut world).iter().count(), 1);
     }
 
     /// ←→/Tab/Y/N 只切换选中；Enter 触发选中按钮：确认进入退出淡出，取消关闭弹框。
@@ -1144,15 +880,15 @@ mod tests {
         let mut world = dialog_world();
         press(&mut world, KeyCode::Escape);
         press(&mut world, KeyCode::ArrowLeft);
-        assert_eq!(dialog(&mut world), Some(ExitDialogSelection::Cancel));
+        assert_eq!(dialog(&mut world), Some(widgets::DialogSelection::Cancel));
         press(&mut world, KeyCode::KeyN);
-        assert_eq!(dialog(&mut world), Some(ExitDialogSelection::Cancel));
+        assert_eq!(dialog(&mut world), Some(widgets::DialogSelection::Cancel));
         press(&mut world, KeyCode::KeyY);
-        assert_eq!(dialog(&mut world), Some(ExitDialogSelection::Confirm));
+        assert_eq!(dialog(&mut world), Some(widgets::DialogSelection::Confirm));
         press(&mut world, KeyCode::Tab);
-        assert_eq!(dialog(&mut world), Some(ExitDialogSelection::Cancel));
+        assert_eq!(dialog(&mut world), Some(widgets::DialogSelection::Cancel));
         press(&mut world, KeyCode::ArrowRight);
-        assert_eq!(dialog(&mut world), Some(ExitDialogSelection::Confirm));
+        assert_eq!(dialog(&mut world), Some(widgets::DialogSelection::Confirm));
         // Enter 触发确认：进入退出淡出，弹框随黑场流程移除。
         press(&mut world, KeyCode::Enter);
         assert_eq!(dialog(&mut world), None);
@@ -1196,12 +932,12 @@ mod tests {
         assert!(!world.resource::<MenuInput>().keyboard_focus);
         assert_eq!(world.resource::<MenuInput>().focus, Some(1));
         // 归还焦点后 Enter 归属电源框 → 重新打开弹框（对齐设计稿）。
-        // press 辅助只跑 menu_input，需手动注入 interaction 本应写下的激活消息。
+        // 手动注入 interaction 本应写下的激活消息，模拟点击返回框。
         world
             .resource_mut::<Messages<crate::ui::widgets::TitleBarBackActivated>>()
             .write(crate::ui::widgets::TitleBarBackActivated);
         press(&mut world, KeyCode::Enter);
-        assert_eq!(dialog(&mut world), Some(ExitDialogSelection::Confirm));
+        assert_eq!(dialog(&mut world), Some(widgets::DialogSelection::Confirm));
     }
 
     /// 菜单持有键盘焦点时 Enter 归属菜单确认，同帧的电源框激活消息被吞掉、不误开弹框。
@@ -1231,7 +967,7 @@ mod tests {
             .resource_mut::<Messages<crate::ui::widgets::TitleBarBackActivated>>()
             .write(crate::ui::widgets::TitleBarBackActivated);
         press(&mut world, KeyCode::Enter);
-        assert_eq!(dialog(&mut world), Some(ExitDialogSelection::Confirm));
+        assert_eq!(dialog(&mut world), Some(widgets::DialogSelection::Confirm));
     }
 
     /// 弹框打开期间吞掉菜单导航与点击，防止穿透到开始游戏/展示馆。
@@ -1256,7 +992,7 @@ mod tests {
     /// 鼠标点击按钮直接触发；面板外点击取消；按钮上按下拖出面板也取消。
     #[test]
     fn exit_dialog_mouse_triggers_buttons_and_cancels_outside() {
-        let (panel, [cancel, confirm]) = exit_dialog_rects(Vec2::new(1280.0, 720.0));
+        let (panel, [cancel, confirm]) = widgets::dialog::dialog_rects(Vec2::new(1280.0, 720.0));
         let mut world = dialog_world();
         press(&mut world, KeyCode::Escape);
         // 点击确认 → 进入退出淡出。
@@ -1287,32 +1023,21 @@ mod tests {
         world.insert_resource(mouse);
         world.insert_resource(ButtonInput::<KeyCode>::default());
         world.run_system_once(menu_input).unwrap();
-        world.resource_mut::<MenuInput>().pointer = Some(outside);
-        world.resource_mut::<ButtonInput<MouseButton>>().clear();
-        world
-            .resource_mut::<ButtonInput<MouseButton>>()
-            .release(MouseButton::Left);
-        world.run_system_once(menu_input).unwrap();
+        let entity = dialog_entity(&mut world).unwrap();
+        world.get_mut::<Dialog>(entity).unwrap().pointer = Some(confirm.center());
+        world.run_system_once(widgets::dialog_input).unwrap();
+        world.get_mut::<Dialog>(entity).unwrap().pointer = Some(outside);
+        let mut mouse = ButtonInput::default();
+        mouse.press(MouseButton::Left);
+        mouse.release(MouseButton::Left);
+        world.insert_resource(mouse);
+        world.run_system_once(widgets::dialog_input).unwrap();
+        world.flush();
         assert_eq!(dialog(&mut world), None);
         assert_eq!(world.resource::<Fade>().phase, Phase::Idle);
-        let _ = panel;
     }
 
-    /// 弹框矩形：面板居中、按钮行贴右下、命中区与视觉常量一致。
-    #[test]
-    fn exit_dialog_rects_center_panel_and_align_buttons_bottom_right() {
-        let viewport = Vec2::new(1280.0, 720.0);
-        let (panel, [cancel, confirm]) = exit_dialog_rects(viewport);
-        assert!((panel.center() - viewport * 0.5).length() < 1e-4);
-        assert_eq!(panel.width(), dims::EXIT_PANEL_WIDTH);
-        // 确认在右、取消在左，间距 32px，均贴面板右下角。
-        assert!((confirm.max.x - (panel.max.x - dims::EXIT_ACTIONS_PAD_RIGHT)).abs() < 1e-4);
-        assert!((confirm.max.y - (panel.max.y - dims::EXIT_ACTIONS_PAD_BOTTOM)).abs() < 1e-4);
-        assert!((cancel.max.x - (confirm.min.x - dims::EXIT_ACTIONS_GAP)).abs() < 1e-4);
-        assert_eq!(cancel.width(), dims::EXIT_BUTTON_WIDTH);
-        assert!(panel.contains(confirm.center()));
-        assert!(panel.contains(cancel.center()));
-    }
+    /// 弹框矩形断言已随统一控件迁至 widgets::dialog 的测试模块。
 
     /// 材质必须传原始 sRGB 而非线性值，且保留网格与阴影的合成强度。
     #[test]

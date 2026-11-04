@@ -233,6 +233,8 @@ pub(crate) fn attach_ui_target(
         Or<(
             With<HudRoot>,
             With<crate::gameplay::sight::SightRoot>,
+            // 局内退出确认弹框（独立全屏根）与 HUD 同源：随主槽相机全屏渲染。
+            With<crate::ui::widgets::Dialog>,
         )>,
     >,
 ) {

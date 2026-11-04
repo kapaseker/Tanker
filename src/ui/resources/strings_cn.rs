@@ -31,6 +31,14 @@ pub(crate) mod index {
     pub(crate) const EXIT_CONFIRM: &str = "确认";
 }
 
+/// 对局内可见文案；HUD 动态数值由 hud 自行格式化。
+pub(crate) mod in_game {
+    /// 局内 Esc 确认弹框标题与按钮标签（默认“是”，与首页退出链路一致）。
+    pub(crate) const EXIT_TITLE: &str = "确认退出本局比赛吗？";
+    pub(crate) const EXIT_CANCEL: &str = "否";
+    pub(crate) const EXIT_CONFIRM: &str = "是";
+}
+
 /// 详情尺寸与装备规格标签；分类与单位沿用画廊文案。
 pub(crate) mod detail {
     /// 只在豹 2A6 详情显示的操作说明。

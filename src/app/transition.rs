@@ -1,6 +1,11 @@
 //! 菜单与对局共用画面合成：内容相机写入纹理，最终相机统一混合到黑色。
 
 use super::state::GameState;
+use crate::ui::{
+    font::UiFont,
+    resources::strings_cn,
+    widgets,
+};
 use avian3d::prelude::{Physics, PhysicsTime};
 use bevy::{
     asset::{AssetId, UntypedAssetLoadFailedEvent},
@@ -154,7 +159,11 @@ impl Plugin for TransitionPlugin {
             .add_systems(Update, resize_target)
             .add_systems(
                 Update,
-                (report_asset_failure, return_to_index, advance, rearm_input).chain(),
+                // 必须先于弹框输入系统：确认/取消当帧弹框仍在，Esc 重开被本系统跳过；
+                // 若本系统后运行，取消后同帧看不到弹框会立即直退首页。
+                (report_asset_failure, return_to_index, advance, rearm_input)
+                    .chain()
+                    .before(widgets::dialog_input),
             )
             .add_systems(OnEnter(GameState::Index), crate::gameplay::session::cleanup);
         app.sub_app_mut(RenderApp)
@@ -285,8 +294,13 @@ fn resize_target(
 }
 
 /// 黑场等资产时冻结物理，防止正常帧率下玩家在地形加载前落穿地面。
-fn sync_physics(fade: Res<Fade>, mut physics: ResMut<Time<Physics>>) {
-    if fade.phase == Phase::Waiting {
+/// 退出确认弹框打开期间同样冻结：对局处于暂停态，否/是之后才继续或返回首页。
+fn sync_physics(
+    fade: Res<Fade>,
+    dialogs: Query<(), With<crate::ui::widgets::Dialog>>,
+    mut physics: ResMut<Time<Physics>>,
+) {
+    if fade.phase == Phase::Waiting || !dialogs.is_empty() {
         physics.pause();
         physics.advance_by(std::time::Duration::ZERO);
     } else {
@@ -294,18 +308,55 @@ fn sync_physics(fade: Res<Fade>, mut physics: ResMut<Time<Physics>>) {
     }
 }
 
-/// Esc 只在对局可操作时生效；首次请求立即锁输入。
+/// 局内 Esc 打开“是否退出本局比赛”确认弹框（否/是，默认“是”，与首页退出链路一致）；
+/// TestScene 仍为 Esc 直退。弹框打开期间本系统跳过 Esc，确认回调才发起黑场过渡。
 fn return_to_index(
+    mut commands: Commands,
+    font: Res<UiFont>,
     keys: Res<ButtonInput<KeyCode>>,
     state: Res<State<GameState>>,
     mut next: ResMut<NextState<GameState>>,
     mut fade: ResMut<Fade>,
+    dialogs: Query<(), With<crate::ui::widgets::Dialog>>,
+    sessions: Query<Entity, With<crate::gameplay::session::SessionEntity>>,
 ) {
-    if matches!(state.get(), GameState::InGame | GameState::TestScene)
+    if matches!(state.get(), GameState::TestScene)
         && keys.just_pressed(KeyCode::Escape)
         && fade.begin(GameState::Index, false)
     {
         next.set(GameState::ToIndex);
+        return;
+    }
+    if matches!(state.get(), GameState::InGame)
+        && keys.just_pressed(KeyCode::Escape)
+        && dialogs.is_empty()
+        && fade.accepts_input()
+    {
+        // 生成独立全屏弹框根；对局 UI 按窗口逻辑像素 1:1（css_zoom=false），
+        // 相机由 hud::attach_ui_target 逐帧补挂，生命周期随 SessionEntity 清理。
+        let entity = crate::ui::widgets::spawn_dialog(
+            &mut commands,
+            None,
+            &font,
+            strings_cn::in_game::EXIT_TITLE,
+            strings_cn::in_game::EXIT_CANCEL,
+            strings_cn::in_game::EXIT_CONFIRM,
+            false,
+            // “是”：整体黑场返回首页（design.md 首页↔对局交接为 FullBlack）。
+            |world: &mut World| {
+                if world
+                    .resource_mut::<Fade>()
+                    .begin(GameState::Index, false)
+                {
+                    world.resource_mut::<NextState<GameState>>().set(GameState::ToIndex);
+                }
+            },
+            // “否”：仅关闭弹框，对局恢复（sync_physics 由弹框移除自动解除暂停）。
+            |_: &mut World| {},
+        );
+        if let Ok(session) = sessions.single() {
+            commands.entity(entity).insert(ChildOf(session));
+        }
     }
 }
 

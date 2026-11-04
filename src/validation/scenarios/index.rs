@@ -115,7 +115,7 @@ pub(super) fn run_index_scenario(
     // 退出确认弹框：Esc 打开（初始选中确认）→ ← 切取消 → Esc 取消关闭。
     let dialog_count = |app: &mut App| {
         app.world_mut()
-            .query::<&crate::pages::index::ExitDialog>()
+            .query::<&crate::ui::widgets::Dialog>()
             .iter(app.world())
             .count()
     };
@@ -124,11 +124,11 @@ pub(super) fn run_index_scenario(
     ensure(dialog_count(app) == 1, "Esc 未打开退出确认弹框")?;
     ensure(
         app.world_mut()
-            .query::<&crate::pages::index::ExitDialog>()
+            .query::<&crate::ui::widgets::Dialog>()
             .single(app.world())
             .unwrap()
             .selection
-            == crate::pages::index::ExitDialogSelection::Confirm,
+            == crate::ui::widgets::DialogSelection::Confirm,
         "弹框初始应选中确认",
     )?;
     for _ in 0..12 {
@@ -141,11 +141,11 @@ pub(super) fn run_index_scenario(
     }
     ensure(
         app.world_mut()
-            .query::<&crate::pages::index::ExitDialog>()
+            .query::<&crate::ui::widgets::Dialog>()
             .single(app.world())
             .unwrap()
             .selection
-            == crate::pages::index::ExitDialogSelection::Cancel,
+            == crate::ui::widgets::DialogSelection::Cancel,
         "← 未切换选中到取消",
     )?;
     capture(app, &options.output.join("exit-dialog-cancel.png"))?;
@@ -160,7 +160,7 @@ pub(super) fn run_index_scenario(
         "取消弹框不应触发页面过渡",
     )?;
     report.push_str("退出确认弹框：打开/切换选中/取消关闭断言通过；已保存 exit-dialog*.png\n");
-    // 取消弹框后焦点归还电源框（设计行为，见 close_exit_dialog）：此时直接 Enter
+    // 取消弹框后焦点归还电源框（设计行为，见首页取消回调）：此时直接 Enter
     // 会重新打开弹框而非确认菜单。模拟真实用户连按三次 ↓（项 0→1→2→0）把焦点导航
     // 回菜单第一项并清除电源框焦点，后续 Enter 才走菜单确认链路。
     for _ in 0..3 {

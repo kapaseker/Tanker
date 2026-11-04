@@ -45,7 +45,8 @@ pub(crate) struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, read_aim_input);
+        // 弹框打开期间暂停对局：瞄准输入冻结，取消后从原角度继续。
+        app.add_systems(Update, read_aim_input.run_if(not(any_with_component::<crate::ui::widgets::Dialog>)));
         app.add_systems(
             FixedPostUpdate,
             // 输入写入先于驾驶消费，且两者都不越过物理步进。

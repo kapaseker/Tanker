@@ -1,8 +1,12 @@
 //! 跨页面复用的 UI 控件；只依赖 bevy 与 ui::resources，不引用页面/游戏状态（见 ADR-0002）。
+pub(crate) mod dialog;
 pub(crate) mod frame;
 pub(crate) mod keycap;
 pub(crate) mod title_bar;
 
+pub(crate) use dialog::{
+    dialog_input, dialog_visual, spawn_dialog, Dialog, DialogSelection,
+};
 pub(crate) use frame::{CornerOrientation, spawn_frame_corner, spawn_version_text};
 pub(crate) use keycap::spawn_keycap;
 pub(crate) use title_bar::{
@@ -23,7 +27,15 @@ impl Plugin for WidgetsPlugin {
             // 启动即处于菜单（Index），标题栏默认可交互；chrome 按状态切换该门控。
             .insert_resource(TitleBarActive(true))
             .add_message::<TitleBarBackActivated>()
-            .add_systems(Update, (layout_frame, interaction, drag_window));
+            .add_systems(Update, (layout_frame, interaction, drag_window))
+            // 弹框输入先于视觉：开场当帧守卫依赖 elapsed 由视觉系统推进；
+            // 输入在标题栏 interaction 之后运行以吞掉其当帧写下的激活消息。
+            .add_systems(
+                Update,
+                (dialog_input, dialog_visual)
+                    .chain()
+                    .after(title_bar::interaction),
+            );
     }
 }
 
