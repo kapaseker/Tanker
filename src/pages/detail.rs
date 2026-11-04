@@ -18,9 +18,12 @@ use crate::{
     },
 };
 use bevy::{
-    camera::{RenderTarget, ScalingMode, visibility::RenderLayers},
+    asset::RenderAssetUsages,
+    camera::{Hdr, RenderTarget, ScalingMode, ShadowLodOrigin, visibility::RenderLayers},
     core_pipeline::tonemapping::{DebandDither, Tonemapping},
+    image::{CompressedImageFormats, ImageSampler, ImageType},
     input::mouse::{MouseScrollUnit, MouseWheel},
+    light::{EnvironmentMapLight, NotShadowCaster, ShadowFilteringMethod},
     material::AlphaMode,
     prelude::*,
     text::LetterSpacing,
@@ -43,6 +46,44 @@ struct DetailUiRoot;
 /// 模型子树内的 3D 尺寸轴组标记；轴线随预览实体一起清理。
 #[derive(Component)]
 pub(crate) struct DimAxes;
+/// 内置地面纹理在首次进入详情前解码，随后由通用 GPU 揭幕检查等待上传。
+#[derive(Resource)]
+struct ShowroomGround {
+    color: Handle<Image>,
+    normal: Handle<Image>,
+}
+
+impl FromWorld for ShowroomGround {
+    fn from_world(world: &mut World) -> Self {
+        let mut images = world.resource_mut::<Assets<Image>>();
+        let mut load = |bytes: &[u8], srgb| {
+            images.add(
+                Image::from_buffer(
+                    bytes,
+                    ImageType::Extension("png"),
+                    CompressedImageFormats::NONE,
+                    srgb,
+                    ImageSampler::Default,
+                    RenderAssetUsages::default(),
+                )
+                .expect("内置展示地面应为有效 PNG"),
+            )
+        };
+        Self {
+            color: load(include_bytes!("../../assets/image/detail/concrete.png"), true),
+            normal: load(include_bytes!("../../assets/image/detail/concrete-normal.png"), false),
+        }
+    }
+}
+
+/// 展示预览按 1.5 倍分辨率渲染，缩回 UI 时减轻体素阶梯和履带细线的锯齿。
+pub(crate) const SHOWROOM_RENDER_SCALE: f32 = 1.5;
+/// 将展示车移到参数区右侧，按查看区宽度计。
+const SHOWROOM_VIEW_ORIGIN_X: f32 = 0.57;
+
+/// 展示场景尺寸轴抬升量（米），让长度和宽度线浮在地面上。
+const SHOWROOM_AXIS_LIFT: f32 = dims::AXIS_GAP + 0.02;
+
 /// 屏幕层尺寸标签节点标记；序号与 tag_anchors 的锚点顺序一致。
 #[derive(Component)]
 struct DimTag(usize);
@@ -88,7 +129,7 @@ impl View {
         // 屏幕 Y 向下；相机在 +Z，Bevy 的正 X 旋转使前侧表面下移，不能照搬 CSS 的减号。
         self.pitch = (self.pitch + delta.y * 0.45).clamp(-80.0, 80.0);
     }
-    /// 当前模型姿态；输入与渲染共用，方向测试直接检查相机前侧表面的运动。
+    /// 当前视图旋转；有地面时以逆旋转驱动相机。
     fn orientation(&self) -> Quat {
         // 先绕模型 Y 轴水平转动，再绕屏幕水平轴俯仰，避免偏航后上下拖拽变成侧滚。
         Quat::from_rotation_x(self.pitch.to_radians())
@@ -179,6 +220,7 @@ pub(crate) struct DetailPlugin;
 impl Plugin for DetailPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SelectedModel>()
+            .init_resource::<ShowroomGround>()
             .init_resource::<View>()
             .add_systems(
                 OnEnter(GameState::Detail),
@@ -238,6 +280,12 @@ fn spawn_ui(
     mut materials: ResMut<Assets<IndexBackground>>,
 ) {
     *view = View::default();
+    let showroom = previews.items[0].entry == ENTRIES[1];
+    if showroom {
+        // 炮管朝向画面右侧，给左侧参数区留出空间。
+        view.yaw = 135.0;
+        view.pitch = -22.0;
+    }
     title.external_navigation = false;
     title.set_focus(false);
     commands.entity(previews.items[0].camera).insert((
@@ -264,13 +312,23 @@ fn spawn_ui(
             Msaa::Off,
         ))
         .id();
+    let plate = if showroom {
+        Color::srgba(0.06, 0.055, 0.05, 0.86)
+    } else {
+        Color::NONE
+    };
     let mut palette = IndexPalette::default();
     // 透明网格先在 sRGB 空间混合，保持原型 rgba(200,219,177,0.05) 的低对比。
-    palette.grid = colors::detail::GRID.to_srgba().to_vec4();
+    palette.grid = if showroom { Vec4::ZERO } else { colors::detail::GRID.to_srgba().to_vec4() };
     let background = materials.add(IndexBackground {
         viewport: Vec4::new(1280.0, 720.0, 0.0, 0.0),
         // W > 0 表示平面网格间距，Y 是查看区顶部，替换透视地面。
-        cubes: Vec4::new(0.0, bar::HEIGHT, 0.0, dims::GRID),
+        cubes: Vec4::new(
+            0.0,
+            bar::HEIGHT,
+            0.0,
+            if showroom { 0.0 } else { dims::GRID },
+        ),
         palette,
     });
     commands
@@ -313,8 +371,9 @@ fn spawn_ui(
                 flex_direction: FlexDirection::Column,
                 align_items: AlignItems::FlexStart,
                 row_gap: px(dims::SPECS_GAP),
+                padding: if showroom { UiRect::all(px(12.0)) } else { UiRect::ZERO },
                 ..default()
-            },))
+            }, BackgroundColor(plate)))
                 .with_children(|specs| {
                     specs
                         .spawn((Node {
@@ -352,7 +411,7 @@ fn spawn_ui(
                                 } else {
                                     1
                                 },
-                                dims::SPEC_COLUMN_WIDTH,
+                                if showroom { 156.0 } else { dims::SPEC_COLUMN_WIDTH },
                             ),
                             column_gap: px(dims::SPEC_COLUMN_GAP),
                             row_gap: px(dims::SPECS_GAP),
@@ -437,11 +496,12 @@ fn spawn_ui(
                             strings_cn::detail::TURRET_TRAVERSE,
                         ),
                     ] {
-                        hint.spawn(Node {
+                        hint.spawn((Node {
                             align_items: AlignItems::Center,
                             column_gap: px(index_dims::HINT_ITEM_GAP),
+                            padding: UiRect::axes(px(8.0), px(4.0)),
                             ..default()
-                        })
+                        }, BackgroundColor(plate)))
                         .with_children(|group| {
                             widgets::spawn_keycap(group, &font, first, ());
                             widgets::spawn_keycap(group, &font, second, ());
@@ -466,6 +526,8 @@ fn spawn_axes(
     mut meshes: ResMut<Assets<Mesh>>,
     mut pbr_materials: ResMut<Assets<StandardMaterial>>,
     font: Res<UiFont>,
+    ground: Res<ShowroomGround>,
+    mut environment_maps: Query<&mut EnvironmentMapLight>,
     spawned: Query<(), With<DimAxes>>,
     roots: Query<Entity, With<DetailUiRoot>>,
 ) {
@@ -479,6 +541,84 @@ fn spawn_axes(
     let Ok(ui_root) = roots.single() else {
         return;
     };
+    if p.entry == ENTRIES[1] {
+        // 展示场景与画廊使用独立渲染层，地面取静止模型的履带最低点。
+        commands.spawn((
+            DetailEntity,
+            RenderLayers::layer(1),
+            Mesh3d(meshes.add(
+                Plane3d::default()
+                    .mesh()
+                    .size(140.0, 140.0)
+                    .build()
+                    .with_generated_tangents()
+                    .expect("平面网格应有有效切线"),
+            )),
+            MeshMaterial3d(pbr_materials.add(StandardMaterial {
+                base_color: Color::linear_rgb(0.45, 0.48, 0.51),
+                base_color_texture: Some(ground.color.clone()),
+                normal_map_texture: Some(ground.normal.clone()),
+                perceptual_roughness: 0.8,
+                reflectance: 0.32,
+                ..default()
+            })),
+            Transform::from_xyz(0.0, bounds.0.y - p.pivot.y - 0.002, 0.0),
+        ));
+        // 摄影棚主光在车身附近形成暖色光区，地面亮度随距离衰减。
+        commands.spawn((
+            DetailEntity,
+            RenderLayers::layer(1),
+            SpotLight {
+                color: Color::srgb(1.0, 0.91, 0.80),
+                intensity: 22_000_000.0,
+                range: 34.0,
+                radius: 1.25,
+                inner_angle: 0.30,
+                outer_angle: 1.05,
+                shadow_maps_enabled: true,
+                ..default()
+            },
+            Transform::from_xyz(-3.0, 11.0, -7.0).looking_at(Vec3::ZERO, Vec3::Y),
+        ));
+        // 冷色补光保留阴影中的装甲、轮组与尾部格栅细节。
+        commands.spawn((
+            DetailEntity,
+            RenderLayers::layer(1),
+            DirectionalLight {
+                color: Color::srgb(0.86, 0.91, 1.0),
+                illuminance: 3300.0,
+                ..default()
+            },
+            Transform::from_xyz(5.0, 3.0, 6.0).looking_at(Vec3::ZERO, Vec3::Y),
+        ));
+        if let Ok(mut environment) = environment_maps.get_mut(p.camera) {
+            environment.intensity = 85.0;
+        }
+        let backdrop = Color::srgb(0.33, 0.31, 0.29);
+        commands.entity(p.camera).insert((
+            Camera {
+                order: -3,
+                clear_color: ClearColorConfig::Custom(backdrop),
+                ..default()
+            },
+            Hdr,
+            ShadowLodOrigin,
+            ShadowFilteringMethod::Gaussian,
+            bevy::pbr::ScreenSpaceAmbientOcclusion::default(),
+            // 覆盖对局的强全局环境光，给展示台保留接触阴影和明暗差。
+            AmbientLight {
+                color: Color::srgb(0.82, 0.87, 1.0),
+                brightness: 260.0,
+                ..default()
+            },
+            // 淡化远处地面边缘，低角度下也看不到台面断边。
+            DistanceFog {
+                color: backdrop,
+                falloff: FogFalloff::Linear { start: 43.0, end: 65.0 },
+                ..default()
+            },
+        ));
+    }
     // 三种线材质：主轴、刻度、延长线；无光照混色，跟随模型旋转缩放。
     let materials = [
         StandardMaterial {
@@ -502,14 +642,17 @@ fn spawn_axes(
     ]
     .map(|material| pbr_materials.add(material));
     let segments = axis_segments(bounds);
+    // 旧尺寸线位于履带下方；有地面时把整组标注抬到地面以上。
+    let lift = if p.entry == ENTRIES[1] { SHOWROOM_AXIS_LIFT } else { 0.0 };
     commands.entity(p.content).with_children(|axes| {
-        axes.spawn((DimAxes, Transform::default(), Visibility::Inherited))
+        axes.spawn((DimAxes, Transform::from_xyz(0.0, lift, 0.0), Visibility::Inherited))
             .with_children(|group| {
                 for (center, size, kind) in segments {
                     group.spawn((
                         Mesh3d(meshes.add(Cuboid::from_size(size))),
                         MeshMaterial3d(materials[kind].clone()),
                         Transform::from_translation(center),
+                        NotShadowCaster,
                     ));
                 }
             });
@@ -651,7 +794,7 @@ fn tag_anchors(bounds: (Vec3, Vec3)) -> [Vec3; 3] {
 }
 
 /// 模型空间锚点 → 查看区逻辑坐标。复现预览链路的正交投影：
-/// 相机固定在 +Z 30 米处正对原点（spawn_ui 设定），先取景高再换 NDC 与图像像素，
+/// 将锚点旋入相机坐标系，相机距原点 30 米，再按取景高换算 NDC 与图像像素，
 /// 最后按查看区尺寸映射为逻辑坐标；与网页 projectToScreen 同构。
 #[allow(clippy::too_many_arguments)]
 fn project_to_viewer(
@@ -686,6 +829,7 @@ fn input(
     mut wheel: MessageReader<MouseWheel>,
     mut activated: MessageReader<widgets::TitleBarBackActivated>,
     mut view: ResMut<View>,
+    selected: Res<SelectedModel>,
     images: Res<Assets<Image>>,
     target: Res<SceneTarget>,
     mut fade: ResMut<Fade>,
@@ -730,8 +874,17 @@ fn input(
     }
     if view.dragging {
         if let Some(pointer) = view.pointer {
-            let delta = pointer - view.last;
+            let mut delta = pointer - view.last;
+            let showroom = selected.0 == 1;
+            if showroom {
+                // 相机俯仰与模型俯仰互为逆变换，拖拽仍沿用抓住车体的方向。
+                delta.y = -delta.y;
+            }
             view.rotate(delta);
+            if showroom {
+                // 直接限制输入状态，反向拖拽时镜头立即离开最低仰角。
+                view.pitch = view.pitch.min(-8.0);
+            }
             view.last = pointer;
         } else {
             view.dragging = false;
@@ -793,9 +946,16 @@ fn update_view(
     let p = &previews.items[0];
     let physical = images.get(&target.0).unwrap().size().as_vec2();
     let density = physical.x / size.x;
+    let showroom = p.entry == ENTRIES[1];
+    // 超采样只用于常见窗口尺寸，避免高分屏进一步放大 GPU 纹理与带宽。
+    let render_scale = if showroom && physical.max_element() <= 2560.0 {
+        SHOWROOM_RENDER_SCALE
+    } else {
+        1.0
+    };
     let desired = UVec2::new(
-        physical.x as u32,
-        (height * density).round().max(1.0) as u32,
+        (physical.x * render_scale).round() as u32,
+        (height * density * render_scale).round().max(1.0) as u32,
     );
     let mut image = images.get_mut(&p.image).unwrap();
     if image.size() != desired {
@@ -813,13 +973,31 @@ fn update_view(
             Display::Flex
         };
     }
-    if let Ok(mut model) = transforms.get_mut(p.root) {
-        model.rotation = view.orientation();
-    }
+    let orientation = if showroom {
+        // Bevy 的相机局部 +Z 指向镜头后方，负 X 旋转把镜头抬到地面上方。
+        let orbit = Quat::from_rotation_y(-view.yaw.to_radians())
+            * Quat::from_rotation_x(view.pitch.to_radians());
+        if let Ok(mut camera) = transforms.get_mut(p.camera) {
+            *camera = Transform::from_translation(orbit * Vec3::Z * 30.0).with_rotation(orbit);
+        }
+        orbit.inverse()
+    } else {
+        let orientation = view.orientation();
+        if let Ok(mut model) = transforms.get_mut(p.root) {
+            model.rotation = orientation;
+        }
+        orientation
+    };
     let mut viewport_height = 1.0;
     if let Ok(mut projection) = projections.get_mut(p.camera) {
         if let Projection::Orthographic(ref mut ortho) = *projection {
-            let vh = (p.radius * 2.0 * 1.15 / (size.x / height).min(1.0) / view.zoom).max(0.1);
+            let framing = if showroom { 0.60 } else { 1.15 };
+            if showroom {
+                ortho.viewport_origin.x = SHOWROOM_VIEW_ORIGIN_X;
+                // 低仰角缩小时，近侧地面也要覆盖正交视口底部。
+                ortho.near = -35.0;
+            }
+            let vh = (p.radius * 2.0 * framing / (size.x / height).min(1.0) / view.zoom).max(0.1);
             ortho.scaling_mode = ScalingMode::FixedVertical {
                 viewport_height: vh,
             };
@@ -841,18 +1019,22 @@ fn update_view(
     if let Some(bounds) = p.bounds {
         let viewer = Vec2::new(size.x, height);
         // content 平移为 -pivot（见 model_preview 的测量），投影前还原该平移
-        let pivot_shift = -p.pivot;
+        let lift = if showroom { SHOWROOM_AXIS_LIFT } else { 0.0 };
+        let pivot_shift = -p.pivot + Vec3::Y * lift;
         let image_size = Vec2::new(desired.x as f32, desired.y as f32);
         for (tag, mut node, computed) in &mut tags {
             let mut pos = project_to_viewer(
                 tag_anchors(bounds)[tag.0],
-                view.orientation(),
+                orientation,
                 pivot_shift,
                 viewport_height,
                 image_size.x / image_size.y,
                 image_size,
                 viewer,
             );
+            if showroom {
+                pos.x += (SHOWROOM_VIEW_ORIGIN_X - 0.5) * viewer.x;
+            }
             // 与网页 projectToScreen 的 x*(1+k) 一致：沿“锚点 → 远离屏幕中心”
             // 的离心方向推开 LABEL_PUSH，避免标签压在模型上。
             let to_edge = pos - viewer / 2.0;
@@ -915,6 +1097,7 @@ mod tests {
             .insert_resource(images)
             .insert_resource(SceneTarget(image))
             .init_resource::<View>()
+            .init_resource::<SelectedModel>()
             .init_resource::<Fade>()
             .init_resource::<NextState<GameState>>()
             .init_resource::<ButtonInput<MouseButton>>()

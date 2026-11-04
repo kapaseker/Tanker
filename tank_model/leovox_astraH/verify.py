@@ -67,6 +67,10 @@ def read_vox(path):
             assert node not in nodes
             nodes[node]=('shape',model)
         elif tag==b'RGBA': palette=np.frombuffer(body.take(1024),np.uint8).reshape(256,4)
+        elif tag==b'MATL':
+            index=body.int(); finish=body.dictionary()
+            assert 1 <= index <= 255 and finish['_type']=='_metal'
+            assert all(0 <= float(finish[key]) <= 1 for key in ('_rough','_metal'))
         elif tag==b'LAYR': body.int(); body.dictionary(); assert body.int()==-1
         else: raise AssertionError(f'未知块 {tag!r}')
         assert body.pos==len(body.data),tag

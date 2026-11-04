@@ -197,8 +197,9 @@ pub(super) fn run_detail_scenario(
             "详情标题不是实际型号",
         )?;
         let view = app.world().resource::<View>();
+        let (yaw, pitch) = if index == 1 { (135.0, -22.0) } else { (-28.0, -14.0) };
         ensure(
-            view.yaw == -28.0 && view.pitch == -14.0 && view.zoom == 1.0 && !view.dragging,
+            view.yaw == yaw && view.pitch == pitch && view.zoom == 1.0 && !view.dragging,
             "进入详情未重置视角",
         )?;
         let root = app.world().resource::<Previews>().items[0].root;
@@ -217,6 +218,30 @@ pub(super) fn run_detail_scenario(
             &options.output.join(format!("detail-{index}-initial.png")),
         )?;
         if index == 1 {
+            // 固定右后机位对照地面与照明参考，并确认环绕时车体没有翻转。
+            {
+                let mut view = app.world_mut().resource_mut::<View>();
+                view.yaw = -135.0;
+                view.pitch = -22.0;
+            }
+            update(app, STEP, None)?;
+            let preview = &app.world().resource::<Previews>().items[0];
+            let camera = app.world().get::<Transform>(preview.camera).unwrap();
+            ensure(
+                camera.translation.y > 0.0 && camera.translation.x > 0.0 && camera.translation.z < 0.0,
+                "右后镜头应位于车尾右上方",
+            )?;
+            ensure(
+                app.world().get::<Transform>(preview.root).unwrap().rotation == Quat::IDENTITY,
+                "展示环绕时车体应保持水平",
+            )?;
+            capture(app, &options.output.join("detail-rear-right.png"))?;
+            {
+                let mut view = app.world_mut().resource_mut::<View>();
+                view.yaw = yaw;
+                view.pitch = pitch;
+            }
+            update(app, STEP, None)?;
             use crate::tank::articulation::TankAim;
             let content = app.world().resource::<Previews>().items[0].content;
             let aim = *app
@@ -267,25 +292,26 @@ pub(super) fn run_detail_scenario(
             pointer(app, Some(Vec2::new(650.0, 400.0)));
             app.world_mut().resource_mut::<MenuMouse>().0 = true;
             update(app, STEP, None)?;
-            // 垂直拖拽独立截图，避免混合水平输入掩盖方向反转。
+            // 同一个近侧标记在相机坐标系里的 Y 越小，显示位置越靠下。
+            let camera = app.world().resource::<Previews>().items[0].camera;
+            let camera_transform = app.world().get::<Transform>(camera).unwrap();
+            let near_side = (camera_transform.translation * Vec3::new(1.0, 0.0, 1.0)).normalize();
+            let initial_y = (camera_transform.rotation.inverse() * near_side).y;
+            let marker_y = |app: &App| {
+                (app.world().get::<Transform>(camera).unwrap().rotation.inverse() * near_side).y
+            };
             pointer(app, Some(Vec2::new(650.0, 460.0)));
             update(app, STEP, None)?;
-            ensure(
-                app.world().resource::<View>().pitch > -14.0,
-                "向下拖拽未增加俯仰角",
-            )?;
+            ensure(marker_y(app) < initial_y, "向下拖拽应让近侧标记下移")?;
             capture(app, &options.output.join("detail-drag-down.png"))?;
             pointer(app, Some(Vec2::new(650.0, 340.0)));
             update(app, STEP, None)?;
-            ensure(
-                app.world().resource::<View>().pitch < -14.0,
-                "向上拖拽未减少俯仰角",
-            )?;
+            ensure(marker_y(app) > initial_y, "向上拖拽应让近侧标记上移")?;
             capture(app, &options.output.join("detail-drag-up.png"))?;
             pointer(app, Some(Vec2::new(810.0, 460.0)));
             update(app, STEP, None)?;
             ensure(
-                app.world().resource::<View>().yaw != -28.0
+                app.world().resource::<View>().yaw != yaw
                     && app.world().resource::<View>().dragging,
                 "拖拽未旋转模型",
             )?;
@@ -337,7 +363,7 @@ pub(super) fn run_detail_scenario(
                         .unwrap()
                         .size()
                         .x
-                        == width,
+                        == (width as f32 * crate::pages::detail::SHOWROOM_RENDER_SCALE).round() as u32,
                     "详情模型纹理未随窗口更新",
                 )?;
             }

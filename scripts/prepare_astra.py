@@ -217,8 +217,8 @@ def verify(source, output, assignments, wheel_info):
         assert digest(expected) == digest(restored), f'外观变化：{original}'
         count += len(expected)
     assert count == 5_205_391, f'原装配组丢失或重复：{count}'
-    palette = [c for c in source.raw_chunks if c[0] == 'RGBA']
-    assert all([c for c in out.raw_chunks if c[0] == 'RGBA'] == palette for out in output.values())
+    palette = [c for c in source.raw_chunks if c[0] in {'RGBA', 'MATL'}]
+    assert all([c for c in out.raw_chunks if c[0] in {'RGBA', 'MATL'}] == palette for out in output.values())
     tracks = output['track']
     # 模拟插件的 #label 边界：根帧被忽略，因此命名根必须保持恒等且没有祖先名前缀。
     assert '_name' not in tracks.nodes[0].node_dict

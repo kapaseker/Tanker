@@ -22,11 +22,11 @@ OLIVE, DARK_OLIVE, LIGHT_OLIVE, EDGE = 1, 2, 3, 4
 RUBBER, STEEL, METAL, BLACK, GLASS, GLINT = 5, 6, 7, 8, 9, 10
 RED, AMBER, LAMP, DUST, BROWN = 11, 12, 13, 14, 15
 PALETTE = [
-    (112, 119, 72), (89, 98, 58), (125, 130, 80), (150, 144, 94),
-    (36, 38, 35), (57, 59, 53), (91, 89, 75), (22, 26, 24),
+    (105, 112, 74), (83, 91, 57), (119, 123, 80), (159, 143, 91),
+    (29, 31, 29), (52, 54, 51), (91, 88, 76), (22, 26, 24),
     (39, 59, 62), (111, 143, 145), (139, 39, 28), (198, 126, 33),
     (220, 221, 197), (117, 107, 82), (83, 77, 60),
-    (109, 116, 69), (115, 122, 75), (122, 127, 77), (128, 133, 83),
+    (99, 106, 70), (111, 116, 76), (111, 116, 75), (126, 129, 84),
 ]
 
 
@@ -490,10 +490,12 @@ def finish_paint():
     mask=(GRID==LIGHT_OLIVE)&(neighbors<6)
     GRID[mask & (coarse==0)]=18
     GRID[mask & (coarse==1)]=19
-    hashed=(x*73856093 ^ y*19349663 ^ z*83492791)%101
-    edges=(neighbors<=4)&((GRID==OLIVE)|(GRID==LIGHT_OLIVE))
-    GRID[edges & (hashed<5)]=EDGE
-    GRID[(GRID==STEEL)&(neighbors<=4)&(hashed<8)]=DUST
+    # 相邻两格共用磨损种子，形成可读的小缺口而非单点噪声。
+    chips=((x//2)*73856093 ^ (y//2)*19349663 ^ (z//2)*83492791) % 101
+    armor=(GRID==OLIVE)|(GRID==LIGHT_OLIVE)|((GRID>=16)&(GRID<=19))
+    edges=(neighbors<=4)&armor
+    GRID[edges & (chips<16)]=EDGE
+    GRID[(GRID==STEEL)&(neighbors<=4)&(chips<18)]=DUST
 
 
 def i32(*values):
@@ -545,7 +547,20 @@ def export():
     layer=chunk('LAYR',i32(0)+dictionary({'_name':'Leopard 2A6 / 20mm'})+i32(-1))
     # dot_vox 按读取次序建立节点数组，按节点 ID 排序兼容它的索引语义。
     chunks.sort(key=lambda raw:struct.unpack_from('<i',raw,12)[0])
-    data=b'VOX '+i32(150)+chunk('MAIN',children=chunk('PACK',i32(model_id))+b''.join(models)+root+b''.join(chunks)+layer+chunk('RGBA',colors))
+    # Bevy 的 VOX 加载器为漫反射槽保留默认粗糙度；涂漆与裸钢分槽。
+    finishes = {
+        OLIVE: (0.68, 0.04), DARK_OLIVE: (0.72, 0.04), LIGHT_OLIVE: (0.66, 0.04),
+        16: (0.68, 0.04), 17: (0.68, 0.04), 18: (0.66, 0.04), 19: (0.66, 0.04),
+        EDGE: (0.52, 0.22), STEEL: (0.60, 0.42), METAL: (0.48, 0.55),
+        GLASS: (0.24, 0.12), GLINT: (0.20, 0.12),
+    }
+    materials = b''.join(
+        chunk('MATL', i32(index) + dictionary({
+            '_type': '_metal', '_rough': str(roughness), '_metal': str(metalness),
+        }))
+        for index, (roughness, metalness) in finishes.items()
+    )
+    data=b'VOX '+i32(150)+chunk('MAIN',children=chunk('PACK',i32(model_id))+b''.join(models)+root+b''.join(chunks)+layer+chunk('RGBA',colors)+materials)
     path=OUT/'leopard_2a6.vox'; path.write_bytes(data)
     (OUT/'leopard_2a6.vox.meta').write_text('''(
     meta_format_version: "1.0",
