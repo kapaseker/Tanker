@@ -6,17 +6,16 @@
 
 - 语言/工具链：Rust（edition 2024）、Cargo
 - 引擎：Bevy **0.20**（`bevy = "0.20"`，crates.io），**仅从 crates.io 拉取依赖**（见下方 bevy 源码使用规则）
-- **为何使用 0.20**：当前接入的 `bevy_vox_scene` 0.23 依赖 Bevy 0.20。升级引擎前必须核对所用 voxel 插件的兼容表与依赖声明；版本不兼容可能引入多版本 Bevy，导致编译或集成失败
+- **为何使用 0.20**：当前接入的 `bevy_vox_scene` 0.23 依赖 Bevy 0.20
 - 平台：Linux x11（winit 走 dlopen），3D 渲染走 Vulkan
-- 构建命令：`cargo build`；运行：`cargo run`
-- Git：远端 `origin`（GitHub `kapaseker/Tanker`），默认分支 **master**（非 main）；`Cargo.lock` 纳入版本控制（可执行程序惯例）
-- 运行验证默认使用下述无窗口离屏入口；检查 GPU/后端、资源与依赖错误、退出码及报告。成功启动或资源加载日志不代表测试通过；涉及画面的改动还必须读取生成的关键帧检查实际效果。`cargo run` 的可见窗口仅用于用户主动游玩或明确同意的窗口行为验证
-- ⚠️ **资源根路径**：Bevy 的 `AssetPlugin` 按 `BEVY_ASSET_ROOT` → `CARGO_MANIFEST_DIR` → 可执行文件所在目录 的优先级解析 `assets/`。未设置前两个环境变量时，直接执行 `./target/debug/tanker` 会从 `target/debug/assets/` 查找资源。使用 `cargo run`（Cargo 会注入 `CARGO_MANIFEST_DIR`），或从工程根目录显式设置 `BEVY_ASSET_ROOT="$PWD"`
+- Git：远端 `origin`（GitHub `kapaseker/Tanker`），默认分支 **master**（非 main）
+- 运行验证默认使用下方无窗口离屏入口，验收标准见[测试章节](#无窗口测试与画面验证)；`cargo run` 的可见窗口仅用于用户主动游玩或明确同意的窗口行为验证
+- ⚠️ **资源根路径**：`AssetPlugin` 按 `BEVY_ASSET_ROOT` → `CARGO_MANIFEST_DIR` → 可执行文件所在目录解析 `assets/`；直接执行 `./target/debug/tanker` 会去 `target/debug/assets/` 找资源。用 `cargo run`（Cargo 注入 `CARGO_MANIFEST_DIR`），或设置 `BEVY_ASSET_ROOT="$PWD"`
 
 ## 无窗口测试与画面验证
 
-- 测试、排查 bug 或对比画面效果时，尽量全部在后台完成：纯逻辑优先 `cargo test`，需要实际场景、GPU 或动态效果时使用离屏入口，不自行启动可见游戏窗口、抢占焦点或通过桌面截图验证。
-- 从工程根目录执行：
+- 测试、排查 bug 或对比画面效果时，全部在后台完成：纯逻辑优先 `cargo test`；`scripts/` 生成器用 `python3 -X utf8 -m unittest discover -s scripts -p "test_*.py"`；`web/` 自检用 `node web/ammunition.test.cjs`。浏览器验收（`web/*.browser.test.cjs`、`transition.test.cjs`）先从工程根目录起 `python3 -m http.server 8765 --bind 127.0.0.1`，再按文件头用 `NODE_PATH` 指向本机 Playwright 运行。
+- 需要实际场景、GPU 或动态效果时使用离屏入口，从工程根目录执行：
 
   ```text
   cargo run -- --capture .scratch/capture.png
@@ -24,41 +23,18 @@
   ```
 
 - **预设选择**：按场景、驾驶、射击、瞄准、HUD、模型或页面改动，查 [离屏预设选择](docs/testing/offscreen-presets.md)；覆盖不到的 bug 应扩充离屏预设或逻辑测试。`--capture` 只生成一张默认场景 PNG，不替代预设断言。
-- 离屏模式复用实际游戏场景、资源和渲染配置，固定为 1280×720、随机种子 42、1/60 秒模拟步长。资源、实例与 GPU 管线就绪后先模拟 120 帧落地，再开始场景计帧；截图等待不推进模拟时间。
-- 产物目录自动创建，已有目标产物拒绝覆盖；重复验证使用新路径。只有断言通过且全部图片保存成功才返回 0；资源、渲染、断言、写入错误或启动后超过 180 秒均失败退出，编译不计入超时。
-- 验证时检查退出码和报告，并读取关键帧确认效果；图片不是纯色仅是最低自动检查，不代表模型、材质或动画正确。跨显卡/驱动不要求像素完全一致，固定种子与步长也不保证跨平台物理完全一致。
-- 离屏入口失败或环境缺少 GPU 能力时，说明阻碍，不自动退回可见窗口，也不宣称画面验证通过。后台渲染仍会占用 GPU。
-- 离屏报告使用 llvmpipe 或看不到 GPU 设备时，先按 [GPU 排查](docs/testing/gpu-diagnostics.md)区分沙箱限制与宿主机驱动问题。
-- 焦点、真实键鼠、全屏、显示缩放等必须依赖窗口的验证，先说明原因并取得用户同意；启动窗口前还应遵守后台进程的隐藏窗口要求。
+- 离屏复用实际游戏场景、资源和渲染配置；分辨率、随机种子、模拟步长、落地帧数与超时以 `src/validation/mod.rs` 为准，截图等待不推进模拟时间。
+- 产物目录自动创建，已有目标产物拒绝覆盖；重复验证使用新路径。只有断言通过且全部图片保存成功才返回 0，资源、渲染、断言、写入错误或超时均失败退出。
+- 检查退出码和报告，并读取关键帧确认效果；图片不是纯色仅是最低自动检查，不代表模型、材质或动画正确。跨显卡/驱动不要求像素完全一致，固定种子与步长也不保证跨平台物理完全一致。
+- 离屏入口失败或环境缺少 GPU 能力时，说明阻碍并保留证据，不退回可见窗口，也不宣称画面验证通过；报告使用 llvmpipe 或看不到 GPU 设备时，先按 [GPU 排查](docs/testing/gpu-diagnostics.md) 区分沙箱限制与宿主机驱动问题。后台渲染仍会占用 GPU。
+- 焦点、真实键鼠、全屏、显示缩放等必须依赖窗口的验证，先说明原因并取得用户同意。
 - `drive` 若报告真实地形上的直行阻塞，先读 `docs/testing/offscreen-findings.md` 中的现有发现；保留失败证据，不降低断言，也不在仅要求测试工具时顺带修改游戏碰撞。
 
 ## Bevy 源码使用规则（重要）
 
-本仓库同级目录 `../bevy` 是 Bevy 引擎的完整源码检出，**只读参考，严禁编译或依赖**。
+`../bevy` 是同级的 Bevy 引擎源码检出，只读参考，严禁编译或依赖。本工程只使用 crates.io 的 bevy：禁止 `path = "../bevy"`、`git = ...` 依赖，禁止 `[patch.crates-io]` 或任何形式的源码替换；不在 `../bevy` 内执行 cargo 或修改文件（按规则授权切换 tag 除外）。
 
-### 查阅源码前的版本检查（必须遵守）
-
-只有与本工程 `Cargo.lock` 中 bevy 版本完全一致的源码，才能作为本工程 API 的依据：
-
-- 查阅 `../bevy` 前，执行 `git -C ../bevy status --short --branch` 与 `git -C ../bevy describe --tags --exact-match HEAD`，核对工作区状态和精确 tag；升级本工程依赖后重新检查
-- `../bevy` 缺失或版本不匹配时，使用 Cargo 缓存中对应版本的源码，或 `https://docs.rs/bevy/<锁定版本>`；无需为无关任务切换源码版本
-- 切换 `../bevy` 需用户明确授权，且工作区必须干净。授权后仅切换到匹配的 `v<锁定版本>` tag；本地缺少该 tag 时再 fetch。存在本地改动时停止切换并告知用户，不自动 stash、reset 或清理文件
-
-### 只读约束
-
-- ❌ 禁止在 `Cargo.toml` 中通过 `path = "../bevy"` 或 `git = ...` 引用源码
-- ❌ 禁止以任何形式（workspace patch、`[patch.crates-io]` 指向源码等）替换 crates.io 版本
-- ❌ 不要在 `../bevy` 内执行 cargo 命令或修改其中任何文件（按上述规则授权的 tag 切换除外）
-
-### 推荐用法（查资料时优先级从高到低）
-
-1. **查 API 用法**：通过上述版本检查后，读 `../bevy/examples/` 和 `../bevy/crates/<crate>/src/`；否则使用对应版本的 Cargo 缓存源码或 docs.rs
-2. **查本工程版本 API**：`https://docs.rs/bevy/<锁定版本>`（版本取自 `Cargo.lock`，用于交叉验证）
-3. **查特性定义**：匹配版本源码的 `Cargo.toml` 中 `[features]` 段与 `crates/bevy_internal/Cargo.toml`，或 `https://crates.io/api/v1/crates/bevy/<锁定版本>` 的 `features` 字段
-4. **查变更/差异**：`git -C ../bevy log/diff`，用于确认 API 是否为未发布改动
-5. **查文档**：<https://bevy.org>（最新版本文档，可能领先于本工程所用版本）
-
-> ⚠️ 照抄示例前先核对特性：部分 Bevy 示例需要额外启用默认配置未包含的特性。
+查阅 `../bevy` 或核对 Bevy API、特性、版本差异前，先读 [Bevy 源码查阅规则](docs/agents/bevy-source.md)（版本一致性检查、只读边界、查找优先级）。
 
 ## Voxel 技术栈
 
