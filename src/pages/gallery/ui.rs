@@ -53,7 +53,7 @@ pub(super) enum Part {
     Line(usize),
 }
 
-/// 卡片有两项仍占固定四列中的前两列，不按数据量拉伸。
+/// 分类卡片占固定四列中的对应列，不按数据量拉伸。
 pub(crate) fn card_rect(index: usize, left: f32, scroll: f32) -> Rect {
     let row = ENTRIES[index].category;
     let column = ENTRIES[..index]
@@ -235,7 +235,7 @@ fn absolute() -> Node {
         ..default()
     }
 }
-/// 实际两列网格导航：上下保持列，四边不环绕，首次方向键落首卡。
+/// 固定四列网格导航：上下保持列，四边不环绕，首次方向键落首卡。
 fn navigate(focus: Option<usize>, key: KeyCode) -> usize {
     let Some(index) = focus else {
         return 0;
@@ -544,7 +544,34 @@ pub(super) fn update(
         node.top = px(rect.1);
         node.width = px(rect.2);
         node.height = px(rect.3);
+        if matches!(part, Part::Name(_)) {
+            // 长型号按内容向上换行，底边保持在尺寸行上方，不能覆盖尺寸。
+            node.top = Val::Auto;
+            node.bottom = px(dims::CARD_HEIGHT - dims::NAME_RECT.1 - dims::NAME_RECT.3);
+            node.height = Val::Auto;
+        }
     }
+}
+
+/// 离屏读取排版后的文字边界，防止长型号换行覆盖尺寸；覆盖整体缩放后的布局。
+pub(crate) fn validate_labels(world: &mut World) -> Result<(), String> {
+    let mut bounds = [[None; 2]; ENTRIES.len()];
+    for (part, node, transform) in world.query::<(&Part, &ComputedNode, &UiGlobalTransform)>().iter(world) {
+        let (index, slot) = match *part {
+            Part::Name(index) => (index, 0),
+            Part::Meta(index) => (index, 1),
+            _ => continue,
+        };
+        let half = node.size() * 0.5;
+        bounds[index][slot] = Some((transform.transform_point2(-half).y, transform.transform_point2(half).y));
+    }
+    for (index, [name, meta]) in bounds.into_iter().enumerate() {
+        let (name, meta) = name.zip(meta).ok_or("画廊名称或尺寸节点缺失")?;
+        if name.1 > meta.0 {
+            return Err(format!("画廊型号 {} 与尺寸文字重叠", ENTRIES[index].name()));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -552,7 +579,7 @@ mod tests {
     use super::*;
     use crate::ui::widgets::title_bar::{TitleBarBack, TitleBarState};
     use bevy::render::render_resource::TextureFormat;
-    /// 首类单弹丸，次类双坦克；导航按分类保持列，空位不产生焦点。
+    /// 首类单弹丸，次类三坦克；导航按分类保持列，空位不产生焦点。
     #[test]
     fn ammunition_and_tanks_have_no_phantom_neighbor() {
         assert_eq!(navigate(Some(0), KeyCode::ArrowRight), 0);
@@ -605,7 +632,7 @@ mod tests {
     /// 网格边界不跨列、不环绕；焦点滚入标题栏下方。
     #[test]
     fn navigation_edges_and_focus_reveal() {
-        for (i, expected) in [[0, 0, 0, 1], [1, 2, 0, 1], [1, 2, 2, 2]]
+        for (i, expected) in [[0, 0, 0, 1], [1, 2, 0, 1], [1, 3, 2, 2], [2, 3, 3, 3]]
             .iter()
             .enumerate()
         {

@@ -124,13 +124,14 @@ mod tests {
         validate(Path::new("assets")).expect("受管理 VOX 的单位配置应全部合法");
     }
 
-    /// 当前运行资源逐一列名；坦克及弹丸为 0.02 米/格，爆炸和混凝土为 0.1。
+    /// 当前运行资源逐一列名；M41A1 为 0.01 米/格，其余坦克及弹丸为 0.02，爆炸和混凝土为 0.1。
     #[test]
     fn manifest_lists_expected_units_per_asset() {
-        const MANAGED: [(&str, f32); 10] = [
+        const MANAGED: [(&str, f32); 11] = [
             ("effects/explosion.vox", 0.1),
             ("obstacles/concrete/obstacle.vox", 0.1),
             ("tank/ammunition/apfsds/bullet.vox", 0.02),
+            ("tank/display/m41a1/m41a1.vox", 0.01),
             ("tank/enemy/carapace/body.vox", 0.02),
             ("tank/enemy/carapace/barrel.vox", 0.02),
             ("tank/enemy/carapace/track.vox", 0.02),

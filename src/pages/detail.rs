@@ -178,7 +178,7 @@ fn specs_for(
                 unit: strings::UNIT_ROUNDS_PER_MINUTE,
             },
         ],
-        (1, false) => {
+        (1, false) if entry.is_player() => {
             let aim = tanks
                 .player
                 .articulation
@@ -419,9 +419,7 @@ fn spawn_ui(
                         .spawn(Node {
                             display: Display::Grid,
                             grid_template_columns: RepeatedGridTrack::px(
-                                if previews.items[0].entry.category == 1
-                                    && !previews.items[0].entry.enemy
-                                {
+                                if previews.items[0].entry.is_player() {
                                     2
                                 } else {
                                     1
@@ -489,7 +487,7 @@ fn spawn_ui(
                 text_font(&font, 18.0, 400.0),
                 TextColor(colors::ON_SURFACE),
             ));
-            if previews.items[0].entry.category == 1 && !previews.items[0].entry.enemy {
+            if previews.items[0].entry.is_player() {
                 root.spawn((AimHelp, Node {
                     position_type: PositionType::Absolute,
                     bottom: px(crate::ui::resources::dimens::hud::INSET),
@@ -1279,5 +1277,6 @@ mod tests {
         assert_eq!(rows[7].value, "3900");
         assert_eq!(rows[4].unit, strings::UNIT_PER_SECOND);
         assert!(specs_for(ENTRIES[2], &ammo, &tanks).is_empty());
+        assert!(specs_for(ENTRIES[3], &ammo, &tanks).is_empty());
     }
 }

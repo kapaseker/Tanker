@@ -84,7 +84,7 @@ function buildModel(model) {
   return el;
 }
 
-// 与游戏同步：独立弹丸一项，完整坦克两项；网页盒子只表达构图。
+// 与游戏同步：独立弹丸一项，完整坦克三项；网页盒子只表达构图。
 const CATEGORIES = [
   { name: '子弹', code: 'AM', models: [
     { name: 'APFSDS', tone: 'dark', dims: [0.72, 0.10, 0.10], parts: [{ w: 180, h: 10, d: 10 }, { w: 30, h: 25, d: 4, x: -75 }, { w: 30, h: 4, d: 25, x: -75 }] },
@@ -106,6 +106,8 @@ const CATEGORIES = [
       articulation: { traverse: 40, elevation: 9, minElevation: -9, maxElevation: 20 },
       parts: [{ w: 150, h: 30, d: 72 }, { w: 60, h: 22, d: 48, y: -26, turret: true }, { w: 106, h: 8, d: 8, x: 90, y: -26, turret: true, barrel: true }, { w: 150, h: 20, d: 16, y: 20, z: 28, tone: 'dark' }, { w: 150, h: 20, d: 16, y: 20, z: -28, tone: 'dark' }] },
     { name: 'carapace', tone: 'sand', dims: [9, 3.4, 2.6], parts: [{ w: 132, h: 30, d: 68 }, { w: 54, h: 22, d: 46, y: -26 }, { w: 76, h: 8, d: 8, x: 78, y: -26 }, { w: 132, h: 20, d: 16, y: 20, z: 26, tone: 'dark' }, { w: 132, h: 20, d: 16, y: 20, z: -26, tone: 'dark' }] },
+    // M41A1 为静态展示模型；尺寸包含天线，未定义战斗规格或炮塔输入。
+    { name: 'M41A1 Walker Bulldog', tone: 'sand', dims: [8.12, 3.20, 3.90], parts: [{ w: 146, h: 25, d: 80 }, { w: 76, h: 23, d: 55, y: -24 }, { w: 92, h: 4, d: 4, x: 85, y: -20 }, { w: 14, h: 7, d: 8, x: 135, y: -20 }, { w: 146, h: 22, d: 14, y: 17, z: 32, tone: 'dark' }, { w: 146, h: 22, d: 14, y: 17, z: -32, tone: 'dark' }, { w: 2, h: 40, d: 2, x: -26, y: -54, z: -8 }, { w: 2, h: 40, d: 2, x: -26, y: -54, z: 8 }] },
   ] },
 ];
 

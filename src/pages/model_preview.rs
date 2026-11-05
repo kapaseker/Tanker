@@ -17,10 +17,17 @@ pub(crate) struct Entry {
     pub category: usize,
     pub path: &'static str,
     pub enemy: bool,
+    /// 完整静态 VOX 已包含炮塔和轮履，不挂载玩法部件。
+    pub standalone: bool,
     /// 用户可见的车型或弹种名称。
     pub name: &'static str,
 }
 impl Entry {
+    /// 只有现役玩家车型提供驾驶参数和可活动炮塔。
+    pub fn is_player(self) -> bool {
+        self.category == 1 && !self.enemy && !self.standalone
+    }
+
     /// 画廊卡片与详情标题共用的正式名称。
     pub fn name(self) -> &'static str {
         self.name
@@ -28,24 +35,34 @@ impl Entry {
 }
 
 /// 只登记有真实资产的弹丸和完整坦克，敌方暂无弹丸。
-pub(crate) const ENTRIES: [Entry; 3] = [
+pub(crate) const ENTRIES: [Entry; 4] = [
     Entry {
         category: 0,
         path: visual::PLAYER_BULLET,
         enemy: false,
+        standalone: false,
         name: "APFSDS",
     },
     Entry {
         category: 1,
         path: crate::tank::model::astra::BODY_PATH,
         enemy: false,
+        standalone: false,
         name: "Leopard 2A5",
     },
     Entry {
         category: 1,
         path: "tank/enemy/carapace/body.vox",
         enemy: true,
+        standalone: false,
         name: "carapace",
+    },
+    Entry {
+        category: 1,
+        path: "tank/display/m41a1/m41a1.vox",
+        enemy: false,
+        standalone: true,
+        name: "M41A1 Walker Bulldog",
     },
 ];
 
@@ -112,7 +129,7 @@ pub(crate) fn spawn(
             commands
                 .entity(content)
                 .insert(WorldAssetRoot(assets.load(entry.path)));
-        if entry.category == 1 {
+        if entry.category == 1 && !entry.standalone {
             commands.entity(content).insert(if entry.enemy {
                 track::ENEMY_TRACKS.with_size(Vec3::from_array(tanks.enemy.collision.size))
             } else {
@@ -317,7 +334,7 @@ pub(crate) fn prepare_previews(world: &mut World) {
                 error = Some(failure.0.clone());
             }
         }
-        if preview.entry.category == 1 {
+        if preview.entry.category == 1 && !preview.entry.standalone {
             ready &= world
                 .get::<track::TracksValidated>(preview.content)
                 .is_some();
@@ -480,12 +497,15 @@ pub(crate) fn validate(world: &World) -> Result<String, String> {
             }
         }
         if preview.entry.category == 1
+            && !preview.entry.standalone
             && (visible_phases != 2 || wheels != if preview.entry.enemy { 12 } else { 18 })
         {
             return Err(format!("履带可见相位/轮组异常：{visible_phases}/{wheels}"));
         }
         if preview.entry.category == 1 {
-            let expected = if preview.entry.enemy {
+            let expected = if preview.entry.standalone {
+                8.12
+            } else if preview.entry.enemy {
                 9.0
             } else {
                 // astraH 原始几何：车尾至前向水平炮口共 10.98 米。
@@ -499,8 +519,13 @@ pub(crate) fn validate(world: &World) -> Result<String, String> {
             }
             report.push_str("整车旋转轴：body 根节点原点；不按组合包围盒重新居中\n");
         }
+        let structure = if preview.entry.standalone {
+            "静态整车；五轮/侧及履带闭环由 VOX 回读校验".to_owned()
+        } else {
+            format!("可见相位 {visible_phases}；轮 {wheels}")
+        };
         report.push_str(&format!(
-            "{}：{}，长宽高 {:.1}×{:.1}×{:.1} 米；可见相位 {visible_phases}；轮 {wheels}\n",
+            "{}：{}，长宽高 {:.1}×{:.1}×{:.1} 米；{structure}\n",
             preview.entry.path,
             preview.entry.name(),
             size.x,

@@ -87,10 +87,10 @@ mod tests {
     fn catalog_lists_ammunition_and_whole_tanks() {
         assert_eq!(
             ENTRIES.map(Entry::name).as_slice(),
-            ["APFSDS", "Leopard 2A5", "carapace"]
+            ["APFSDS", "Leopard 2A5", "carapace", "M41A1 Walker Bulldog"]
         );
         assert_eq!(ENTRIES.iter().filter(|e| e.category == 0).count(), 1);
-        assert_eq!(ENTRIES.iter().filter(|e| e.category == 1).count(), 2);
+        assert_eq!(ENTRIES.iter().filter(|e| e.category == 1).count(), 3);
         for entry in ENTRIES {
             assert!(std::path::Path::new("assets").join(entry.path).is_file());
         }
@@ -150,6 +150,7 @@ mod tests {
             Vec3::new(0.72, 0.10, 0.10),
             Vec3::new(10.98, 4.32, 3.76),
             Vec3::new(9.0, 2.6, 3.4),
+            Vec3::new(8.12, 3.90, 3.20),
         ];
         for (index, (preview, size)) in app
             .world()
@@ -239,8 +240,8 @@ mod tests {
             .iter(app.world())
             .map(|i| **i)
             .collect();
-        // 弹丸 1、玩家整车 27、敌方整车 20 个场景根均应回收。
-        assert_eq!(instances.len(), 48);
+        // 弹丸 1、玩家整车 27、敌方整车 20、新静态整车 1 个场景根均应回收。
+        assert_eq!(instances.len(), 49);
         // 模拟真实文件缺失，不修改任何资产；失败项必须结束等待并保留返回能力。
         let missing = app
             .world()

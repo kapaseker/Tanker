@@ -1,0 +1,52 @@
+{
+  "result": "PASS",
+  "checks": [
+    "整车包络 8.12 × 3.20 × 3.90 m，接地 z=0",
+    "33 个命名装配组，不把存储分块误计为部件",
+    "left：五个负重轮",
+    "left：三个托带轮",
+    "left_roadwheel_1：轮径 0.65 m",
+    "left_roadwheel_2：轮径 0.65 m",
+    "left_roadwheel_3：轮径 0.65 m",
+    "left_roadwheel_4：轮径 0.65 m",
+    "left_roadwheel_5：轮径 0.65 m",
+    "left：后主动轮、前诱导轮",
+    "left：履带触地",
+    "left：履带六邻接闭环连续",
+    "left：上履带没有截穿负重轮",
+    "right：五个负重轮",
+    "right：三个托带轮",
+    "right_roadwheel_1：轮径 0.65 m",
+    "right_roadwheel_2：轮径 0.65 m",
+    "right_roadwheel_3：轮径 0.65 m",
+    "right_roadwheel_4：轮径 0.65 m",
+    "right_roadwheel_5：轮径 0.65 m",
+    "right：后主动轮、前诱导轮",
+    "right：履带触地",
+    "right：履带六邻接闭环连续",
+    "right：上履带没有截穿负重轮",
+    "制退器第一侧窗贯穿",
+    "制退器第二侧窗贯穿",
+    "炮口轴向空腔贯通",
+    "后甲板 -54：格栅网罩有真实空隙",
+    "后甲板 54：格栅网罩有真实空隙",
+    "车长塔位于右侧",
+    "装填手舱盖位于左侧",
+    "机枪顶高 3.02 m"
+  ],
+  "sha256": "62d5749809efbcfd5124ca6d8e5b30418805cbb3cb4924c69c981829523b3f77",
+  "voxel_count": 2681059,
+  "named_parts": 33,
+  "bounds_cells": [
+    [
+      0,
+      -160,
+      0
+    ],
+    [
+      812,
+      160,
+      390
+    ]
+  ]
+}

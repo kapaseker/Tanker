@@ -123,7 +123,7 @@ fn assert_specs(app: &mut App, index: usize) -> Result<(), String> {
         .iter(world)
         .count();
     let panels = world.query_filtered::<&Node, With<SpecsPanel>>().iter(world).collect::<Vec<_>>();
-    ensure(panels.len() == usize::from(index != 2), "无装备参数时不得显示详情面板")?;
+    ensure(panels.len() == usize::from(index < 2), "无装备参数时不得显示详情面板")?;
     if let Some(panel) = panels.first() {
         let inset = crate::ui::resources::dimens::hud::INSET;
         ensure(panel.left == px(inset) && panel.top == px(crate::ui::resources::dimens::title_bar::HEIGHT + inset),
@@ -164,8 +164,8 @@ pub(super) fn run_detail_scenario(
         GameState::Gallery,
     )?;
     for index in 0..preview::ENTRIES.len() {
-        // 首次落弹丸，再向下到玩家坦克、向右到敌方坦克。
-        key(app, if index == 2 { 16 } else { 14 })?;
+        // 首次落弹丸，再向下到玩家坦克、向右依次浏览其余坦克。
+        key(app, if index >= 2 { 16 } else { 14 })?;
         ensure(
             gallery::view_mut(app.world_mut()).focus == Some(index),
             "方向键未选中目标卡片",
@@ -234,7 +234,7 @@ pub(super) fn run_detail_scenario(
             .map_err(|error| error.to_string())?.translation.y;
         ensure(if index == 0 { bottom - floor > 0.01 } else { (bottom - floor).abs() < 0.01 },
             "弹丸应悬浮，坦克应贴近展示地面")?;
-        // 三种模型都通过真实鼠标输入检查环绕方向和地面上方的俯仰限位。
+        // 所有模型都通过真实鼠标输入检查环绕方向和地面上方的俯仰限位。
         pointer(app, Some(Vec2::new(650.0, 400.0)));
         app.world_mut().resource_mut::<MenuMouse>().0 = true;
         update(app, STEP, None)?;
@@ -253,6 +253,28 @@ pub(super) fn run_detail_scenario(
             app,
             &options.output.join(format!("detail-{index}-initial.png")),
         )?;
+        if index == 3 {
+            // 新车型统一几何七视角，全部复用真实详情页的取景、布光和地面。
+            for (name, yaw, pitch) in [
+                ("01-front-right", 135.0, -22.0),
+                ("02-rear", -90.0, -18.0),
+                ("03-front", 90.0, -15.0),
+                ("04-top", -90.0, -80.0),
+                ("05-front-left", 45.0, -22.0),
+                ("06-rear-left", -45.0, -22.0),
+                ("07-rear-right", -135.0, -22.0),
+                ("08-right-side", 180.0, -8.0),
+            ] {
+                {
+                    let mut view = app.world_mut().resource_mut::<View>();
+                    view.yaw = yaw;
+                    view.pitch = pitch;
+                    view.zoom = if name == "04-top" { 0.65 } else { 1.0 };
+                }
+                update(app, STEP, None)?;
+                capture(app, &options.output.join(format!("m41a1-{name}.png")))?;
+            }
+        }
         if index == 1 {
             // 固定右后机位对照地面与照明参考，并确认环绕时车体没有翻转。
             {

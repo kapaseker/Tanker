@@ -46,6 +46,7 @@ pub(super) fn run_gallery_scenario(
         finish_gallery_transition(app, options, cycle, "enter", GameState::Gallery)?;
         report.push_str(&format!("第{cycle}次进入画廊：过渡完成，alpha=0\n"));
         report.push_str(&crate::pages::gallery::validate(app.world())?);
+        crate::pages::gallery::ui::validate_labels(app.world_mut())?;
         // 每个预览只拥有自己渲染层上的一盏投影主光。
         let lights: Vec<_> = app.world_mut()
             .query::<(&SpotLight, &bevy::camera::visibility::RenderLayers)>()
@@ -53,8 +54,8 @@ pub(super) fn run_gallery_scenario(
             .filter(|(light, _)| light.shadow_maps_enabled)
             .map(|(_, layer)| layer.clone())
             .collect();
-        ensure(lights.len() == 3, "画廊应为三个预览分别创建主光")?;
-        for index in 0..3 {
+        ensure(lights.len() == crate::pages::gallery::ENTRIES.len(), "画廊应为每个预览分别创建主光")?;
+        for index in 0..crate::pages::gallery::ENTRIES.len() {
             let expected = bevy::camera::visibility::RenderLayers::layer(index + 1);
             ensure(lights.iter().filter(|layer| **layer == expected).count() == 1,
                 "画廊主光渲染层应互相隔离")?;
@@ -73,7 +74,7 @@ pub(super) fn run_gallery_scenario(
         )?;
         if cycle == 3 {
             // 经真实方向键选中敌方整车，验证详情与返回位置恢复。
-            let last = crate::pages::gallery::ENTRIES.len() - 1;
+            let last = 2; // 保留 carapace 往返；新车型由 detail 全目录循环覆盖。
             for key in [14, 14, 16] {
                 update(app, STEP, Some(key))?;
                 update(app, STEP, None)?;
@@ -220,9 +221,10 @@ pub(super) fn run_gallery_scenario(
                         .output
                         .join(format!("gallery-layout-{width}x{height}.png")),
                 )?;
+                crate::pages::gallery::ui::validate_labels(app.world_mut())?;
             }
             report.push_str(
-                "滚轮、PageDown、Home/End、悬停、自转与三种窗口尺寸已验证；空白区域确认无动作\n",
+                "型号换行与尺寸文字不重叠；滚轮、PageDown、Home/End、悬停、自转与三种窗口尺寸已验证；空白区域确认无动作\n",
             );
         }
         if cycle == 2 {
@@ -241,8 +243,15 @@ pub(super) fn run_gallery_scenario(
             app.world_mut().resource_mut::<MenuMouse>().0 = false;
             update(app, STEP, None)?;
         } else if cycle == 3 {
-            update(app, STEP, Some(7))?;
-            update(app, STEP, None)?;
+            // carapace 后面还有新车型，按实际目录走到返回框，不能假定一次 Tab 回绕。
+            let current = crate::pages::gallery::view_mut(app.world_mut()).focus
+                .ok_or("返回画廊后卡片焦点丢失")?;
+            for _ in current..crate::pages::gallery::ENTRIES.len() {
+                update(app, STEP, Some(7))?;
+                update(app, STEP, None)?;
+            }
+            ensure(app.world().resource::<crate::ui::widgets::TitleBarState>().focus,
+                "Tab 浏览剩余车型后应聚焦返回框")?;
             update(app, STEP, Some(3))?;
         } else {
             update(app, STEP, Some(5))?;
