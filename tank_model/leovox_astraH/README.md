@@ -102,4 +102,4 @@ cargo run --manifest-path leovox_astraH/Cargo.toml -- leovox_astraH/renders-new
 
 ## 游戏接入（2026-11-01）
 
-本目录原始交付保持不变。玩家采用本模型外观，游戏用活动结构由根目录 `python3 scripts/prepare_astra.py` 从实际 VOX 转换，`--check` 只读核对重生成一致性。默认姿态体素位置与颜色保留；炮塔、炮管和左右履带/轮组按运动关系装配。当前契约见[玩家模型](../../docs/player-model.md)，硬件离屏证据与限制见[接入验收](../../docs/testing/astra-player-integration.md)。原独立预览与本次游戏接入的技术、美术状态分别记录。
+本目录原始交付保持不变。玩家采用本模型外观，游戏用活动结构由根目录 `python3 scripts/prepare_astra.py` 从实际 VOX 转换，`--check` 只读核对重生成一致性。默认姿态体素位置与颜色保留；炮塔、炮管和左右履带/轮组按运动关系装配。当前契约见[玩家模型](../../docs/player-model.md)，新集成版本的动态美术尚待用户确认。原独立预览与本次游戏接入的技术、美术状态分别记录。

@@ -20,9 +20,9 @@
 - **美术精度与物理**：0.02 米体素用于实际细节作者化；主要车体沿用单一简化圆角碰撞框，边界按 0.1 米量化，炮管及细小附件不单独增加碰撞。
 - **玩法取舍**：保留现有驾驶与战斗参数。炮塔仍属于 body、随整车瞄准，本次不增加独立转塔、炮管俯仰或悬挂模拟。
 - **弹丸目标**：参考与 L55 相容的 DM53/DM63 系列 APFSDS 脱壳后飞行体，尽量采用真实比例和简化尾翼；不把完整弹壳随弹丸发射。视觉与既有 0.4 米扫掠碰撞分别维护，不由真实弹药性能改写游戏参数。
-- **状态（2026-10-29）**：最终美术验收通过。返工系列（leopard-player-rework 工单 01–05）全部完成：样板经用户确认采纳，轮带/车体/炮管细化与整车集成完成后，用户于工单 05 对照旧模型、样板与最终实际渲染明确确认最终版本外观。技术验收与离屏证据同步通过；旧 01–06 记录是被拒绝外观的技术历史。详见[最终集成验收](testing/player-a5-final-acceptance.md#最终集成验收leopard-player-rework-工单-052026-10-29)。
+- **状态（2026-10-29）**：最终美术验收通过。返工系列（leopard-player-rework 工单 01–05）全部完成：样板经用户确认采纳，轮带/车体/炮管细化与整车集成完成后，用户于工单 05 对照旧模型、样板与最终实际渲染明确确认最终版本外观。技术验收与离屏证据同步通过；旧 01–06 记录是被拒绝外观的技术历史。
 
-模块导航：共享体素尺度和 `WheelSpec` 位于 `src/tank/model/mod.rs`；生成器 `scripts/generate_player.rs` 复用车型契约，交付资产统一经 `scripts/publish_player.py`（生成→细分→发布）产出。驾驶、履带、炮管挂载归 `src/tank/`，对局生成归 `src/gameplay/session.rs`。目录整理验收见 [任务 10](testing/architecture-step10-20261023.md)。
+模块导航：共享体素尺度和 `WheelSpec` 位于 `src/tank/model/mod.rs`；生成器 `scripts/generate_player.rs` 复用车型契约，交付资产统一经 `scripts/publish_player.py`（生成→细分→发布）产出。驾驶、履带、炮管挂载归 `src/tank/`，对局生成归 `src/gameplay/session.rs`。
 
 2026-10-30 概念图结构复核：新版七视角发现尾灯、格栅、风扇和车顶附件不一致；[v2 修订记录](references/leopard-2a5-style-v2-2026-10-30/README.md)归档了来源依据、五张未验收候选及未完成项。v1/v2 均不能用来覆盖既有几何契约或作为同一模型的准确多视角依据；运行时资产未因本次概念修订改变。
 
@@ -86,7 +86,6 @@ cargo test
 `test_player_scale.py` 用交付资产验证真实尺寸、炮轴和主体屋顶，`test_tracks.py` 按资产格
 验证 840 格梯形闭环三相位；真实加载测试验证装配、炮口、预览取景和实例清理。
 最终运行 scene、drive、combat、wheels、gallery、detail 离屏并读取关键帧。
-本票证据和限制见 [真实尺寸基础整车验收](testing/player-a5-assembly.md)。
 
 ## 尾翼弹丸（工单 05）
 
@@ -134,7 +133,7 @@ cargo test
 - 材料与色调：沿用统一橄榄绿、深灰与近黑灰调色板，未新增配色或徽记。
 - 光照结论：用户确认不采纳候选方向光；游戏默认保持全局环境光 + 环境贴图。
   候选参数保留在 `src/validation/mod.rs` 常量与 `--lighting candidate` 离屏选项。
-- 验证与成本：详见[视觉样板确认](testing/player-a5-final-acceptance.md)。
+- 视觉样板经用户确认采纳；候选光照实验未被采纳。
   已知限制：颊甲顶面阶梯非严格斜坡；天线为单格杆简化；车顶机枪为简化块状。
 
 ## 轮组与履带立体化（leopard-player-rework 02，2026-10-29）
@@ -254,5 +253,4 @@ cargo run -- --offscreen-test wheels --output .scratch/offscreen/player-wheels
 `test_player.py` 分别以参考格检查装配占用、资产格检查凹槽；不能再要求车身每个参考格内同色。
 
 wheels 离屏另输出 `front-on.png`、`rear-on.png`、`front-above.png` 和 `grille.png`，
-用于同视点整车和近景对照，不改变游戏镜头。本机旧、新证据及报告保留于
-`.scratch/leopard-player/evidence/`，长期验证结论见 `docs/testing/player-fine-authoring.md`。
+用于同视点整车和近景对照，不改变游戏镜头。原始验收产物已清理。

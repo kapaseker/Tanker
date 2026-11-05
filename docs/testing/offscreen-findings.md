@@ -1,6 +1,6 @@
 # 离屏验证发现记录
 
-目录整理导航：本文旧路径保留问题发生时的历史含义；当前地形入口为 `src/terrain/mod.rs`，地图、网格和碰撞分别归 map/mesh/collider；驾驶归 `src/tank/driving.rs`，离屏工具归 `src/validation/`。最终回归见 [任务 10](architecture-step10-20261023.md)。
+目录整理导航：本文旧路径保留问题发生时的历史含义；当前地形入口为 `src/terrain/mod.rs`，地图、网格和碰撞分别归 map/mesh/collider；驾驶归 `src/tank/driving.rs`，离屏工具归 `src/validation/`。
 
 本文记录离屏工具发现的游戏运行问题，将工具是否正确执行与游戏行为是否通过分开判断。失败报告属于测试产物，不通过降低断言、跳过场景或替换实际地形来消除。
 
@@ -192,3 +192,7 @@ let collider = Collider::from(shape);
 - 无窗口离屏 `scene`、`drive`、`combat` 全部退出0且报告通过，产物分别在 `.scratch/offscreen/concrete-scene-01/`、`concrete-drive-01/`、`concrete-combat-01/`。scene额外生成 `concrete.png`，实际网格与碰撞尺寸、贴地位置和场景实例均有断言。
 - 已读取scene默认图及墩体近景、drive第60/180帧、combat第6/24/120帧：地面平整且花色保留，墩体横放贴地，驾驶和爆炸清理画面正常。drive第60帧前进约6米，左右履带里程各约6米，转向偏航大于1弧度。
 - 当前环境没有 `/dev/dri`，实际后端为 llvmpipe (LLVM 20.1.2, 256 bits) / Vulkan；以上是软件Vulkan离屏证据，不是硬件GPU性能或真实窗口输入验证。未启动可见窗口。
+
+## 2026-11-03：窗口尺寸变化与相机同步
+
+窗口尺寸变化时，共享深度纹理的主副相机可能在不同帧更新尺寸，触发渲染校验错误。修复是在纹理尺寸变化当帧同步标记相机投影；离屏回归不覆盖真实窗口管理器和实际显示缩放。
