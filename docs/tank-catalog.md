@@ -16,7 +16,7 @@
 ## 豹 2A5 设计参考
 
 - [概念设计主图](references/leopard-2a5-concept.png)与[多视角设计稿、提示词和结构核对](references/leopard-2a5-style-v2-2026-10-30/README.md)。
-- [轮廓尺寸资料](leopard-a5-dimensions.md)、[整车模型源与建模说明](../tank_model/leovox_astraH/README.md)、[详情页外观对照](testing/leopard-2a5-detail-retro-2026-11-04/README.md)。
+- [轮廓尺寸资料](leopard-a5-dimensions.md)、[整车模型源与建模说明](../tank_model/leovox_astraH/README.md)。
 - [早期模型说明](player-model-legacy.md)。
 
 这些资料随现用模型一并归档，保留设计演进和画面对照。现行游戏数值见[玩家模型与参数](player-model.md)。

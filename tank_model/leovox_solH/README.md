@@ -2,7 +2,7 @@
 
 > 既有设计与验证档案，按当前玩家车型归档。图像、尺寸和测试数值保留当时记录，现行参数以玩家车型配置为准。
 
-2026-10-30。按用户指定的[七视角概念图](../docs/references/leopard-2a5-style-v2-2026-10-30/README.md)和[尺寸表](../docs/leopard-a5-dimensions.md)从零构建外观模型。遵循[精细体素半写实基线](../docs/art-direction.md)。未读取或复用其他坦克模型几何，没有替换游戏当前玩家资源。
+2026-10-30。按用户指定的[七视角概念图](../../docs/references/leopard-2a5-style-v2-2026-10-30/README.md)和[尺寸表](../../docs/leopard-a5-dimensions.md)从零构建外观模型。遵循[精细体素半写实基线](../../docs/art-direction.md)。未读取或复用其他坦克模型几何，没有替换游戏当前玩家资源。
 
 **交付文件：[leopard_2a5.vox](leopard_2a5.vox)**。配套的 [leopard_2a5.vox.meta](leopard_2a5.vox.meta) 将 Bevy `bevy_vox_scene` 的每格尺寸设为 **0.01 米**。VOX 格式本身不存米制单位，加载时应保留此设置，不再额外缩放 0.01。
 
