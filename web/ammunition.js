@@ -6,7 +6,7 @@ const Ammunition = (() => {
   // file:// 回退快照：数值必须与 bullet.jsonc 保持一致，
   // ammunition.test.cjs 断言两者同步，防止调参后静默漂移。
   const fileSnapshot =
-    '{"muzzle_velocity":1200,"rate_of_fire":12,' +
+    '{"muzzle_velocity":1640,"rate_of_fire":8,' +
     '"collision":{"size":[0.72,0.04,0.04],"center_forward_offset":0.16}}';
 
   // 保留字符串与换行，只去掉 JSONC 注释；JSON.parse 继续拒绝损坏结构和尾逗号。

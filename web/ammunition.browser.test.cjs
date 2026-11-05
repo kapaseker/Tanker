@@ -18,18 +18,18 @@ const { mkdir } = require('node:fs/promises');
     await page.goto(base + 'model-detail.html?c=0&m=0');
     await page.locator('.specs[aria-busy="false"]').waitFor();
     assert.deepEqual(await labels(), ['初速', '射速']);
-    assert.deepEqual(await page.locator('.spec__value').allTextContents(), ['1200', '12']);
+    assert.deepEqual(await page.locator('.spec__value').allTextContents(), ['1640', '8']);
     await screenshot('apfsds');
     await page.goto(base + 'model-detail.html?c=1&m=0');
     assert.deepEqual(await labels(),
-      ['前进速度', '倒车速度', '水平旋转', '炮管俯仰范围', '水平转速', '俯仰速度']);
+      ['前进速度', '倒车速度', '水平旋转', '炮管俯仰范围', '水平转速', '俯仰速度', '单发伤害', '最大生命值']);
     assert.deepEqual(await page.locator('.spec__value').allTextContents(),
-      ['16', '8', '全圈', '-9°～+20°', '30°', '9°']);
+      ['19', '8.94', '全圈', '-9°～+20°', '40°', '9°', '510', '4100']);
     assert.ok(await page.locator('#aim-help').isVisible());
     await screenshot('tank');
     await page.goto(base + 'gameplay.html');
     await page.locator('#reload[aria-busy="false"]').waitFor();
-    assert.equal(await page.locator('.bar__ticks > span').count(), 4);
+    assert.equal(await page.locator('.bar__ticks > span').count(), 7);
     assert.equal(await page.locator('#reload').getAttribute('aria-valuenow'), '100');
     await screenshot('hud');
 

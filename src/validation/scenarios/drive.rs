@@ -42,8 +42,8 @@ pub(super) fn check(
         record_check(
             report,
             failures,
-            state.rotation.angle_between(start.rotation) > 1.0,
-            "转弯偏航变化大于 1 弧度",
+            (51.0..=53.5).contains(&state.rotation.angle_between(start.rotation).to_degrees()),
+            "持续转向 2 秒，计入起步平滑后偏航约 52°",
         );
     }
     Ok(())

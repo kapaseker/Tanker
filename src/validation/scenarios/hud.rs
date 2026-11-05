@@ -4,14 +4,14 @@ use super::*;
 use crate::gameplay::combat::firing::Gun;
 use crate::gameplay::hud::{HealthFill, HealthTrack, HudRoot, ReloadFill, ReloadTrack};
 
-/// 在公共模拟循环的原有帧边界检查 HUD 状态；帧 60 看装填中段，330 看满格常驻。
+/// 在公共模拟循环的原有帧边界检查 HUD 状态；帧 60 看装填中段，480 看满格常驻。
 pub(super) fn check(
     app: &mut App,
     frame: u32,
     report: &mut String,
     failures: &mut Vec<String>,
 ) -> Result<(), String> {
-    if frame != 60 && frame != 330 {
+    if frame != 60 && frame != 480 {
         return Ok(());
     }
     let world = app.world_mut();
@@ -50,7 +50,7 @@ pub(super) fn check(
         &format!("帧 {frame} 装填进度与冷却资源一致（{progress:.3} / 期望 {expected:.3}）"),
     );
     if frame == 60 {
-        // 开火 1 秒后冷却 5 秒：应处于装填中段而非空或满。
+        // 开火 1 秒后冷却 7.5 秒：应处于装填中段而非空或满。
         record_check(
             report,
             failures,
@@ -58,12 +58,12 @@ pub(super) fn check(
             &format!("装填条在开火后推进（帧 60：{progress:.3}）"),
         );
     } else {
-        // 冷却 5 秒已过：进度必须恰好满格（钳制），而非继续增长或消失。
+        // 冷却 7.5 秒已过：进度必须恰好满格（钳制），而非继续增长或消失。
         record_check(
             report,
             failures,
             progress >= 0.999,
-            &format!("冷却结束后装填条满格常驻（帧 330：{progress:.3}）"),
+            &format!("冷却结束后装填条满格常驻（帧 480：{progress:.3}）"),
         );
     }
     // 生命条当前固定满血：轨道与填充等宽。

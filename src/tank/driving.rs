@@ -16,9 +16,11 @@ pub(crate) struct TankConfig {
     pub(crate) driving: DrivingSpec,
     /// 玩家生命上限，采用直接击毁规则的敌车可省略。
     pub(crate) max_health: Option<std::num::NonZeroU32>,
+    /// 玩家标准弹单发标称伤害，单位为生命点。
+    pub(crate) shot_damage: Option<std::num::NonZeroU32>,
     /// 整车圆角碰撞体。
     pub(crate) collision: TankCollision,
-    /// 仅有独立炮塔控制的车型提供；玩家豹 2A6 必填。
+    /// 仅有独立炮塔控制的车型提供；玩家豹 2A5 必填。
     pub(crate) articulation: Option<super::articulation::AimSpec>,
 }
 
@@ -57,14 +59,17 @@ impl TankConfigs {
     /// 从资源根载入当前玩家与敌方车型。
     pub(crate) fn load(root: &Path) -> Result<Self, String> {
         let configs = Self {
-            player: TankConfig::load(root, "tank/player/leopard2_a6/tank.jsonc")?,
+            player: TankConfig::load(root, "tank/player/leopard2_a5/tank.jsonc")?,
             enemy: TankConfig::load(root, "tank/enemy/carapace/tank.jsonc")?,
         };
         if configs.player.articulation.is_none() {
-            return Err("坦克配置非法 tank/player/leopard2_a6/tank.jsonc：缺少 articulation 炮塔参数".into());
+            return Err("坦克配置非法 tank/player/leopard2_a5/tank.jsonc：缺少 articulation 炮塔参数".into());
         }
         if configs.player.max_health.is_none() {
-            return Err("坦克配置非法 tank/player/leopard2_a6/tank.jsonc：缺少 max_health 生命上限".into());
+            return Err("坦克配置非法 tank/player/leopard2_a5/tank.jsonc：缺少 max_health 生命上限".into());
+        }
+        if configs.player.shot_damage.is_none() {
+            return Err("坦克配置非法 tank/player/leopard2_a5/tank.jsonc：缺少 shot_damage 单发伤害".into());
         }
         Ok(configs)
     }
@@ -263,13 +268,14 @@ mod tests {
     /// 车型性能的非法值或未知字段必须在加载时被拒绝。
     #[test]
     fn tank_config_rejects_invalid_performance() {
-        let source = std::fs::read_to_string("assets/tank/player/leopard2_a6/tank.jsonc").unwrap();
+        let source = std::fs::read_to_string("assets/tank/player/leopard2_a5/tank.jsonc").unwrap();
         assert!(TankConfig::parse(source.as_bytes()).unwrap().articulation.is_some());
         for (old, new) in [
-            (r#""forward_speed": 16.0"#, r#""forward_speed": -1.0"#),
-            (r#""max_health": 100"#, r#""max_health": 0"#),
+            (r#""forward_speed": 19.0"#, r#""forward_speed": -1.0"#),
+            (r#""max_health": 4100"#, r#""max_health": 0"#),
+            (r#""shot_damage": 510"#, r#""shot_damage": 0"#),
             ("\"traverse_range_deg\": 360.0", "\"traverse_range_deg\": 180.0"),
-            ("\"traverse_speed_deg_s\": 30.0", "\"traverse_speed_deg_s\": 0.0"),
+            ("\"traverse_speed_deg_s\": 40.0", "\"traverse_speed_deg_s\": 0.0"),
             ("\"elevation_speed_deg_s\": 9.0", "\"elevation_speed_deg_s\": -1.0"),
             ("\"min_elevation_deg\": -9.0", "\"min_elevation_deg\": 21.0"),
             ("\"max_elevation_deg\": 20.0", "\"max_elevation_deg\": -20.0"),
@@ -480,9 +486,10 @@ mod tests {
         for _ in 0..64 {
             app.update();
         }
-        // cleat 前进 16 米/秒，一秒推进 16 米（含物理求解的起步损失）。
+        // 一秒的实际前进距离应与车型速度一致。
+        let driving = *app.world().get::<DrivingSpec>(tank).unwrap();
         assert!(
-            (app.world().get::<Transform>(tank).unwrap().translation.x + 16.0).abs() < 0.05
+            (app.world().get::<Transform>(tank).unwrap().translation.x + driving.forward_speed).abs() < 0.05
         );
         app.world_mut().get_mut::<DrivingInput>(tank).unwrap().throttle = 0.0;
         let stopped = app.world().get::<Transform>(tank).unwrap().translation;
@@ -496,22 +503,21 @@ mod tests {
                 .translation
                 .abs_diff_eq(stopped, 0.01)
         );
-        // 倒车一秒应后退 8 米（cleat 倒车速度），再清零输入验证下一段转向不夹带直线速度。
+        // 倒车一秒后清零输入，验证下一段转向不夹带直线速度。
         app.world_mut().get_mut::<DrivingInput>(tank).unwrap().throttle = -1.0;
         for _ in 0..64 {
             app.update();
         }
         let reversed = app.world().get::<Transform>(tank).unwrap().translation;
-        assert!((reversed.x - stopped.x - 8.0).abs() < 0.05);
+        assert!((reversed.x - stopped.x - driving.reverse_speed).abs() < 0.05);
         app.world_mut().get_mut::<DrivingInput>(tank).unwrap().throttle = 0.0;
         app.world_mut().get_mut::<DrivingInput>(tank).unwrap().turn = 1.0;
         for _ in 0..64 {
             app.update();
         }
-        // 转向平滑后 1 秒按住的累计转角略小于 90°，用指数渐近的解析积分算期望值：
+        // 转向平滑后 1 秒按住的累计转角小于满速转一秒，用指数渐近的解析积分算期望值：
         // θ = turn_speed × (T − TURN_SMOOTH_TIME × (1 − e^(−T/TURN_SMOOTH_TIME)))。
         let t = 1.0_f32;
-        let driving = app.world().get::<DrivingSpec>(tank).unwrap();
         let turn_speed = driving.turn_speed_deg_s.to_radians();
         let theta = turn_speed * (t - TURN_SMOOTH_TIME * (1.0 - (-t / TURN_SMOOTH_TIME).exp()));
         let heading = app.world().get::<Transform>(tank).unwrap().rotation;
@@ -522,17 +528,16 @@ mod tests {
             "朝向偏差异常：{heading:?} 期望 {expected:?}"
         );
         app.world_mut().get_mut::<DrivingInput>(tank).unwrap().turn = 0.0;
-        // 直行直到抵住 300 米处的墙：16 米/秒 × 19 秒已够，3400 帧余量充足。
+        // 按当前朝向直行直到抵住场地边界。
         app.world_mut().get_mut::<DrivingInput>(tank).unwrap().throttle = 1.0;
         for _ in 0..3400 {
             app.update();
         }
         let transform = app.world().get::<Transform>(tank).unwrap();
-        let forward = transform.rotation * Vec3::NEG_X;
-        let side = transform.rotation * Vec3::Z;
-        let extent_z = forward.z.abs() * TANK_SIZE.x / 2.0 + side.z.abs() * TANK_SIZE.z / 2.0;
         let wall = crate::terrain::FIELD_SIDE / 2.0;
-        let stop = transform.translation.z + extent_z;
+        // 斜向贴墙时按圆角刚体外缘计算，避免把已削掉的盒角当成穿透。
+        let stop = app.world().get::<Collider>(tank).unwrap()
+            .aabb(transform.translation, transform.rotation, 0.0).max.z;
         assert!((stop - wall).abs() < 0.03, "未到达墙：{transform:?}");
         assert!(stop <= wall + 0.03, "穿墙：stop={stop} wall={wall}");
         assert!((transform.rotation * Vec3::Y).abs_diff_eq(Vec3::Y, 1e-4));

@@ -159,7 +159,7 @@ struct Spec {
     unit: &'static str,
 }
 
-/// 详情只读取已校验配置：弹药两项，豹 2A6 驾驶与炮塔六项，敌车不生成空行。
+/// 详情只读取已校验配置，敌车不生成空行。
 fn specs_for(
     entry: preview::Entry,
     ammo: &crate::tank::ammunition::AmmunitionSpec,
@@ -182,7 +182,7 @@ fn specs_for(
             let aim = tanks
                 .player
                 .articulation
-                .expect("启动已校验豹 2A6 炮塔配置");
+                .expect("启动已校验豹 2A5 炮塔配置");
             vec![
                 Spec {
                     label: strings_cn::detail::FORWARD_SPEED,
@@ -191,7 +191,8 @@ fn specs_for(
                 },
                 Spec {
                     label: strings_cn::detail::REVERSE_SPEED,
-                    value: tanks.player.driving.reverse_speed.to_string(),
+                    value: format!("{:.2}", tanks.player.driving.reverse_speed)
+                        .trim_end_matches('0').trim_end_matches('.').to_owned(),
                     unit: strings::UNIT_METERS_PER_SECOND,
                 },
                 Spec {
@@ -218,6 +219,16 @@ fn specs_for(
                     label: strings_cn::detail::ELEVATION_SPEED,
                     value: format!("{}{}", aim.elevation_speed_deg_s, strings::UNIT_DEGREES),
                     unit: strings::UNIT_PER_SECOND,
+                },
+                Spec {
+                    label: strings_cn::detail::SHOT_DAMAGE,
+                    value: tanks.player.shot_damage.expect("启动已校验单发伤害").to_string(),
+                    unit: "HP",
+                },
+                Spec {
+                    label: strings_cn::detail::MAX_HEALTH,
+                    value: tanks.player.max_health.expect("启动已校验生命上限").to_string(),
+                    unit: "HP",
                 },
             ]
         }
@@ -873,7 +884,7 @@ fn input(
     }
 }
 
-/// 仅就绪的豹 2A6 详情接收按键，预览角度保存在独立实体，离页即销毁。
+/// 仅就绪的豹 2A5 详情接收按键，预览角度保存在独立实体，离页即销毁。
 fn control_aim(
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
@@ -1244,6 +1255,8 @@ mod tests {
             crate::tank::driving::TankConfigs::load(std::path::Path::new("assets")).unwrap();
         tanks.player.driving.forward_speed = 21.0;
         tanks.player.driving.reverse_speed = 5.0;
+        tanks.player.shot_damage = std::num::NonZeroU32::new(470);
+        tanks.player.max_health = std::num::NonZeroU32::new(3900);
         let aim = tanks.player.articulation.as_mut().unwrap();
         aim.traverse_speed_deg_s = 25.0;
         aim.elevation_speed_deg_s = 8.0;
@@ -1254,7 +1267,7 @@ mod tests {
         assert_eq!(rows[0].value, "600");
         assert_eq!(rows[1].value, "30");
         let rows = specs_for(ENTRIES[1], &ammo, &tanks);
-        assert_eq!(rows.len(), 6);
+        assert_eq!(rows.len(), 8);
         assert_eq!(rows[0].value, "21");
         assert_eq!(rows[1].value, "5");
         assert_eq!(rows[2].value, "全圈");
@@ -1262,6 +1275,8 @@ mod tests {
         assert_eq!(rows[3].value, "-5°～+15°");
         assert_eq!(rows[4].value, "25°");
         assert_eq!(rows[5].value, "8°");
+        assert_eq!(rows[6].value, "470");
+        assert_eq!(rows[7].value, "3900");
         assert_eq!(rows[4].unit, strings::UNIT_PER_SECOND);
         assert!(specs_for(ENTRIES[2], &ammo, &tanks).is_empty());
     }

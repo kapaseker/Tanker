@@ -114,7 +114,7 @@ fn assert_dims(app: &mut App) -> Result<(), String> {
     Ok(())
 }
 
-/// 弹药两项、豹 2A6 驾驶与炮塔六项，敌方不显示空行。
+/// 弹药两项、豹 2A5 驾驶、炮塔与战斗属性八项，敌方不显示空行。
 /// 数值与单位的人工核对由初始帧截图完成，这里防止空行重新出现。
 fn assert_specs(app: &mut App, index: usize) -> Result<(), String> {
     let world = app.world_mut();
@@ -135,7 +135,7 @@ fn assert_specs(app: &mut App, index: usize) -> Result<(), String> {
         ensure(hint.bottom == px(crate::ui::resources::dimens::hud::INSET),
             "按键提示应使用 HUD 底部安全边距")?;
     }
-    let expected = match index { 0 => 2, 1 => 6, _ => 0 };
+    let expected = match index { 0 => 2, 1 => 8, _ => 0 };
     ensure(
         rows == expected,
         format!("目录项{index}规格行应为 {expected}，实际 {rows}").as_str(),
@@ -285,14 +285,14 @@ pub(super) fn run_detail_scenario(
             let aim = *app
                 .world()
                 .get::<TankAim>(content)
-                .ok_or("豹 2A6 详情缺少炮塔状态")?;
+                .ok_or("豹 2A5 详情缺少炮塔状态")?;
             ensure(aim.yaw == 0.0 && aim.pitch == 0.0, "进入详情未复位炮塔")?;
             for frame in 100..=279 {
                 update(app, STEP, Some(frame))?;
             }
             let aim = *app.world().get::<TankAim>(content).unwrap();
             ensure(
-                (aim.yaw.to_degrees() - 90.0).abs() < 0.01
+                (aim.yaw.to_degrees() - 120.0).abs() < 0.01
                     && (aim.pitch.to_degrees() - 20.0).abs() < 0.01,
                 "详情 W/A 未按配置旋转或未达到仰角限位",
             )?;
@@ -302,7 +302,7 @@ pub(super) fn run_detail_scenario(
             }
             let aim = *app.world().get::<TankAim>(content).unwrap();
             ensure(
-                (aim.yaw.to_degrees() - 345.0).abs() < 0.01
+                (aim.yaw.to_degrees() - 340.0).abs() < 0.01
                     && (aim.pitch.to_degrees() + 9.0).abs() < 0.01,
                 "详情 S/D 未按配置旋转或未达到俯角限位",
             )?;
@@ -315,7 +315,7 @@ pub(super) fn run_detail_scenario(
                 stopped.yaw == aim.yaw && stopped.pitch == aim.pitch,
                 "详情松键后炮塔漂移",
             )?;
-            report.push_str("豹 2A6 详情：真实 WASD 双轴控制、水平回绕、上下限及松键停止通过\n");
+            report.push_str("豹 2A5 详情：真实 WASD 双轴控制、水平回绕、上下限及松键停止通过\n");
         } else {
             let content = app.world().resource::<Previews>().items[0].content;
             update(app, STEP, Some(100))?;
@@ -323,7 +323,7 @@ pub(super) fn run_detail_scenario(
                 app.world()
                     .get::<crate::tank::articulation::TankAim>(content)
                     .is_none(),
-                "非豹 2A6 详情不应提供炮塔控制",
+                "非豹 2A5 详情不应提供炮塔控制",
             )?;
         }
         if index == 1 {
@@ -463,7 +463,7 @@ pub(super) fn run_detail_scenario(
                 "aim-return",
                 GameState::Gallery,
             )?;
-            report.push_str("重进豹 2A6 详情：炮塔朝前水平复位通过\n");
+            report.push_str("重进豹 2A5 详情：炮塔朝前水平复位通过\n");
         }
     }
     capture(app, &options.output.join("detail-return-gallery.png"))?;

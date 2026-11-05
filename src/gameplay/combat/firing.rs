@@ -12,7 +12,7 @@ use bevy::{
 };
 
 /// 从出生点累计计算的最大飞行距离，单位：世界单位。
-pub(crate) const BULLET_RANGE: f32 = 2000.0;
+pub(crate) const BULLET_RANGE: f32 = 3500.0;
 
 /// 玩家实际活动炮管的场景根，世界姿态决定弹丸发射方向。
 #[derive(Component)]
@@ -365,6 +365,8 @@ mod tests {
     fn bullet_boundary_matches_repeated_float_motion() {
         let origin = Vec3::new(-280.0, 1.3, 0.0);
         let (mut app, enemies) = hit_test_app(&[(Vec3::new(-310., 1.3, 0.), 0.)]);
+        // 固定每帧 20 米，保留临界浮点舍入样例。
+        app.world_mut().resource_mut::<AmmunitionSpec>().muzzle_velocity = 1200.0;
         let bullet = test_bullet(&mut app, origin, Vec3::NEG_X, 0.);
         advance_test_bullets(&mut app, 1.0 / 60.0);
         assert_eq!(
@@ -377,6 +379,8 @@ mod tests {
         let direction = Quat::from_rotation_y(1.2_f32.to_radians()) * Vec3::NEG_X;
         let origin = Vec3::new(-120.039474, 1.3, 0.);
         let (mut app, enemies) = hit_test_app(&[(origin + direction * 190., 0.)]);
+        // 固定每帧 20 米，保留临界浮点舍入样例。
+        app.world_mut().resource_mut::<AmmunitionSpec>().muzzle_velocity = 1200.0;
         let bullet = test_bullet(&mut app, origin, direction, 0.);
         for _ in 0..11 {
             advance_test_bullets(&mut app, 1.0 / 60.0);
@@ -435,7 +439,7 @@ mod tests {
         (mesh_count, minimum, maximum)
     }
 
-    /// 验证立即首发，随后按 APFSDS 射速换算的间隔（60/12 = 5 秒）发射。
+    /// 验证立即首发，随后按测试指定的 5 秒间隔发射。
     #[test]
     fn space_fires_immediately_then_at_the_rated_interval() {
         let mut cadence = FireCadence::default();
@@ -815,8 +819,8 @@ mod tests {
     #[test]
     fn bullets_expire_outside_the_field() {
         let (mut app, _) = hit_test_app(&[]);
-        // 用 0.05 秒（60 米）小步长隔离越界与方向两种行为：
-        // 299 米处在界内（边界 ±300），一帧 60 米后越界，第二帧被销毁；
+        // 用 0.05 秒小步长隔离越界与方向两种行为：
+        // 299 米处在界内（边界 ±300），一帧后越界，第二帧被销毁；
         // 反向子弹同帧深入场内，不应受影响。
         let outbound = test_bullet(&mut app, Vec3::new(299.0, 1.2, 0.0), Vec3::X, 0.0);
         let inbound = test_bullet(&mut app, Vec3::new(299.0, 1.2, 0.0), Vec3::NEG_X, 0.0);
@@ -857,26 +861,26 @@ mod tests {
             .id();
         let child = app.world_mut().spawn(ChildOf(bullet)).id();
         app.update();
-        // APFSDS 初速 1200 米/秒，0.05 秒推进 60 米。
+        // APFSDS 初速 1640 米/秒，0.05 秒推进 82 米。
         assert!(
             app.world()
                 .get::<Transform>(bullet)
                 .unwrap()
                 .translation
-                .abs_diff_eq(Vec3::new(-61.8, 0.45, -0.1), 1e-5)
+                .abs_diff_eq(Vec3::new(-83.8, 0.45, -0.1), 1e-5)
         );
-        assert_eq!(app.world().get::<Bullet>(bullet).unwrap().distance, 60.0);
+        assert_eq!(app.world().get::<Bullet>(bullet).unwrap().distance, 82.0);
         app.update();
-        assert_eq!(app.world().get::<Bullet>(bullet).unwrap().distance, 120.0);
+        assert_eq!(app.world().get::<Bullet>(bullet).unwrap().distance, 164.0);
         assert!(
             app.world()
                 .get::<Transform>(bullet)
                 .unwrap()
                 .translation
-                .abs_diff_eq(Vec3::new(-121.8, 0.45, -0.1), 1e-5)
+                .abs_diff_eq(Vec3::new(-165.8, 0.45, -0.1), 1e-5)
         );
-        // 出生点 x=-1.8，每帧向 -X 飞 60 米；第 5 帧后 x=-301.8 越界，下一帧销毁。
-        for _ in 2..5 {
+        // 出生点 x=-1.8，每帧向 -X 飞 82 米；第 4 帧后 x=-329.8 越界，下一帧销毁。
+        for _ in 2..4 {
             app.update();
         }
         assert!(app.world().get_entity(bullet).is_ok());
@@ -1089,8 +1093,8 @@ mod tests {
             .insert(crate::tank::articulation::TankAim::default());
         app.update();
 
-        // 多色车身仍须通过 UV 采样到生成器中的三种装甲色，不能退化成单色材质。
-        let armor_colors = [[112, 119, 72, 255], [89, 98, 58, 255], [125, 130, 80, 255]];
+        // 多色车身仍须通过 UV 采样到现有模型的三种装甲色，不能退化成单色材质。
+        let armor_colors = [[83, 91, 57, 255], [105, 112, 74, 255], [126, 129, 84, 255]];
         let mut sampled_colors = std::collections::BTreeSet::new();
         let mut pending = vec![tank];
         while let Some(entity) = pending.pop() {
@@ -1276,11 +1280,10 @@ mod tests {
             app.world_mut().query::<&Bullet>().iter(app.world()).count(),
             1
         );
-        // 持续按住一个完整发射间隔（APFSDS 射速 12 发/分钟 → 5 秒）后再次开火；
+        // 持续按住一个完整发射间隔后再次开火；
         // 首发早已飞出场界销毁，场上恰好只剩新的一发，且位置回到炮口。
-        app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f32(
-            5.0,
-        )));
+        let cooldown = app.world().resource::<AmmunitionSpec>().cooldown();
+        app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f32(cooldown)));
         app.update();
         let second = app
             .world_mut()

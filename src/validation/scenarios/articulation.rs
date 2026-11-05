@@ -131,7 +131,7 @@ pub(super) fn check(world: &mut World, frame: u32, report: &mut String) -> Resul
                 .rem_euclid(std::f32::consts::TAU)
                 - std::f32::consts::PI;
             ensure(
-                yaw_delta.abs() <= 30.0_f32.to_radians() / 60.0 + 1e-5,
+                yaw_delta.abs() <= 40.0_f32.to_radians() / 60.0 + 1e-5,
                 "水平关节超速",
             )?;
             ensure(
@@ -199,7 +199,7 @@ pub(super) fn check(world: &mut World, frame: u32, report: &mut String) -> Resul
     world.insert_resource(PreviousAim(aim));
     if frame == 31 {
         ensure(
-            (aim.yaw.to_degrees() - 45.02778).abs() < 0.001,
+            (aim.yaw.to_degrees() - 45.03704).abs() < 0.001,
             "水平短按角度异常",
         )?;
         ensure(
@@ -209,7 +209,7 @@ pub(super) fn check(world: &mut World, frame: u32, report: &mut String) -> Resul
         report.push_str("断言通过：双轴首帧微调小于恒速，真实炮管方向与关节一致\n");
     }
     if matches!(frame, 210 | 211 | 420 | 421 | 450) {
-        let expected_yaw: f32 = if frame <= 211 { 132.75 } else { 30.5 };
+        let expected_yaw: f32 = if frame <= 211 { 162.0 } else { 25.66667 };
         ensure(
             (aim.yaw.to_degrees() - expected_yaw).abs() < 0.01,
             &format!(
@@ -227,9 +227,10 @@ pub(super) fn check(world: &mut World, frame: u32, report: &mut String) -> Resul
             limit_ok,
             &format!("WASD 俯仰限位异常：帧{frame}，实际 {actual_pitch}°"),
         )?;
+        let chassis_yaw = body.rotation.angle_between(Quat::IDENTITY).to_degrees();
         ensure(
-            (body.rotation * Vec3::NEG_X - Vec3::NEG_X).length() > 0.5,
-            "驾驶输入未转动车体",
+            (27.0..=29.0).contains(&chassis_yaw),
+            &format!("一秒转向的车体偏航应约 28°，实际 {chassis_yaw:.2}°"),
         )?;
         let expected_position = body.translation
             + body.rotation * Quat::from_rotation_y(expected_yaw.to_radians()) * Vec3::X * 16.0
@@ -301,10 +302,10 @@ pub(super) fn check(world: &mut World, frame: u32, report: &mut String) -> Resul
     }
     if frame == 749 {
         ensure(
-            (aim.yaw.to_degrees() - 177.75).abs() < 0.02,
-            "真实输入未转到朝后",
+            (aim.yaw.to_degrees() - 222.0).abs() < 0.02,
+            "真实输入未转到后半圈",
         )?;
-        report.push_str("断言通过：真实调炮朝后，跟随视角帧 749\n");
+        report.push_str("断言通过：真实调炮进入后半圈，跟随视角帧 749\n");
     }
     if !(1..=3).contains(&frame) {
         return Ok(());

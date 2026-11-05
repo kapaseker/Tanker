@@ -134,10 +134,10 @@ mod tests {
             ("tank/enemy/carapace/body.vox", 0.02),
             ("tank/enemy/carapace/barrel.vox", 0.02),
             ("tank/enemy/carapace/track.vox", 0.02),
-            ("tank/player/leopard2_a6/body.vox", 0.02),
-            ("tank/player/leopard2_a6/turret.vox", 0.02),
-            ("tank/player/leopard2_a6/barrel.vox", 0.02),
-            ("tank/player/leopard2_a6/track.vox", 0.02),
+            ("tank/player/leopard2_a5/body.vox", 0.02),
+            ("tank/player/leopard2_a5/turret.vox", 0.02),
+            ("tank/player/leopard2_a5/barrel.vox", 0.02),
+            ("tank/player/leopard2_a5/track.vox", 0.02),
         ];
         let found = managed_vox_paths(Path::new("assets")).expect("应能遍历 assets 目录");
         let found: Vec<String> = found

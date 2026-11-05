@@ -41,7 +41,7 @@ pub(crate) mod in_game {
 
 /// 详情尺寸与装备规格标签；分类与单位沿用画廊文案。
 pub(crate) mod detail {
-    /// 只在豹 2A6 详情显示的操作说明。
+    /// 只在豹 2A5 详情显示的操作说明。
     pub(crate) const GUN_ELEVATION: &str = "炮管俯仰";
     pub(crate) const TURRET_TRAVERSE: &str = "炮塔旋转";
     /// 单键回正说明：重置炮塔水平角 / 炮管俯仰角为零。
@@ -59,6 +59,9 @@ pub(crate) mod detail {
     pub(crate) const FULL_CIRCLE: &str = "全圈";
     pub(crate) const ELEVATION_RANGE: &str = "炮管俯仰范围";
     pub(crate) const TRAVERSE_SPEED: &str = "水平转速";
+    /// 豹 2A5 详情中的战斗属性标签。
+    pub(crate) const SHOT_DAMAGE: &str = "单发伤害";
+    pub(crate) const MAX_HEALTH: &str = "最大生命值";
     pub(crate) const ELEVATION_SPEED: &str = "俯仰速度";
 }
 

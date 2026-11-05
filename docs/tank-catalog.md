@@ -8,24 +8,16 @@
 
 | 游戏内车型 | 现实参考 | 资源组合 | 状态 | 详细依据 |
 |---|---|---|---|---|
-| LeoPard2 A6（玩家） | Leopard 2A6（豹 2A6），L55 长炮管 | astraH 整车，运行目录 `tank/player/leopard2_a6/`；独立 APFSDS 弹丸 `tank/ammunition/apfsds/` | 2026-11-01 用户确认采用 astraH 并保留外观；运动接入技术验收通过（完整自动回归与六项 Radeon/Vulkan 离屏），动态美术待用户确认 | [玩家模型](player-model.md)、[原始整车](../tank_model/leovox_astraH/README.md)、[接入验收](testing/astra-player-integration.md) |
+| Leopard 2A5（玩家） | 豹 2A5，采用 Modern Armor 基础配置 | 复用 astraH 整车，运行目录 `tank/player/leopard2_a5/`；独立 APFSDS 弹丸 `tank/ammunition/apfsds/` | 游戏配置已迁移，外观与米制尺寸沿用既有资产 | [玩家模型与参数](player-model.md) |
 | carapace（敌方） | 原创现代坦克，未指定现实车型 | `tank/enemy/carapace/` 下 body/barrel/track；无弹丸 | 已有实现；按自身模型契约维护 | [敌方模型](enemy-model.md) |
 
-状态核对日期：2026-11-01。进行中的工作区改动不能直接作为已验收依据。
+状态核对日期：2026-11-05。
 
-2026-11-01 目录整理：旧玩家三包、专用生成器及测试已删除，原始 astraH 作者源与历史说明保留。画廊仅登记 APFSDS、LeoPard2 A6 和 carapace；弹丸参考 DM53/DM63 系列，未指定具体型号。
 
-历史说明：旧 anvil/lance/cleat 玩家版本已于 2026-10-29 通过最终美术验收，见[旧契约](player-model-legacy.md)及[历史验收](testing/player-a6-final-acceptance.md)。该结论不延伸到 astraH 动画接入。
-
-2026-10-30 概念设计更新（旧模型历史）：玩家 Leopard 2A6 新增[精细体素半写实七视角概念图](references/leopard-2a6-style-v2-2026-10-30/README.md)，用于新美术基线下的视觉参考，待用户美术评审。车型与资源组合未变，原有模型验收状态保留；本次未修改运行时资产。
-
-2026-11-02 按用户要求清理已完成的旧模型与返工工单目录。返工计划、规格及工单可从清理前提交 `f43c5ae873c97988af6539aa21abc698419bb31c` 的 `.scratch/leopard-player-rework/` 查阅；长期结论见[历史验收](testing/player-a6-final-acceptance.md)。
 
 ## 新增车型与维护方式
 
-新建车型或调整坦克展示外观时，按[豹 2A6 详情页外观复盘与验收流程](testing/leopard-2a6-detail-retro-2026-11-04/README.md)安排同机位样片、资产发布检查和离屏验收。
-
-概念图复核补充（2026-10-30）：上述七视角存在跨图结构差异，[v2 修订候选及核对表](references/leopard-2a6-style-v2-2026-10-30/README.md)尚未完成整套一致性验收。两版均不作为准确结构或新模型验收依据。
+新建车型或调整坦克外观时，按[美术风格基线](art-direction.md#落地与验收)安排同机位样片、资产发布检查和离屏验收。
 
 每款新增车型增加一行，并建立或复用对应模型说明。至少记录：
 
@@ -39,7 +31,3 @@
 详细尺寸、轮位、炮口、生成方式和验证结论维护在各车型文档，本目录提供导航。新增勒克莱尔等车型时沿用这一结构，先确定具体改型再整理资料。
 
 本地工单用于实施过程；最终车型选择、还原取舍和验收结论同步到纳入 Git 的模型文档，关键参考图也随文档保存。临时日志与大量离屏帧可以留在本地证据目录，长期说明应能在这些文件缺失时仍表达设计依据与验证边界。
-
-2026-11-02 炮塔控制：豹 2A6 增加对局/详情 WASD，参数位于同目录 `tank.jsonc`；真实范围与临时控制速度的依据和不确定性见[运动参数核查](references/leopard-2a6-articulation.md)。实现和验证结果见[炮塔控制验收](testing/leopard-2a6-articulation.md)，技术验证不代替用户动态美术确认。
-
-2026-11-04 豹 2A6 展示外观修订：沿用 astraH 几何与活动部件，更新色板和棱边磨损，细化侧裙、轮毂与履带几何，详情页采用独立的暖主光与冷补光。见[玩家模型](player-model.md)。

@@ -90,19 +90,20 @@ const CATEGORIES = [
     { name: 'APFSDS', tone: 'dark', dims: [0.72, 0.10, 0.10], parts: [{ w: 180, h: 10, d: 10 }, { w: 30, h: 25, d: 4, x: -75 }, { w: 30, h: 4, d: 25, x: -75 }] },
   ] },
   { name: '坦克', code: 'TK', models: [
-    // 规格数值与游戏同源：前进/倒车来自 PLAYER_TRACKS，
-    // 炮塔参数来自 assets/tank/player/leopard2_a6/tank.jsonc
-    { name: 'LeoPard2 A6', tone: 'mint', dims: [10.98, 3.76, 4.32],
+    // 网页静态规格与运行时配置对齐： assets/tank/player/leopard2_a5/tank.jsonc
+    { name: 'Leopard 2A5', tone: 'mint', dims: [10.98, 3.76, 4.32],
       specs: [
-        { label: '前进速度', value: '16', unit: 'm/s' },
-        { label: '倒车速度', value: '8', unit: 'm/s' },
+        { label: '前进速度', value: '19', unit: 'm/s' },
+        { label: '倒车速度', value: '8.94', unit: 'm/s' },
         { label: '水平旋转', value: '全圈', unit: '' },
         { label: '炮管俯仰范围', value: '-9°～+20°', unit: '' },
-        { label: '水平转速', value: '30°', unit: '/s' },
+        { label: '水平转速', value: '40°', unit: '/s' },
         { label: '俯仰速度', value: '9°', unit: '/s' },
+        { label: '单发伤害', value: '510', unit: 'HP' },
+        { label: '最大生命值', value: '4100', unit: 'HP' },
       ],
       // WASD 驱动占位模型用：度/秒与俯仰限位，与游戏配置一致
-      articulation: { traverse: 30, elevation: 9, minElevation: -9, maxElevation: 20 },
+      articulation: { traverse: 40, elevation: 9, minElevation: -9, maxElevation: 20 },
       parts: [{ w: 150, h: 30, d: 72 }, { w: 60, h: 22, d: 48, y: -26, turret: true }, { w: 106, h: 8, d: 8, x: 90, y: -26, turret: true, barrel: true }, { w: 150, h: 20, d: 16, y: 20, z: 28, tone: 'dark' }, { w: 150, h: 20, d: 16, y: 20, z: -28, tone: 'dark' }] },
     { name: 'carapace', tone: 'sand', dims: [9, 3.4, 2.6], parts: [{ w: 132, h: 30, d: 68 }, { w: 54, h: 22, d: 46, y: -26 }, { w: 76, h: 8, d: 8, x: 78, y: -26 }, { w: 132, h: 20, d: 16, y: 20, z: 26, tone: 'dark' }, { w: 132, h: 20, d: 16, y: 20, z: -26, tone: 'dark' }] },
   ] },

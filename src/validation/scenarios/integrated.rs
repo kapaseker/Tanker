@@ -49,7 +49,7 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
             - std::f32::consts::PI;
         let pitch = aim.pitch - previous.pitch;
         ensure(
-            yaw.abs() <= 30_f32.to_radians() / 60.0 + 1e-5
+            yaw.abs() <= 40_f32.to_radians() / 60.0 + 1e-5
                 && pitch.abs() <= 9_f32.to_radians() / 60.0 + 1e-5,
             "组合输入超过角速度上限",
         )?;
@@ -175,6 +175,13 @@ pub(super) fn run(app: &mut App, options: &Options, report: &mut String) -> Resu
     }
     ensure(app.world().resource::<crate::gameplay::gunner::GunnerOptics>().zoom > 1.0, "退出前倍率未改变")?;
     update(app, STEP, Some(501))?;
+    ensure(
+        app.world_mut().query::<&crate::ui::widgets::Dialog>().iter(app.world()).count() == 1,
+        "Esc 未打开退出本局确认框",
+    )?;
+    // 先释放 Esc，再通过实际确认框退出对局。
+    update(app, STEP, None)?;
+    update(app, STEP, Some(502))?;
     let started = std::time::Instant::now();
     loop {
         update(app, STEP, None)?;

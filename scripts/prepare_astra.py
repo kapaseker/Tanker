@@ -19,8 +19,8 @@ import tempfile
 from subdivide_vox import Model, Node, parse_vox, publish_pair, write_vox
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / 'tank_model/leovox_astraH/leopard_2a6.vox'
-DEST = ROOT / 'assets/tank/player/leopard2_a6'
+SOURCE = ROOT / 'tank_model/leovox_astraH/player.vox'
+DEST = ROOT / 'assets/tank/player/leopard2_a5'
 PIVOT = (192, 0, 67)
 TURRET_PIVOT = (192, 0, 80)
 BARREL_PIVOT = (278, 0, 104)
@@ -262,7 +262,7 @@ def main():
     source = read_source(SOURCE)
     names = groups(source)
     wheel_names = dict(wheel_parts())
-    moving = set(wheel_names.values()) | {'left_track', 'right_track', 'L55_gun'}
+    moving = set(wheel_names.values()) | {'left_track', 'right_track', 'gun_120'}
     turret_parts = set(names)-BODY_PARTS-moving
     assignments = []
     wheel_info = []
@@ -273,7 +273,7 @@ def main():
         staging = Path(temp)
         for filename, parts, pivot in [('body', sorted(BODY_PARTS), PIVOT),
                                        ('turret', sorted(turret_parts), TURRET_PIVOT),
-                                       ('barrel', ['L55_gun'], BARREL_PIVOT)]:
+                                       ('barrel', ['gun_120'], BARREL_PIVOT)]:
             assembly = Assembly(source)
             for part in parts:
                 assembly.copy_group(names[part], pivot)

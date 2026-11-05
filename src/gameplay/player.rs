@@ -561,8 +561,9 @@ mod tests {
         for _ in 0..64 {
             app.update();
         }
-        // cleat 前进 16 米/秒，一秒推进 16 米（含物理求解的起步损失）。
-        assert!((app.world().get::<Transform>(tank).unwrap().translation.x + 16.0).abs() < 0.05);
+        // 一秒的实际前进距离应与车型速度一致。
+        let speed = app.world().get::<crate::tank::driving::DrivingSpec>(tank).unwrap().forward_speed;
+        assert!((app.world().get::<Transform>(tank).unwrap().translation.x + speed).abs() < 0.05);
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .release(KeyCode::ArrowUp);
@@ -577,7 +578,7 @@ mod tests {
                 .translation
                 .abs_diff_eq(stopped, 0.01)
         );
-        // 直行直到抵住 300 米处的墙：16 米/秒 × 19 秒已够，3400 帧余量充足。
+        // 继续直行直到抵住 300 米处的墙，留足模拟帧数。
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::ArrowUp);

@@ -68,11 +68,11 @@ impl Scenario {
                 877, 880, 887,
             ],
             Self::Integrated => &[0, 60, 100, 101, 150, 174, 194, 270, 330, 360, 397, 398],
-            // 先直行 1 秒，再持续前进左转；路径不会触及 25 米外的混凝土墩。
+            // 先在障碍前直行 1 秒，再持续前进左转以检查车体偏航。
             Self::Drive => &[0, 60, 180],
             Self::Combat => &[0, 1, 6, 24, 48, 60, 120],
-            // 开火 1 秒后看装填中段；330 帧（5.5 秒）超过 5 秒冷却，看满格常驻。
-            Self::Hud => &[0, 60, 330],
+            // 开火 1 秒后看装填中段；480 帧（8 秒）超过 7.5 秒冷却，看满格常驻。
+            Self::Hud => &[0, 60, 480],
             // 帧 0 第三人称基准；帧 1..=5 按住 Shift 进炮镜主槽（验证长按不连发）；
             // 30/60/90 帧读分划显隐与调炮后的读数，帧 91 再按 Shift 退回第三人称，
             // 帧 101 开火验证弹道沿炮口，帧 120 断言分划整体隐藏且槽位复原。
@@ -120,6 +120,7 @@ impl Scenario {
             (Self::Integrated, 398) => &[KeyCode::KeyA],
             (Self::Integrated, 400 | 506) => &[KeyCode::KeyA, KeyCode::KeyW],
             (Self::Integrated, 501) => &[KeyCode::Escape],
+            (Self::Integrated, 502) => &[KeyCode::Enter],
             (Self::Integrated, 503) => &[KeyCode::ArrowDown],
             (Self::Integrated, 505) => &[KeyCode::Enter],
             (Self::Articulation, 31..=90) => &[KeyCode::KeyA, KeyCode::KeyW, KeyCode::ArrowLeft],

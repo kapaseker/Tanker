@@ -87,7 +87,7 @@ mod tests {
     fn catalog_lists_ammunition_and_whole_tanks() {
         assert_eq!(
             ENTRIES.map(Entry::name).as_slice(),
-            ["APFSDS", "LeoPard2 A6", "carapace"]
+            ["APFSDS", "Leopard 2A5", "carapace"]
         );
         assert_eq!(ENTRIES.iter().filter(|e| e.category == 0).count(), 1);
         assert_eq!(ENTRIES.iter().filter(|e| e.category == 1).count(), 2);

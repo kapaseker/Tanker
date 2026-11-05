@@ -39,7 +39,7 @@ pub(crate) const ENTRIES: [Entry; 3] = [
         category: 1,
         path: crate::tank::model::astra::BODY_PATH,
         enemy: false,
-        name: "LeoPard2 A6",
+        name: "Leopard 2A5",
     },
     Entry {
         category: 1,
@@ -124,7 +124,7 @@ pub(crate) fn spawn(
                 commands.entity(content).insert((
                     crate::tank::articulation::TankAim::default(),
                     crate::tank::articulation::AimReset::default(),
-                    tanks.player.articulation.expect("启动已校验豹 2A6 炮塔配置"),
+                    tanks.player.articulation.expect("启动已校验豹 2A5 炮塔配置"),
                 ));
                 crate::tank::articulation::mount_player(commands, assets, content);
             }

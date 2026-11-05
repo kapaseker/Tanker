@@ -1,8 +1,7 @@
 //! 炮镜相机与视角槽位切换：常驻 3D 相机严格跟随炮管世界位姿，Shift 单按互换主副槽。
 //!
 //! 炮镜位姿为纯函数（炮管 GlobalTransform → 相机 Transform），安装点为炮口端面
-//! （沿炮轴 −5.42 m 常量），倍率 1～12 倍对应透视视野角，far 2000 m
-//! 对齐弹丸射程。视角状态为单一枚举资源（第三人称主 / 炮镜主），Shift 按下翻转模式，
+//! （沿炮轴 −5.42 m 常量），倍率 1～12 倍对应透视视野角，远裁面对齐弹丸射程。视角状态为单一枚举资源（第三人称主 / 炮镜主），Shift 按下翻转模式，
 //! 槽位参数（全屏/矩形视口、优先级）由 [`update_view_slots`] 按模式统一应用，
 //! 瞬时完成无过渡动画；长按/连按只响应首次按下。
 //! 副槽视口为设计像素 320×180、距窗口右/上缘 24px，乘 UiScale（zoom）与窗口 DPR
@@ -399,7 +398,7 @@ mod tests {
             .add_systems(PostUpdate, measure_range);
         app.world_mut().spawn((GunnerCamera, Transform::default()));
         app.world_mut().spawn((crate::terrain::TerrainWall, RigidBody::Static, Collider::cuboid(4.0, 4.0, 2.0), Transform::from_xyz(0.0, 0.0, -5.0)));
-        let ground = app.world_mut().spawn((crate::terrain::TerrainSurface, RigidBody::Static, Collider::cuboid(4.0, 4.0, 2.0), Transform::from_xyz(0.0, 0.0, -2501.0))).id();
+        let ground = app.world_mut().spawn((crate::terrain::TerrainSurface, RigidBody::Static, Collider::cuboid(4.0, 4.0, 2.0), Transform::from_xyz(0.0, 0.0, -4001.0))).id();
         let enemy = app.world_mut().spawn((crate::gameplay::enemy::EnemyTank, RigidBody::Static, Collider::cuboid(4.0, 4.0, 2.0), Transform::from_xyz(0.0, 0.0, -21.0))).id();
         let obstacle = app.world_mut().spawn((crate::gameplay::obstacle::Concrete, RigidBody::Static, Collider::cuboid(4.0, 4.0, 2.0), Transform::from_xyz(0.0, 0.0, -11.0))).id();
         for _ in 0..4 { app.update(); }
@@ -409,7 +408,7 @@ mod tests {
         assert!((app.world().resource::<GunnerOptics>().range.unwrap() - 20.0).abs() < 0.01);
         app.world_mut().despawn(enemy);
         for _ in 0..4 { app.update(); }
-        assert!((app.world().resource::<GunnerOptics>().range.unwrap() - 2500.0).abs() < 0.01);
+        assert!((app.world().resource::<GunnerOptics>().range.unwrap() - 4000.0).abs() < 0.01);
         app.world_mut().despawn(ground);
         for _ in 0..4 { app.update(); }
         assert_eq!(app.world().resource::<GunnerOptics>().range, None);

@@ -1,0 +1,22 @@
+{
+  // 直行速度单位为米/秒，车体转向速度单位为度/秒。
+  // Modern Armor 基础模块：68.4 / 32.2 km/h 换算为 m/s。
+  "driving": { "forward_speed": 19.0, "reverse_speed": 8.944444, "turn_speed_deg_s": 28.0 },
+  // 玩家出生时的满血点数。
+  "max_health": 4100,
+  // 标准 APFSDS 单发标称伤害；靶车仍按命中即击毁处理。
+  "shot_damage": 510,
+  // 碰撞外部尺寸按长、高、宽排列，单位：米。
+  "collision": { "size": [7.68, 2.68, 3.76], "rounding_radius": 0.2 },
+  // 豹 2A5 游戏参数：https://modernarmor.worldoftanks.com/en/encyclopedia/vehicles/G14_Leopard_2A5/
+  // 水平全周连续回绕；网页未列俯仰速度，沿用游戏调校值 9°/秒。
+  "articulation": {
+    // 水平全周且可连续旋转；当前仅支持 360 度，不表示 ±180 度机械限位。
+    "traverse_range_deg": 360.0,
+    // 两轴均为度/秒，按住即以该速度运动，松开停止。
+    "traverse_speed_deg_s": 40.0,
+    "elevation_speed_deg_s": 9.0,
+    "min_elevation_deg": -9.0,
+    "max_elevation_deg": 20.0
+  }
+}

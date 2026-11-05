@@ -60,7 +60,8 @@ mod tests {
     fn real_configuration_and_comments() {
         let spec =
             AmmunitionSpec::load(Path::new("assets"), super::super::visual::PLAYER_BULLET).unwrap();
-        assert_eq!(spec.cooldown(), 5.0);
+        assert_eq!(spec.muzzle_velocity, 1640.0);
+        assert_eq!(spec.cooldown(), 7.5);
         let spec = AmmunitionSpec::parse(
             b"{/*block*/\"muzzle_velocity\":600, //line\n\"rate_of_fire\":30,\"collision\":{\"size\":[0.72,0.04,0.04],\"center_forward_offset\":0.16}}",
         )
