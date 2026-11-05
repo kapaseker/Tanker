@@ -6,6 +6,8 @@
 
 运行资产位于 `assets/tank/player/leopard2_a5/`。生成器输入为 [现有整车源模型](../tank_model/leovox_astraH/player.vox)。
 
+概念设计、尺寸资料与原始验收图可从[豹 2A5 设计参考](tank-catalog.md#豹-2a5-设计参考)查阅。
+
 ## 尺寸与运动
 
 安装轴心、轮位和炮口以 `src/tank/model/astra.rs` 为准。

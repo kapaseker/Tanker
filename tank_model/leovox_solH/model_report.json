@@ -1,0 +1,447 @@
+{
+  "voxel_size_m": 0.01,
+  "axis": "+X forward, +Y vehicle left, +Z up",
+  "sha256": "21afab233dc080c889d11cece5c00541f0846dfb1680d39eeb8d1f2640c6877c",
+  "file_bytes": 16314006,
+  "scene_chunks": 45,
+  "parts": [
+    {
+      "name": "hull",
+      "voxels": 1843376,
+      "bounds_cm": [
+        [
+          0,
+          0,
+          44
+        ],
+        [
+          766,
+          376,
+          169
+        ]
+      ]
+    },
+    {
+      "name": "track_right",
+      "voxels": 372226,
+      "bounds_cm": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          766,
+          66,
+          96
+        ]
+      ]
+    },
+    {
+      "name": "roadwheel_right_01",
+      "voxels": 36188,
+      "bounds_cm": [
+        [
+          67,
+          18,
+          2
+        ],
+        [
+          147,
+          64,
+          82
+        ]
+      ]
+    },
+    {
+      "name": "roadwheel_right_02",
+      "voxels": 36188,
+      "bounds_cm": [
+        [
+          156,
+          18,
+          2
+        ],
+        [
+          236,
+          64,
+          82
+        ]
+      ]
+    },
+    {
+      "name": "roadwheel_right_03",
+      "voxels": 36188,
+      "bounds_cm": [
+        [
+          245,
+          18,
+          2
+        ],
+        [
+          325,
+          64,
+          82
+        ]
+      ]
+    },
+    {
+      "name": "roadwheel_right_04",
+      "voxels": 36188,
+      "bounds_cm": [
+        [
+          334,
+          18,
+          2
+        ],
+        [
+          414,
+          64,
+          82
+        ]
+      ]
+    },
+    {
+      "name": "roadwheel_right_05",
+      "voxels": 36188,
+      "bounds_cm": [
+        [
+          423,
+          18,
+          2
+        ],
+        [
+          503,
+          64,
+          82
+        ]
+      ]
+    },
+    {
+      "name": "roadwheel_right_06",
+      "voxels": 36188,
+      "bounds_cm": [
+        [
+          512,
+          18,
+          2
+        ],
+        [
+          592,
+          64,
+          82
+        ]
+      ]
+    },
+    {
+      "name": "roadwheel_right_07",
+      "voxels": 36188,
+      "bounds_cm": [
+        [
+          601,
+          18,
+          2
+        ],
+        [
+          681,
+          64,
+          82
+        ]
+      ]
+    },
+    {
+      "name": "sprocket_right",
+      "voxels": 19408,
+      "bounds_cm": [
+        [
+          4,
+          19,
+          16
+        ],
+        [
+          57,
+          67,
+          69
+        ]
+      ]
+    },
+    {
+      "name": "idler_right",
+      "voxels": 18024,
+      "bounds_cm": [
+        [
+          707,
+          19,
+          17
+        ],
+        [
+          757,
+          67,
+          67
+        ]
+      ]
+    },
+    {
+      "name": "track_left",
+      "voxels": 372226,
+      "bounds_cm": [
+        [
+          0,
+          310,
+          0
+        ],
+        [
+          766,
+          376,
+          96
+        ]
+      ]
+    },
+    {
+      "name": "roadwheel_left_01",
+      "voxels": 36188,
+      "bounds_cm": [
+        [
+          67,
+          312,
+          2
+        ],
+        [
+          147,
+          358,
+          82
+        ]
+      ]
+    },
+    {
+      "name": "roadwheel_left_02",
+      "voxels": 36188,
+      "bounds_cm": [
+        [
+          156,
+          312,
+          2
+        ],
+        [
+          236,
+          358,
+          82
+        ]
+      ]
+    },
+    {
+      "name": "roadwheel_left_03",
+      "voxels": 36188,
+      "bounds_cm": [
+        [
+          245,
+          312,
+          2
+        ],
+        [
+          325,
+          358,
+          82
+        ]
+      ]
+    },
+    {
+      "name": "roadwheel_left_04",
+      "voxels": 36188,
+      "bounds_cm": [
+        [
+          334,
+          312,
+          2
+        ],
+        [
+          414,
+          358,
+          82
+        ]
+      ]
+    },
+    {
+      "name": "roadwheel_left_05",
+      "voxels": 36188,
+      "bounds_cm": [
+        [
+          423,
+          312,
+          2
+        ],
+        [
+          503,
+          358,
+          82
+        ]
+      ]
+    },
+    {
+      "name": "roadwheel_left_06",
+      "voxels": 36188,
+      "bounds_cm": [
+        [
+          512,
+          312,
+          2
+        ],
+        [
+          592,
+          358,
+          82
+        ]
+      ]
+    },
+    {
+      "name": "roadwheel_left_07",
+      "voxels": 36188,
+      "bounds_cm": [
+        [
+          601,
+          312,
+          2
+        ],
+        [
+          681,
+          358,
+          82
+        ]
+      ]
+    },
+    {
+      "name": "sprocket_left",
+      "voxels": 19408,
+      "bounds_cm": [
+        [
+          4,
+          309,
+          16
+        ],
+        [
+          57,
+          357,
+          69
+        ]
+      ]
+    },
+    {
+      "name": "idler_left",
+      "voxels": 18024,
+      "bounds_cm": [
+        [
+          707,
+          309,
+          17
+        ],
+        [
+          757,
+          357,
+          67
+        ]
+      ]
+    },
+    {
+      "name": "turret",
+      "voxels": 796345,
+      "bounds_cm": [
+        [
+          152,
+          8,
+          161
+        ],
+        [
+          612,
+          368,
+          438
+        ]
+      ]
+    },
+    {
+      "name": "gun",
+      "voxels": 110364,
+      "bounds_cm": [
+        [
+          566,
+          164,
+          184
+        ],
+        [
+          1097,
+          212,
+          232
+        ]
+      ]
+    }
+  ],
+  "features": {
+    "engine_fans": {
+      "centers_cm": [
+        [
+          91,
+          116,
+          164
+        ],
+        [
+          91,
+          260,
+          164
+        ]
+      ],
+      "diameter_cm": 106,
+      "count": 2
+    },
+    "suspension": {
+      "roadwheel_centers_x_cm": [
+        107,
+        196,
+        285,
+        374,
+        463,
+        552,
+        641
+      ],
+      "axis_z_cm": 42,
+      "roadwheel_diameter_cm": 80,
+      "wheel_width_cm": 40,
+      "front_idler_x_cm": 732,
+      "rear_sprocket_x_cm": 30,
+      "endwheel_diameter_cm": 50,
+      "links_per_track": 56
+    },
+    "turret": {
+      "length_cm": 460,
+      "width_cm": 300,
+      "roof_z_cm": 264,
+      "hatches_z_cm": 270,
+      "commander_side": "right",
+      "peri_top_z_cm": 303,
+      "antenna_top_z_cm": 438,
+      "smoke_tubes_per_side": 8,
+      "antenna_height_is_estimate": true
+    },
+    "gun": {
+      "axis_cm": [
+        null,
+        188,
+        208
+      ],
+      "muzzle_x_cm": 1097,
+      "bore_diameter_cm": 12,
+      "fume_extractor_x_cm": [
+        701,
+        758
+      ],
+      "muzzle_brake": false
+    }
+  },
+  "dimensions_m": {
+    "hull_length": 7.66,
+    "gun_forward_length": 10.97,
+    "width": 3.76,
+    "deck_height": 1.6,
+    "turret_roof_height": 2.64,
+    "hatch_height": 2.7,
+    "complete_height_with_antennas": 4.38
+  }
+}
