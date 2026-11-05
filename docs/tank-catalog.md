@@ -10,6 +10,7 @@
 |---|---|---|---|---|
 | Leopard 2A5（玩家） | 豹 2A5，采用 Modern Armor 基础配置 | 复用 astraH 整车，运行目录 `tank/player/leopard2_a5/`；独立 APFSDS 弹丸 `tank/ammunition/apfsds/` | 游戏配置已迁移，外观与米制尺寸沿用既有资产 | [玩家模型与参数](player-model.md) |
 | carapace（敌方） | 原创现代坦克，未指定现实车型 | `tank/enemy/carapace/` 下 body/barrel/track；无弹丸 | 已有实现；按自身模型契约维护 | [敌方模型](enemy-model.md) |
+| M41A1 Walker Bulldog（设计中） | M41A1 轻型坦克 | 七视角概念图，目标体素尺度 0.01 m；运行资源尚未制作 | 实车涂装方向；五轮和明显履带穿插已修正，局部附件一致性待校正，待用户评审 | [设计稿与检查](references/m41a1-walker-bulldog-2026-11-05/README.md) |
 
 状态核对日期：2026-11-05。
 
